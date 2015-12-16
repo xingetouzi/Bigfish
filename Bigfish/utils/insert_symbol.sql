@@ -1,0 +1,2 @@
+Insert into symbol (code,name) values ('600848','上海临港');
+Insert into symbol (code,name) values ('EUR/USD','欧元/美元'),('XAU/USD','黄金/美元'),('GBP/USD','英镑/美元'),('EUR/JPY','欧元/日元'),('USD/JPY','美元/日元'),('GBP/JPY','英镑/日元'),('AUD/JPY','澳元/日元'),('EUR/CAD','欧元/加元'),('EUR/GBP','欧元/英镑'),('AUD/USD','澳元/美元'),('EUR/AUD','欧元/澳元'),('USD/CAD','美元/加元'),('USD/CHF','美元/瑞郎'),('EUR/CHF','欧元/瑞郎'),('GBP/CHF','英镑/瑞郎'),('AUD/NZD','澳元/纽元'),('EUR/NZD','欧元/纽元');

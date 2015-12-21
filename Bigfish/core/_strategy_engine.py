@@ -10,8 +10,8 @@ import time
 #自定义模块
 from Bigfish.core import AccountManager
 from Bigfish.event.event import *
-from Bigfish.event.engine import EventEngine, async_handle
-from Bigfish.utils.trade import *
+from Bigfish.event.engine import EventEngine
+from Bigfish.models.trade import *
 from Bigfish.utils.common import set_attr, get_attr, deque
 from Bigfish.event.handle import SymbolsListener
 from functools import partial

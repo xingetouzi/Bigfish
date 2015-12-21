@@ -58,5 +58,5 @@ EVENT_ORDER = 'Order' # 报单推送事件
 EVENT_ORDER_SYMBOL = {symbol:Event._create_event_type('Order.%s'%symbol).get_id() 
 for symbol in SYMBOLS} # 特定报单号的报单事件
 EVENT_POSITION = 'Position' # 持仓查询回报事件
-EVENT_POSTIION_SYMBOL = {symbol:Event._create_event_type('Position.%s'%symbol).get_id() 
+EVENT_POSITION_SYMBOL = {symbol:Event._create_event_type('Position.%s'%symbol).get_id()
 for symbol in SYMBOLS} # 特定交易物持仓查询回报事件

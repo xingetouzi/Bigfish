@@ -32,7 +32,7 @@ class StrategyEngine(object):
         self.__deals = {} # 保存所有成交数据的字典
         self.__positions = {} # Key:id, value:position with responding id
         self.__strategys = {} # 保存策略对象的字典,key为策略名称,value为策略对象        
-        self.__datas = {} # 统一的数据视图
+        self.__data = {} # 统一的数据视图
         self.__symbols = {} # key:(symbol,timeframe),value:maxlen       
         self.start_time = None
         self.end_time = None        
@@ -51,8 +51,8 @@ class StrategyEngine(object):
         #TODO 读取每个品种的有效Position       
         return(self.__current_positions)
     #----------------------------------------------------------------------
-    def get_datas(self):
-        return(self.__datas)
+    def get_data(self):
+        return(self.__data)
     #----------------------------------------------------------------------
     def get_profit_records(self):
         """获取平仓收益记录"""
@@ -92,32 +92,32 @@ class StrategyEngine(object):
         def next_position(position):
             return(self.__positions.get(position.next_id,None))
         def prev_position(position):
-            return(self.__positions.get(position_prev_id,None))
+            return(self.__positions.get(position.prev_id,None))
         result = []
         stack = []     
         for symbol in {symbol for (symbol, _) in self.__symbols}:
-            position = next_postion(self.__init_positions[symbol])
+            position = next_position(self.__init_positions[symbol])
             while (position != None):
                 deal = self.__deals[position.deal]                
                 if deal.entry == DEAL_ENTRY_IN: #open or overweight position
                     result.append(get_point(deal, DEAL_ENTRY_IN, deal.volume))
-                    stack.append((postion,deal.volume))
+                    stack.append((position,deal.volume))
                 else:
                     if deal.entry == DEAL_ENTRY_INOUT: #reverse position
                         volume_left = deal.volume - position.volume
                         result.append(get_point(deal, DEAL_ENTRY_IN, position.volume))
                     else: #underweight position
                         volume_left = deal.volume
-                    result.append(get_point(deal, DEAL_ENTYR_OUT, volume_left))
+                    result.append(get_point(deal, DEAL_ENTRY_OUT, volume_left))
                     while volume_left > 0:
                         position_start, volume = stack.pop()
-                        result.append(get_line(position_start, position))
+                        result.append(get_lines(position_start, position))
                         volume_left -= volume
                     if volume_left < 0:
                         stack.append(position_start, -volume_left)
                     elif deal.entry == DEAL_ENTRY_INOUT and position.volume > 0:
                         stack.append((position, position.volume))
-                position = next_postion(position)
+                position = next_position(position)
         return(result)
     #----------------------------------------------------------------------
     def set_capital_base(self, base):
@@ -134,14 +134,14 @@ class StrategyEngine(object):
         #TODO数据结构还需修改
         for (symbol, time_frame), maxlen in self.__symbols.items():
             for field in ['open','high','low','close','time','volume']:
-                if not symbol in self.__datas:
-                    self.__datas[symbol] = {}
-                if not time_frame in self.__datas[symbol]:
-                    self.__datas[symbol][time_frame] = {}
+                if not symbol in self.__data:
+                    self.__data[symbol] = {}
+                if not time_frame in self.__data[symbol]:
+                    self.__data[symbol][time_frame] = {}
                 if maxlen == 0:
                     maxlen = self.CACHE_MAXLEN
                 for field in ['open','high','low','close','time','volume']:
-                    self.__datas[symbol][time_frame][field] = deque(maxlen=maxlen)
+                    self.__data[symbol][time_frame][field] = deque(maxlen=maxlen)
             if symbol not in self.__current_positions:
                 position = Position(symbol)
                 self.__current_positions[symbol] = position
@@ -163,7 +163,7 @@ class StrategyEngine(object):
         symbol = bar.symbol
         time_frame = bar.time_frame
         for field in ['open','high','low','close','time','volume']:
-            self.__datas[symbol][time_frame][field].appendleft(getattr(bar,field))
+            self.__data[symbol][time_frame][field].appendleft(getattr(bar, field))
     #----------------------------------------------------------------------
     def __process_order(self, tick):
         """处理停止单"""
@@ -251,7 +251,7 @@ class StrategyEngine(object):
     def __send_order_to_broker(self,order):
         if self.__backtesting:
             time_frame = SymbolsListener.get_by_id(order.handle).get_time_frame()
-            time_ = self.__datas[order.symbol][time_frame]["time"][0]
+            time_ = self.__data[order.symbol][time_frame]["time"][0]
             order.time_done = int(time_)
             order.time_done_msc = int((time_-int(time_))*(10**6))
             order.volume_current = order.volume_initial
@@ -260,7 +260,7 @@ class StrategyEngine(object):
             deal.time = order.time_done
             deal.time_msc = order.time_done_msc
             deal.type = 1-((order.type&1)<<1) #参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.__datas[order.symbol][time_frame]["close"][0]
+            deal.price = self.__data[order.symbol][time_frame]["close"][0]
             #TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
@@ -347,7 +347,7 @@ class StrategyEngine(object):
         order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
         order.volume_initial = volume
         if self.__backtesting:
-            time_ = self.__datas[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -363,7 +363,7 @@ class StrategyEngine(object):
         else:
             order.volume_initial = volume
         if self.__backtesting:
-            time_ = self.__datas[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -378,7 +378,7 @@ class StrategyEngine(object):
             return#XXX可能的返回值
         order.volume_initial = volume
         if self.__backtesting:
-            time_ = self.__datas[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -394,7 +394,7 @@ class StrategyEngine(object):
         else:
             order.volume_initial = volume
         if self.__backtesting:
-            time_ = self.__datas[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)

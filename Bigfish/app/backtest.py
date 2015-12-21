@@ -23,10 +23,10 @@ class DataGeneratorTushare(DataGenerator):
         event = Event(EVENT_BAR_SYMBOL[symbol][time_frame],{'data':bar})
         return(event)
         
-    def _get_datas(self, symbol, time_frame, start_time=None, end_time=None):
+    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         if time_frame == 'D1':
-            datas = ts.get_hist_data(symbol,start_time,end_time)
-            return(datas.apply(partial(self.__data_to_event,symbol,time_frame),axis=1).tolist())
+            data = ts.get_hist_data(symbol,start_time,end_time)
+            return(data.apply(partial(self.__data_to_event,symbol,time_frame),axis=1).tolist())
         else:
             raise(ValueError)
             

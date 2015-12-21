@@ -6,14 +6,15 @@ import ast
 import inspect
 
 #自定义模块
+from Bigfish.utils.export import ExportWrapper
 from Bigfish.event.handle import SymbolsListener
-from Bigfish.utils.ast import LocalsInjector
+from Bigfish.utils.ast import LocalsInjector, SeriesExporter
 from Bigfish.utils.common import check_time_frame, HasID
 
-#%%策略容器，在初始化时定制一策略代码并在Onbar函数中运行他们
 ########################################################################
 class Strategy(HasID):    
-    ATTRS_MAP = {"timeframe":"time_frame", "base":"capital_base", "symbols":"symbols", "start":"start_time", "end":"end_time", "maxlen":"max_length" }  
+    ATTRS_MAP = dict(timeframe="time_frame", base="capital_base", symbols="symbols", start="start_time", end="end_time",
+                     maxlen="max_length")
     #----------------------------------------------------------------------
     def __init__(self, engine, id_, name, code):
         """Constructor""" 
@@ -24,29 +25,40 @@ class Strategy(HasID):
         self.symbols = set()
         self.start_time = None
         self.end_time = None
-        self.capital_base = 100000        
+        self.capital_base = 100000
         self.handlers = {}
         self.listeners = {}
-        self.__context = {}      
+        self.series_storage = {}
+        self.__context = {}
         #是否完成了初始化
-        self.initCompleted = False
+        self.initialized = False
         #在字典中保存Open,High,Low,Close,Volumn，CurrentBar，MarketPosition，
         #手动为exec语句提供local命名空间
-        self.__locals_ = {
-                    "sell":partial(self.engine.sell, strategy = self.__id),
-                    "short":partial(self.engine.short, strategy = self.__id),
-                    "buy":partial(self.engine.buy, strategy = self.__id),
-                    "cover":partial(self.engine.cover, strategy = self.__id),
-                    "marketposition":self.engine.get_current_positions(),
-                    "currentcontracts":self.engine.get_current_contracts(),
-                    "datas":self.engine.get_datas(),
-                    "context":self.__context
-                   }
+        self.__locals_ = dict(sell=partial(self.engine.sell, strategy=self.__id),
+                              short=partial(self.engine.short, strategy=self.__id),
+                              buy=partial(self.engine.buy, strategy=self.__id),
+                              cover=partial(self.engine.cover, strategy=self.__id),
+                              marketposition=self.engine.get_current_positions(),
+                              currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
+                              context=self.__context, export=ExportWrapper(self),
+                              put = self.put_context, get = self.get_context)
         #将策略容器与对应代码文件关联   
         self.bind_code_to_strategy(code)
-        
+    #----------------------------------------------------------------------
     def get_id(self):
         return(self.__id)
+    #----------------------------------------------------------------------
+    def put_context(strategy, **kwargs):
+        for key, value in kwargs.items():
+            strategy.__context[key] = value
+    #----------------------------------------------------------------------
+    def get_context(strategy, *args):
+        return (strategy.__context[key] for key in args)
+    #----------------------------------------------------------------------
+    def initialize(self):
+        self.capital_cash = self.capital_base
+        self.__profit_records = {}
+        self.handlers['init']
     #----------------------------------------------------------------------   
     #将策略容器与策略代码关联
     def bind_code_to_strategy(self, code):
@@ -84,11 +96,12 @@ class Strategy(HasID):
         for key , value in locals_.items():
             if inspect.isfunction(value):
                 if key == "init":
+                    self.handlers ['init'] = value
                     #TODO init中可以设定全局变量，所以要以"global foo"的方式进行注入，监听的事件不同所以要改写SymbolsListener
                     continue    
                 paras = inspect.signature(value).parameters
-                data_handler = get_parameter_default(paras, "data_handler", lambda x:isinstance(x,bool), True)
-                if not data_handler:
+                ishandle = get_parameter_default(paras, "ishandle", lambda x:isinstance(x,bool), True)
+                if not ishandle:
                     continue
                 custom = get_parameter_default(paras, "custom", lambda x:isinstance(x,bool), False)                               
                 if not custom:
@@ -99,7 +112,7 @@ class Strategy(HasID):
                     self.engine.add_symbols(symbols,time_frame,max_length)
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
                     temp = []                    
-                    temp.extend(["%s = __globals['datas']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
+                    temp.extend(["%s = __globals['data']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
                                  for field in ["open","high","low","close","time","volume"]])
                     temp.extend(["%s = functools.partial(__globals['%s'],listener=%d)" % (field, field, self.listeners[key].get_id())
                                   for field in ["buy","short","sell","cover"]])    
@@ -110,10 +123,14 @@ class Strategy(HasID):
         injector = LocalsInjector(to_inject)
         ast_ = ast.parse(code)
         injector.visit(ast_)
+        #SeriesExporter().visit(ast_)
+        #TODO 解决行号的问题
         exec(compile(ast_,"[Strategy:%s]"%self.name,mode="exec"), globals_, locals_)
         for key in to_inject.keys():
              self.listeners[key].set_generator(locals_[key])
         print("<%s>信号添加成功" % self.name)
+        if 'init' in self.handlers:
+            self.handlers['init']()
         return(True)
     #----------------------------------------------------------------------
     def onTick(self, tick):
@@ -123,9 +140,6 @@ class Strategy(HasID):
     #----------------------------------------------------------------------    
     def onTrade(self, trade):
         """交易更新"""
-        """trade.direction = 1 买单,trade.direction = -1 卖单
-           marketposition = 1 持多仓,-1持空仓,0为空仓
-        """
         
     
     #----------------------------------------------------------------------
@@ -177,5 +191,3 @@ class Strategy(HasID):
     def cancelStopOrder(self, so):
         """撤销停止单"""
         self.engine.cancelStopOrder(so)
-    
-        

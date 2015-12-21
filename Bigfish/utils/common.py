@@ -4,29 +4,15 @@ Created on Thu Nov 26 10:46:33 2015
 
 @author: BurdenBear
 """
+import re
 from collections import UserList
 from collections import deque
 from datetime import datetime
-import traceback
-import re
+
 
 ###################################################################
 def string_to_html(string):
     return(string.replace(' ', '&nbsp;').replace('\r\n', '<br>').replace('\r', '<br>').replace('\n', '<br>'))
-###################################################################
-def is_user_file(string, limit=r'\A\[.+\]\Z'):
-    """判断是否是用户生成的文件，用于输出友好的错误日志"""
-    pattern = re.compile(limit)
-    match_ = pattern.match(string)
-    print(match_)
-    return(pattern.match(string)!=None)
-###################################################################
-def get_user_friendly_traceback(exc_type, exc_value, exc_traceback):
-    tb_message = traceback.format_list(filter(lambda x:is_user_file(str(x[0])),traceback.extract_tb(exc_traceback)))
-    print(tb_message)
-    format_e = traceback.format_exception_only(exc_type, exc_value)
-    tb_message.append(''.join(format_e))
-    return(tb_message)
 ###################################################################
 #通用的属性（property）封装方法，通过反射比直接在类中写特殊的方法慢4~5倍，适用于非内部循环变量
 def get_attr(self, attr=''):

@@ -14,8 +14,8 @@ class dictlike():
 class TranscationRecord():
     """交易记录对象"""    
     __slots__ = ["strategy", "lot", "profit", "symbol", "ctime"]
-    def __init__(self, strategy="" , lot=0, profit=0, symbol="", ctime=None):
-        super().__init__        
+    def __init__(self, strategy="", lot=0, profit=0, symbol="", ctime=None):
+        super().__init__()
         self.strategy = strategy
         self.lot = lot
         self.profit = profit
@@ -27,7 +27,7 @@ class YieldRecord(dictlike):
     """收益记录对象"""    
     __slots__ = ["yield_", "ctime"]    
     def __init__(self, yield_=0, ctime=None):
-        super().__init__        
+        super().__init__()
         self.yield_ = yield_
         self.ctime = ctime
      

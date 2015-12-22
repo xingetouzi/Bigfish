@@ -39,6 +39,26 @@ def rename_code(user, code, new_name):
     return True
 
 
+def rename_strategy(user, old_name, new_name):
+    code = Code(old_name)
+    return rename_code(user, code, new_name)
+
+
+def rename_func(user, old_name, new_name):
+    code = Code(old_name, code_type=2)
+    return rename_code(user, code, new_name)
+
+
+def delete_strategy(user, name):
+    udir = UserDirectory(user)
+    os.remove(os.path.join(udir.get_strategy_dir(), name))
+
+
+def delete_func(user, name):
+    udir = UserDirectory(user)
+    os.remove(os.path.join(udir.get_func_dir(), name))
+
+
 def get_func(user, code_name):
     """
     根据代码名称,获取该段函数代码

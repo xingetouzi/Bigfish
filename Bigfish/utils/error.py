@@ -34,8 +34,6 @@ def is_user_file(string, limit=r'\A\[.+\]\Z') -> bool:
     :rtype: str
     """
     pattern = re.compile(limit)
-    match_ = pattern.match(string)
-    print(match_)
     return pattern.match(string) is not None
 
 

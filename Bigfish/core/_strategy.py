@@ -6,7 +6,7 @@ import ast
 import inspect
 
 #自定义模块
-from Bigfish.utils.export import ExportWrapper
+from Bigfish.utils.export import export
 from Bigfish.event.handle import SymbolsListener
 from Bigfish.utils.ast import LocalsInjector, SeriesExporter
 from Bigfish.utils.common import check_time_frame, HasID
@@ -40,7 +40,7 @@ class Strategy(HasID):
                               cover=partial(self.engine.cover, strategy=self.__id),
                               marketposition=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
-                              context=self.__context, export=ExportWrapper(self),
+                              context=self.__context, export=partial(export,self),
                               put = self.put_context, get = self.get_context)
         #将策略容器与对应代码文件关联   
         self.bind_code_to_strategy(code)
@@ -52,8 +52,8 @@ class Strategy(HasID):
         for key, value in kwargs.items():
             strategy.__context[key] = value
     #----------------------------------------------------------------------
-    def get_context(strategy, *args):
-        return (strategy.__context[key] for key in args)
+    def get_context(strategy, key):
+        return strategy.__context[key]
     #----------------------------------------------------------------------
     def initialize(self):
         self.capital_cash = self.capital_base
@@ -123,7 +123,7 @@ class Strategy(HasID):
         injector = LocalsInjector(to_inject)
         ast_ = ast.parse(code)
         injector.visit(ast_)
-        #SeriesExporter().visit(ast_)
+        ast_ = SeriesExporter().visit(ast_)
         #TODO 解决行号的问题
         exec(compile(ast_,"[Strategy:%s]"%self.name,mode="exec"), globals_, locals_)
         for key in to_inject.keys():

@@ -332,7 +332,7 @@ class StrategyEngine(object):
         """停止所有策略"""
         self.__event_engine.stop()
         for strategy in self.__strategys.values():
-            strategy.stop() 
+            strategy.stop()
     def wait(self):
         """等待所有事件处理完毕"""
         self.__event_engine.wait()

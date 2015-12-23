@@ -6,6 +6,7 @@ import ast
 import inspect
 
 #自定义模块
+from Bigfish.utils.log import FilePrinter
 from Bigfish.utils.export import export
 from Bigfish.event.handle import SymbolsListener
 from Bigfish.utils.ast import LocalsInjector, SeriesExporter
@@ -16,9 +17,9 @@ class Strategy(HasID):
     ATTRS_MAP = dict(timeframe="time_frame", base="capital_base", symbols="symbols", start="start_time", end="end_time",
                      maxlen="max_length")
     #----------------------------------------------------------------------
-    def __init__(self, engine, id_, name, code):
-        """Constructor""" 
-        self.__id = id_
+    def __init__(self, engine, user, name, code):
+        """Constructor"""
+        self.user = user
         self.name = name
         self.engine = engine
         self.time_frame = None
@@ -29,6 +30,7 @@ class Strategy(HasID):
         self.handlers = {}
         self.listeners = {}
         self.series_storage = {}
+        self.__printer = FilePrinter(user, name)
         self.__context = {}
         #是否完成了初始化
         self.initialized = False
@@ -41,7 +43,8 @@ class Strategy(HasID):
                               marketposition=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
                               context=self.__context, export=partial(export,self),
-                              put = self.put_context, get = self.get_context)
+                              put = self.put_context, get = self.get_context,
+                              print = self.__printer.get_print())
         #将策略容器与对应代码文件关联   
         self.bind_code_to_strategy(code)
     #----------------------------------------------------------------------
@@ -58,7 +61,7 @@ class Strategy(HasID):
     def initialize(self):
         self.capital_cash = self.capital_base
         self.__profit_records = {}
-        self.handlers['init']
+
     #----------------------------------------------------------------------   
     #将策略容器与策略代码关联
     def bind_code_to_strategy(self, code):
@@ -161,6 +164,7 @@ class Strategy(HasID):
         self.trading = True
         for listener in self.listeners.values():
             listener.start()
+        self.__printer.start()
         self.engine.writeLog(self.name + u'开始运行')
         
     #----------------------------------------------------------------------
@@ -172,6 +176,7 @@ class Strategy(HasID):
         self.trading = False
         for listener in self.listeners.values():
             listener.stop()
+        self.__printer.stop()
         self.engine.writeLog(self.name + u'停止运行')
         
     #----------------------------------------------------------------------

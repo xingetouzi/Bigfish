@@ -4,6 +4,7 @@ Created on Fri Nov 27 22:42:54 2015
 
 @author: BurdenBear
 """
+
 from Bigfish.utils.common import HasID
 from Bigfish.event.event import EVENT_BAR_SYMBOL
 
@@ -58,11 +59,13 @@ class SymbolsListener(HasID):
     def __handle(self):
         bits_ready = (1 << self.__count) - 1
         bits_now = 0
-        while True:
-            event = yield
-            bar = event.content["data"]
-            bits_now |= 1 << self.__symbols[bar.symbol]
-            if bits_now == bits_ready:
-                self.__bar_num += 1                
-                self.__gene_istance.__next__()         
-                bits_now = 0
+        with redirect_stdout(io_out):
+            while True:
+                event = yield
+                bar = event.content["data"]
+                bits_now |= 1 << self.__symbols[bar.symbol]
+                if bits_now == bits_ready:
+                    self.__bar_num += 1
+                    self.__gene_istance.__next__()
+                    bits_now = 0
+                    yield io_out

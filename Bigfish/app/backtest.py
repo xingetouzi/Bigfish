@@ -31,9 +31,9 @@ class DataGeneratorTushare(DataGenerator):
             raise(ValueError)
             
 class Backtesting:
-    def __init__(self, id_, name, code):
+    def __init__(self, user, name, code):
         self.strategy_engine = StrategyEngine(backtesting=True)        
-        self.strategy = Strategy(self.strategy_engine, id_, name, code)
+        self.strategy = Strategy(self.strategy_engine, user, name, code)
         self.strategy_engine.add_strategy(self.strategy)
         self.data_generator = DataGeneratorTushare(self.strategy_engine)
         self.strategy_engine.initialize()

@@ -45,6 +45,10 @@ class UserDirectory(object):
         else:
             return self.get_func_dir()
 
+    def get_temp_dir(self):
+        temp_dir_name = "temp"
+        return self.__get_dir__(self.get_home(), temp_dir_name)
+
     def get_strategy_dir(self):
         """
         得到用户创建策略的存放目录

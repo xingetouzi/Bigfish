@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-
+BASE_DIR_NAME = "Bigfish"
 
 class UserDirectory(object):
     """用户目录管理,维护一个用户主目录,已经主目录下的两个子目录(函数目录,策略目录)"""
@@ -29,8 +29,8 @@ class UserDirectory(object):
         获取策略代码存放路径
         :return: 策略代码存放的根目录
         """
-        base_dir_name = "Bigfish"   # TODO 先写死, 以后肯定需要重构
-        return self.__get_dir__(os.path.expanduser('~'), base_dir_name)
+        # TODO 先写死, 以后肯定需要重构
+        return self.__get_dir__(os.path.expanduser('~'), BASE_DIR_NAME)
 
     def get_home(self, code=None):
         """
@@ -65,28 +65,30 @@ class UserDirectory(object):
         func_dir_name = "functions"
         return self.__get_dir__(self.get_home(), func_dir_name)
 
+    @DeprecationWarning
     def get_func_list(self):
         """
         获取用户编写的函数列表
         """
         return os.listdir(self.get_func_dir())
 
+    @DeprecationWarning
     def get_strategy_list(self):
         """
         获取用户编写的策略列表
         """
         return os.listdir(self.get_strategy_dir())
 
-    # def strategy_exists(self, strategy_name):
-    #     """
-    #     判断用户策略是否存在
-    #     :param strategy_name:策略文件名称
-    #     """
-    #     return os.path.exists(os.path.join(self.get_strategy_dir(), strategy_name))
-    #
-    # def func_exists(self, func_name):
-    #     """
-    #     判断用户函数文件是否存在
-    #     :param func_name:函数文件名称,可以一个函数一个文件,也可以多个函数一个文件
-    #     """
-    #     return os.path.exists(os.path.join(self.get_func_dir(), func_name))
+    def strategy_exists(self, strategy_name):
+        """
+        判断用户策略是否存在
+        :param strategy_name:策略文件名称
+        """
+        return os.path.exists(os.path.join(self.get_strategy_dir(), strategy_name))
+
+    def func_exists(self, func_name):
+        """
+        判断用户函数文件是否存在
+        :param func_name:函数文件名称,可以一个函数一个文件,也可以多个函数一个文件
+        """
+        return os.path.exists(os.path.join(self.get_func_dir(), func_name))

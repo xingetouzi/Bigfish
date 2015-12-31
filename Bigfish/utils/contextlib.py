@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 class redirect_stderr:
     """Context manager for temporarily redirecting stdout to another file
 

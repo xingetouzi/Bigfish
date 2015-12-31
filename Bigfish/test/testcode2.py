@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 base = 100000
 symbols = ['600848']
 start = '2015-01-01'
-end = '2015-07-01'
+end = '2015-12-01'
 timeframe = 'D1'
 
 def handle(slowlength=20, fastlength=10, lots=100):

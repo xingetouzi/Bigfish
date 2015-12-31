@@ -4,45 +4,45 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-from Bigfish.utils.common import _TIME_FRAME_PERIOD, quick_sort
+import pandas as pd
 from functools import partial
+
 
 class DataGenerator:
     """fetch data from somewhere and put dataEvent into eventEngine
         数据生成器
-    Attrs:
-        __engine:the eventEngine where dataEvent putted into        
-        __symbols:symbol of assets
-        __start_time:start time of data
-        __end_time:end time of data
-        __time_frame_bits:bits contain information of which time frame to use
+    Attr:
+        __engine:the eventEngine where data event putted into
+        __dataframe:data in pandas's dataframe format
     """
-    
+
     def __init__(self, engine):
         self.__engine = engine
         self.__data_events = []
         self.__get_data = None
-    @staticmethod    
-    def _close_time(arr, index):
-        bar = arr[index].content['data']
-        return(bar.time+_TIME_FRAME_PERIOD[bar.time_frame])
-    #TODO 多态
+        self.__dataframe = None
+
+    # TODO 多态
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         """根据数据源的不同选择不同的实现"""
-        raise(NotImplementedError)
-        
+        raise NotImplementedError
+
+    def get_dataframe(self):
+        return self.__dataframe
+
     def __insert_data(self, symbol, time_frame):
-        self.__data_events.extend(self.__get_data(symbol, time_frame))
-        
+        bars = self.__get_data(symbol, time_frame)
+        if bars:
+            temp = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
+            self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
+            self.__data_events.extend(map(lambda x: x.to_event(), bars))
+
     def start(self):
-        self.__get_data = partial(self._get_data,start_time=self.__engine.start_time,end_time=self.__engine.end_time)
+        self.__get_data = partial(self._get_data, start_time=self.__engine.start_time, end_time=self.__engine.end_time)
         for symbol, time_frame in self.__engine.symbols.keys():
             self.__insert_data(symbol, time_frame)
-        quick_sort(0,len(self.__data_events)-1,self.__data_events,self._close_time)
-        #回放数据
+        self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
+        self.__dataframe.sort('close_time', inplace=True)
+        # 回放数据
         for data_event in self.__data_events:
             self.__engine.put_event(data_event)
-            
-        
-    
-    

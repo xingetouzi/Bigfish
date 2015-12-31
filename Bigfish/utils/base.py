@@ -4,9 +4,10 @@ Created on Sat Dec 12 15:35:55 2015
 
 @author: BurdenBear
 """
-from Bigfish.utils.common import DictLike
 import os
 import sqlite3
+
+from Bigfish.models.common import DictLike
 
 __all__ = ['Symbol', 'Currency']
 _DBPATH = os.path.join(os.path.realpath(os.path.split(__file__)[0]),'symbol.sqlite3')

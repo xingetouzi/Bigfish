@@ -5,6 +5,7 @@
 from Bigfish.models import Code
 from Bigfish.store import UserDirectory
 import os
+import sqlite3
 
 
 def save_code(user, code):
@@ -14,11 +15,32 @@ def save_code(user, code):
     :param code: Code对象
     """
     udir = UserDirectory(user)
-    current_path = os.path.join(udir.get_home(code=code), code.name)
+    home = udir.get_home(code=code)
+    current_path = os.path.join(home, code.name)
+
+    if not os.path.exists(current_path):  # 如果是第一次创建,则记录相关信息
+        __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
+
     file = open(current_path, 'w+')  # 打开一个文件的句柄
     file.write(code.content)  # 写入代码(策略)内容
     file.flush()
     file.close()
+
+
+def __get_store_db__(home):
+    db_path = os.path.join(home, ".store.db")
+    if not os.path.exists(db_path):
+        open(db_path, "w+")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("create table code_info (id integer primary key autoincrement, name varchar(30) unique)")
+            conn.commit()
+    return db_path
+
+
+def __execute_sql__(home, sql, *args):
+    with sqlite3.connect(__get_store_db__(home)) as conn:
+        conn.execute(sql, args)
+        conn.commit()
 
 
 def rename_code(user, code, new_name):
@@ -36,6 +58,7 @@ def rename_code(user, code, new_name):
     if os.path.exists(new_path):
         return False
     os.rename(old_path, new_path)
+    __execute_sql__(home, "update code_info set name=? where name=?", new_name, code.name)
     return True
 
 
@@ -51,12 +74,16 @@ def rename_func(user, old_name, new_name):
 
 def delete_strategy(user, name):
     udir = UserDirectory(user)
-    os.remove(os.path.join(udir.get_strategy_dir(), name))
+    home = udir.get_strategy_dir()
+    os.remove(os.path.join(home, name))
+    __execute_sql__(home, "delete from code_info where name=?", name)
 
 
 def delete_func(user, name):
     udir = UserDirectory(user)
-    os.remove(os.path.join(udir.get_func_dir(), name))
+    home = udir.get_func_dir()
+    os.remove(os.path.join(home, name))
+    __execute_sql__(home, "delete from code_info where name=?", name)
 
 
 def get_func(user, code_name):
@@ -93,3 +120,30 @@ def get_strategy(user, code_name):
         file.close()
         return code
     return None
+
+
+def get_code_list(home):
+    code_list = []
+    with sqlite3.connect(__get_store_db__(home)) as conn:
+        cursor = conn.execute("select id, name from code_info")
+        for row in cursor.fetchall():
+            code_list.append(dict(id=row[0], name=row[1]))
+    return code_list
+
+
+def get_func_list(user):
+    """
+    获取用户编写的函数列表
+    :param user
+    """
+    u_dir = UserDirectory(user)
+    return get_code_list(u_dir.get_func_dir())
+
+
+def get_strategy_list(user):
+    """
+    获取用户编写的策略列表
+    :param user
+    """
+    u_dir = UserDirectory(user)
+    return get_code_list(u_dir.get_strategy_dir())

@@ -37,9 +37,15 @@ def get_number_bars(symbol, time_frame, number=720):
     :return:
     """
     __check_tf__(time_frame)
-    cur_time = int(time.time())
-    start_time = cur_time - number * tf_peroids[time_frame]
-    return get_period_bars(symbol, time_frame, start_time)
+    peroid = number * tf_peroids[time_frame]
+    end_time = int(time.time())
+    start_time = end_time - peroid
+    bar_list = []
+    while len(bar_list) < number:
+        bar_list += get_period_bars(symbol, time_frame, start_time, end_time)
+        end_time = start_time
+        start_time = end_time - peroid
+    return bar_list
 
 
 def __check_tf__(time_frame):
@@ -47,5 +53,5 @@ def __check_tf__(time_frame):
         raise ValueError("Not supported time_frame %s" % time_frame)
 
 
-# bar_array = get_number_bars("EURUSD", "M1", number=20)
-# print(bar_array)
+bar_array = get_period_bars("EURUSD", "M1", 1431608220, 1431608460)
+print(bar_array)

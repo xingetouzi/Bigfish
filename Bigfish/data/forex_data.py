@@ -30,10 +30,10 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None):
 
 def get_number_bars(symbol, time_frame, number=720):
     """
-    获取最新的number(默认为720)
+    获取最新number(默认为720)数量的 Bar 列表
     :param symbol: 品种名称
     :param time_frame: 时间尺度
-    :param number:
+    :param number: bar 数量
     :return:
     """
     __check_tf__(time_frame)

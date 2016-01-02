@@ -47,5 +47,5 @@ def __check_tf__(time_frame):
         raise ValueError("Not supported time_frame %s" % time_frame)
 
 
-bar_array = get_number_bars("EURUSD", "M1", number=20)
-print(bar_array)
+# bar_array = get_number_bars("EURUSD", "M1", number=20)
+# print(bar_array)

@@ -1,4 +1,8 @@
 /.idea
+*.bak
 *.pyc
 *.lprof*
 kernprof.py
+/build
+*.pyd
+*.c

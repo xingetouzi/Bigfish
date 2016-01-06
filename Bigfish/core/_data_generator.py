@@ -18,7 +18,7 @@ class DataGenerator:
 
     def __init__(self, engine):
         self.__engine = engine
-        self.__data_events = []
+        self.__data_events = None
         self.__get_data = None
         self.__dataframe = None
 
@@ -37,12 +37,17 @@ class DataGenerator:
             self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
 
-    def start(self):
+    def __initialize(self):
+        self.__data_events = []
         self.__get_data = partial(self._get_data, start_time=self.__engine.start_time, end_time=self.__engine.end_time)
         for symbol, time_frame in self.__engine.symbols.keys():
             self.__insert_data(symbol, time_frame)
         self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
         self.__dataframe.sort('close_time', inplace=True)
+
+    def start(self):
+        if self.__data_events is None:
+            self.__initialize()
         # 回放数据
         for data_event in self.__data_events:
             self.__engine.put_event(data_event)

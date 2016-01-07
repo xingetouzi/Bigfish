@@ -11,15 +11,17 @@ class LigerUITranslator:
     def __init__(self, options={}):
         self.__options = options
 
+    def get_column_dict(self, display, name):
+        return dict(display=display, name=name, **self.__column_options.get(name, {}))
+
     def set_options(self, options):
         self.__options = options
 
-    def set_columns(self, options, columns):
-        self.__columns_options[columns] = options
+    def set_column(self, column, options):
+        self.__column_options[column] = options
 
     def dateframe_to_ligerUI(self, dataframe):
-        columns = [{'display': '时间', 'name': 'time'}] + list(
-                map(lambda x: {'display': self.__display_dict[x], 'name': x}, dataframe.index))
-
+        columns = [self.get_column_dict('时间', 'time')] + list(
+                map(lambda x: self.get_column_dict(self.__display_dict[x], x), dataframe.index))
         data = {'Rows': dataframe.to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)

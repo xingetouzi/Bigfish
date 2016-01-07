@@ -12,6 +12,7 @@ from Bigfish.utils.quote import Bar
 from Bigfish.utils.common import get_datetime
 import tushare as ts
 import numpy as np
+from pybrain.optimization.populationbased import ga
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -118,6 +119,7 @@ class Backtesting:
             return
         optimizer = getattr(self, '_%s_optimize' % type)
         optimizer(ranges)
+
 
 if __name__ == '__main__':
     from Bigfish.models.model import User

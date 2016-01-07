@@ -175,6 +175,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__excess_return['M'] = self.__excess_return['D'].resample('MS', how='sum')
         self.__initialized = True
 
+    def yield_curve(self):
+        return (self.__rate_of_return['R'] - 1) * 100
+
     # @profile
     def __get_rate_of_return_raw(self, capital_base, period, num):
         interval = period // num

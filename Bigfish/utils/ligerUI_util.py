@@ -27,5 +27,5 @@ class LigerUITranslator:
     def dumps(self, dataframe):
         columns = [self._get_column_dict(dataframe.index)] + list(
                 map(lambda x: self._get_column_dict(x), dataframe.columns))
-        data = {'Rows': dataframe.to_dict('records')}
+        data = {'Rows': dataframe.fillna('/').to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)

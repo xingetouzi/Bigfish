@@ -127,11 +127,11 @@ if __name__ == '__main__':
         code = f.read()
     backtest = Backtesting(User('10032'), 'test', code)
     backtest.start()
-    print(backtest.get_profit_records())
-    print(backtest.get_parameters())
-    performance = backtest.get_performance()
-    print('ar:\n%s' % performance.ar)
-    print('risk_free_rate:\n%s' % performance.risk_free_rate)
-    print('volatility:\n%s' % performance.volatility)
-    print('sharpe_ratio:\n%s' % performance.sharpe_ratio)
-    print('max_drawdown:\n%s' % performance.max_drawdown)
+    print(backtest.get_profit_records()) #获取浮动收益曲线
+    print(backtest.get_parameters())  #获取策略中的参数（用于优化）
+    performance = backtest.get_performance() #获取策略的各项指标
+    print('ar:\n%s' % performance.ar) #年化收益率
+    print('risk_free_rate:\n%s' % performance.risk_free_rate) #无风险收益率
+    print('volatility:\n%s' % performance.volatility) #波动率
+    print('sharpe_ratio:\n%s' % performance.sharpe_ratio) #sharpe比率
+    print('max_drawdown:\n%s' % performance.max_drawdown) #最大回测

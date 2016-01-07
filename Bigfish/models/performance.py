@@ -94,6 +94,9 @@ class StrategyPerformance(Performance):
                     'volatility': '收益波动率', 'information_ratio': '信息比率', 'max_drawdown': '最大回撤',
                     'excess_return': '超额收益率'}
 
+    def get_factor_list(self):
+        return {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率', 'max_drawdown': '最大回撤'}
+
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
 

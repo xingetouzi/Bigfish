@@ -261,7 +261,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def _roll_exp(self, sample):
         calculator = lambda x: x['rate'] / x['trade_days']
         ts = sample
-        result = pd.DataFrame([], index=ts.index)
+        result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
         return result
@@ -275,7 +275,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                      rate_square=(x['rate'] * x['rate']),
                      trade_days=x['trade_days']))
               .resample('MS', how='sum'))(sample)
-        result = pd.DataFrame([], index=ts.index)
+        result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
         return result
@@ -292,7 +292,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         # TODO 可以抽象为日分析，周分析，月分析之类的
         calculator = lambda x: (math.exp(self.__annual_factor / x['trade_days'] * x['rate']) - 1) * 100
         ts = self.__rate_of_return['M']
-        result = pd.DataFrame([], index=ts.index)
+        result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
         return result
@@ -334,7 +334,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                         *(lambda x, y: (x, y, y.shift(1).fillna(0)))(
                                 *(lambda x: (x['rate'] * (x['rate'] < 0), x['rate'].cumsum()))(
                                         self.__rate_of_return['D']))))
-        result = pd.DataFrame([], index=ts.index)
+        result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(get_percent_from_log))
         self._max_drawdown = -get_percent_from_log(calculator(ts.values)[2])

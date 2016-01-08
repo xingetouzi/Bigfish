@@ -71,6 +71,6 @@ def get_all_symbols():
     with connect() as conn:
         cursor = conn.execute(get_all_sql)
         for row in cursor.fetchall():
-            category = Symbol(row[0], row[1])
+            category = Symbol(row[0].replace('/', ''), row[1])
             all_symbol.append(category)
     return all_symbol

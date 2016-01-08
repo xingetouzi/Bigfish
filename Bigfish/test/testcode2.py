@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 base = 100000
-symbols = ['600848']
+symbols = ['EURUSD']
 start = '2015-01-01'
 end = '2015-12-01'
-timeframe = 'D1'
+timeframe = 'M30'
 
 def handle(slowlength=20, fastlength=10, lots=100):
 	def max(price,len):

@@ -27,10 +27,9 @@ def _get_bar_from_dataframe(symbol, time_frame, data):
 def _get_bar_from_dict(symbol, time_frame, data):
     bar = Bar(symbol)
     bar.time_frame = time_frame
-    for field in ['open', 'high', 'low', 'close']:
+    for field in ['open', 'high', 'low', 'close', 'volume']:
         setattr(bar, field, data[field])
     bar.time = data['ctime']
-    bar.volume = 0
     return bar
 
 
@@ -45,8 +44,8 @@ class DataGeneratorTushare(DataGenerator):
 
 class DataGeneratorMongoDB(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = fx.get_period_bars(symbol, time_frame, start_time, end_time)
-        print(data)
+        data = fx.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
+                                  get_datetime(end_time).timestamp())
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
@@ -143,7 +142,7 @@ if __name__ == '__main__':
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code, data_generator=DataGeneratorTushare)
+    backtest = Backtesting(User('10032'), 'test', code, data_generator=DataGeneratorMongoDB)
     backtest.start()
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）

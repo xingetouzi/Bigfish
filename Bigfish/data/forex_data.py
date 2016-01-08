@@ -74,6 +74,7 @@ def __check_tf__(time_frame):
 
 if __name__ == '__main__':
     bar_array = get_number_bars("EURUSD", "M30", 20)
+    bar_array = get_period_bars("EURUSD", )
     print(bar_array)
     bar_array = get_latest_bar("EURUSD", "M30", utf=True)
     print(bar_array)

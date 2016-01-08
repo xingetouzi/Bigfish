@@ -4,6 +4,7 @@ from operator import itemgetter
 from Bigfish.models.common import HasID
 from Bigfish.utils.base import Symbol
 from Bigfish.utils.common import _TIME_FRAME
+from Bigfish.store.symbol_manage import get_all_symbols
 
 '''
 本文件仅用于存放对于事件类型常量的定义。
@@ -58,7 +59,8 @@ EVENT_TIMER = Event._create_event_type('Timer').get_id()  # 计时器事件，�
 EVENT_LOG = Event._create_event_type('Log').get_id()  # 日志事件，通常使用某个监听函数直接显示
 EVENT_TDLOGIN = Event._create_event_type('TdLogin').get_id()  # 交易服务器登录成功事件
 EVENT_TICK = Event._create_event_type('Tick').get_id()  # 行情推送事件
-SYMBOLS = map(itemgetter('code'), Symbol.get_all_symbols())
+SYMBOLS = list(map(lambda x: x.en_name, get_all_symbols()))
+print(SYMBOLS)
 EVENT_BAR = Event._create_event_type('Bar').get_id()  # 特定交易物的数据事件
 EVENT_BAR_SYMBOL = {symbol: {time_frame: Event._create_event_type('Deal.%s.%s' %
                                                                   (symbol, time_frame)).get_id() for time_frame in

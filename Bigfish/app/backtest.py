@@ -24,6 +24,16 @@ def _get_bar_from_dataframe(symbol, time_frame, data):
     return bar
 
 
+def _get_bar_from_dict(symbol, time_frame, data):
+    bar = Bar(symbol)
+    bar.time_frame = time_frame
+    for field in ['open', 'high', 'low', 'close']:
+        setattr(bar, field, data[field])
+    bar.time = data['ctime']
+    bar.volume = 0
+    return bar
+
+
 class DataGeneratorTushare(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         if time_frame == 'D1':
@@ -36,7 +46,7 @@ class DataGeneratorTushare(DataGenerator):
 class DataGeneratorMongoDB(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         data = fx.get_period_bars(symbol, time_frame, start_time, end_time)
-        return list(map(partial(_get_bar_from_dataframe, symbol, time_frame), data))
+        return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
 class Backtesting:

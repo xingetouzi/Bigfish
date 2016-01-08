@@ -130,6 +130,8 @@ if __name__ == '__main__':
     print(backtest.get_profit_records()) #获取浮动收益曲线
     print(backtest.get_parameters())  #获取策略中的参数（用于优化）
     performance = backtest.get_performance() #获取策略的各项指标
+    performance.position_curve
+    print(performance.get_factor_list())
     print(performance.yield_curve)
     print('ar:\n%s' % performance.ar) #年化收益率
     print('risk_free_rate:\n%s' % performance.risk_free_rate) #无风险收益率

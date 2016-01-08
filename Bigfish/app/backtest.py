@@ -46,6 +46,7 @@ class DataGeneratorTushare(DataGenerator):
 class DataGeneratorMongoDB(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         data = fx.get_period_bars(symbol, time_frame, start_time, end_time)
+        print(data)
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 

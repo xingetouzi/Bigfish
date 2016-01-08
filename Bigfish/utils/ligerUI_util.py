@@ -5,9 +5,11 @@ from functools import reduce
 
 class LigerUITranslator:
     __display_dict = dict(
-            reduce(StrategyPerformanceManagerOffline.column_names.values(), lambda x, y: dict(x, **y), initial={}),
+            reduce(lambda x, y: dict(x, **{t[0]: t[1] for t in y.values()}),
+                   (lambda x: list(x.values()))(StrategyPerformanceManagerOffline._column_names),
+                   dict()),
             time='起始时间',
-            **StrategyPerformance.factor_keys)
+            **StrategyPerformance._factor_keys)
 
     def __init__(self, options={}):
         self.__options = options

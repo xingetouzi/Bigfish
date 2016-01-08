@@ -27,7 +27,7 @@ class LigerUITranslator:
         self.__column_options[column] = options
 
     def dumps(self, dataframe):
-        columns = [self._get_column_dict(dataframe.index)] + list(
+        columns = [self._get_column_dict(dataframe.index.name)] + list(
                 map(lambda x: self._get_column_dict(x), dataframe.columns))
         data = {'Rows': dataframe.fillna('/').to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)

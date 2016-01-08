@@ -94,8 +94,10 @@ class StrategyPerformance(Performance):
                     'volatility': '收益波动率', 'information_ratio': '信息比率', 'max_drawdown': '最大回撤',
                     'excess_return': '超额收益率'}
 
-    def get_factor_list(self):
-        return {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率', 'max_drawdown': '最大回撤'}
+    @staticmethod
+    def get_factor_list():
+        result = {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率', 'max_drawdown': '最大回撤'}
+        return list(result.items())
 
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
@@ -117,11 +119,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     def __init__(self, quotes, deals, positions, capital_base=100000, period=86400, num=20):  # 1day = 86400seconds
         super(StrategyPerformanceManagerOffline, self).__init__(StrategyPerformance)
-        self.__quotes = quotes
-        self.__deals = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
-                                    columns=Deal.get_fields())  # deals in dataframe format
-        self.__positions = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())), index=positions.keys(),
-                                        columns=Position.get_fields())  # positions in dataframe format
+        self.__quotes_raw = quotes
+        self.__deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
+                                        columns=Deal.get_fields())  # deals in dataframe format
+        self.__positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
+                                            index=positions.keys(),
+                                            columns=Position.get_fields())  # positions in dataframe format
         self.__annual_factor = 250  # 年化因子
         self.initialize = partial(self.__initialize, capital_base, period, num)
         self.__initialized = False
@@ -176,22 +179,25 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__initialized = True
 
     def yield_curve(self):
-        return (self.__rate_of_return['R'] - 1) * 100
+        rate_of_return = (self.__rate_of_return['R'] - 1) * 100
+        return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
 
     # @profile
     def __get_rate_of_return_raw(self, capital_base, period, num):
         interval = period // num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
-        self.__deals.sort('time', inplace=True)
-        self.__positions.sort('time_update', inplace=True)
-        self.__quotes['time_index'] = self.__quotes['close_time'].map(time_index_calculator)
-        self.__deals['time_index'] = self.__deals['time'].map(time_index_calculator)
-        self.__positions['time_index'] = self.__positions['time_update'].map(time_index_calculator)
-        quotes = self.__quotes.groupby(['time_index', 'symbol'])['close'].last()
-        deals_profit = self.__deals['profit'].fillna(0).groupby(self.__deals['time_index']).sum().cumsum()
-        positions = self.__positions.groupby(['time_index', 'symbol'])[
+        self.__deals_raw.sort_values('time', inplace=True)
+        self.__positions_raw.sort_values('time_update', inplace=True)
+        self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
+        self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
+        self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
+        quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])['close'].last()
+        deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
+                self.__deals_raw['time_index']).sum().cumsum()
+        # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
+        positions = self.__positions_raw.groupby(['time_index', 'symbol'])[
             ['type', 'price_current', 'volume']].last()
-        # TODO 检查outer连接是否会影响要交易日的计算
+        # TODO 检查outer连接是否会影响交易日的计算
         float_profit = pd.DataFrame(quotes).join(positions, how='outer').fillna(method='ffill').apply(
                 lambda x: (x.close - x.price_current) * x.volume * x.type, axis=1).sum(level='time_index').fillna(0)
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
@@ -219,8 +225,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                              'y': deal.price, 'color': 'sell', 'text': 'Sell %s' % volume})
 
         def get_lines(position_start, position_end):
-            deal_start = self.__deals[position_start.deal]
-            deal_end = self.__deals[position_end.deal]
+            deal_start = self.__deals_raw[position_start.deal]
+            deal_end = self.__deals_raw[position_end.deal]
             start_time = deal_start.time + deal_start.time_msc / (10 ** 6)
             end_time = deal_end.time + deal_end.time_msc / (10 ** 6)
             result = {'type': 'line', 'x_start': start_time, 'x_end': end_time, 'y_start': deal_start.price,
@@ -231,17 +237,25 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 result['color'] = 'lose'
 
         def next_position(position):
-            return (self.__positions.get(position.next_id, None))
+            return (self.__positions_raw.get(position.next_id, None))
 
         def prev_position(position):
-            return (self.__positions.get(position.prev_id, None))
+            return (self.__positions_raw.get(position.prev_id, None))
 
+        deal_profits = self.__quotes_raw.groupby(['close_time', 'symbol'])['close'].last().swaplevel(0, 1)
+        positions = self.__positions_raw[['type', 'price_current', 'volume', 'deal']]
+        deals = self.__deals_raw[['time', 'price', 'volume', 'profit', 'entry']]
+        ts = pd.merge(positions, deals, how='right', left_on='deal', right_index=True, suffixes=('_p', '_d'))
+        print(deals)
+        print(self.__positions_raw)
+        print(ts)
+        """
         result = []
         stack = []
         for symbol in {symbol for (symbol, _) in self.__symbols}:
             position = next_position(self.__init_positions[symbol])
             while (position != None):
-                deal = self.__deals[position.deal]
+                deal = self.__deals_raw[position.deal]
                 if deal.entry == DEAL_ENTRY_IN:  # open or overweight position
                     result.append(get_point(deal, DEAL_ENTRY_IN, deal.volume))
                     stack.append((position, deal.volume))
@@ -262,6 +276,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                         stack.append((position, position.volume))
                 position = next_position(position)
         return result
+        """
 
     # -----------------------------------------------------------------------------------------------------------------------
     def _roll_exp(self, sample):

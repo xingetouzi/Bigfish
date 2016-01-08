@@ -13,6 +13,7 @@ class LigerUITranslator:
 
     def __init__(self, options={}):
         self.__options = options
+        self.__column_options = {}
 
     def _get_column_dict(self, name):
         return dict(display=self.__display_dict[name], name=name, **self.__column_options.get(name, {}))

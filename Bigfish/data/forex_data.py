@@ -72,8 +72,8 @@ def __check_tf__(time_frame):
     if not (time_frame in tf_peroids.keys()):
         raise ValueError("Not supported time_frame: %s" % time_frame)
 
-
-# bar_array = get_number_bars("EURUSD", "M30", 20)
-# print(bar_array)
-# bar_array = get_latest_bar("EURUSD", "M30", utf=True)
-# print(bar_array)
+if __name__ == '__main__':
+    bar_array = get_number_bars("EURUSD", "M30", 20)
+    print(bar_array)
+    bar_array = get_latest_bar("EURUSD", "M30", utf=True)
+    print(bar_array)

@@ -246,8 +246,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         positions = self.__positions_raw[['type', 'price_current', 'volume', 'deal']]
         deals = self.__deals_raw[['time', 'price', 'volume', 'profit', 'entry']]
         ts = pd.merge(positions, deals, how='right', left_on='deal', right_index=True, suffixes=('_p', '_d'))
-        print(deals)
-        print(self.__positions_raw)
         print(ts)
         """
         result = []

@@ -10,6 +10,7 @@ from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.utils.quote import Bar
 from Bigfish.utils.common import get_datetime
+import Bigfish.data.forex_data as fx
 import tushare as ts
 import numpy as np
 
@@ -32,13 +33,19 @@ class DataGeneratorTushare(DataGenerator):
             raise ValueError
 
 
+class DataGeneratorMongoDB(DataGenerator):
+    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+        data = fx.get_period_bars(symbol, time_frame, start_time, end_time)
+        return list(map(partial(_get_bar_from_dataframe, symbol, time_frame), data))
+
+
 class Backtesting:
-    def __init__(self, user, name, code):
+    def __init__(self, user, name, code, data_generator=DataGeneratorMongoDB):
         self.__strategy_engine = StrategyEngine(backtesting=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code)
         self.__strategy_parameters = None
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = DataGeneratorTushare(self.__strategy_engine)
+        self.__data_generator = data_generator(self.__strategy_engine)
         self.__performance_manager = None
         self.__strategy_engine.initialize()
 
@@ -125,16 +132,16 @@ if __name__ == '__main__':
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code)
+    backtest = Backtesting(User('10032'), 'test', code, data_generator=DataGeneratorTushare)
     backtest.start()
-    print(backtest.get_profit_records()) #获取浮动收益曲线
-    print(backtest.get_parameters())  #获取策略中的参数（用于优化）
-    performance = backtest.get_performance() #获取策略的各项指标
+    print(backtest.get_profit_records())  # 获取浮动收益曲线
+    print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
+    performance = backtest.get_performance()  # 获取策略的各项指标
     performance.position_curve
     print(performance.get_factor_list())
     print(performance.yield_curve)
-    print('ar:\n%s' % performance.ar) #年化收益率
-    print('risk_free_rate:\n%s' % performance.risk_free_rate) #无风险收益率
-    print('volatility:\n%s' % performance.volatility) #波动率
-    print('sharpe_ratio:\n%s' % performance.sharpe_ratio) #sharpe比率
-    print('max_drawdown:\n%s' % performance.max_drawdown) #最大回测
+    print('ar:\n%s' % performance.ar)  # 年化收益率
+    print('risk_free_rate:\n%s' % performance.risk_free_rate)  # 无风险收益率
+    print('volatility:\n%s' % performance.volatility)  # 波动率
+    print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
+    print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测

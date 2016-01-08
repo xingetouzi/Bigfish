@@ -43,7 +43,7 @@ class DataGenerator:
         for symbol, time_frame in self.__engine.symbols.keys():
             self.__insert_data(symbol, time_frame)
         self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
-        self.__dataframe.sort('close_time', inplace=True)
+        self.__dataframe.sort_values('close_time', inplace=True)
 
     def start(self):
         if self.__data_events is None:

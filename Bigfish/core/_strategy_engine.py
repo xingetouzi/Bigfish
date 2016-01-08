@@ -157,15 +157,14 @@ class StrategyEngine(object):
     def initialize(self):
         # TODO数据结构还需修改
         for (symbol, time_frame), maxlen in self.__symbols.items():
+            if not symbol in self.__data:
+                self.__data[symbol] = {}
+            if not time_frame in self.__data[symbol]:
+                self.__data[symbol][time_frame] = {}
+            if maxlen == 0:
+                maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-                if not symbol in self.__data:
-                    self.__data[symbol] = {}
-                if not time_frame in self.__data[symbol]:
-                    self.__data[symbol][time_frame] = {}
-                if maxlen == 0:
-                    maxlen = self.CACHE_MAXLEN
-                for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-                    self.__data[symbol][time_frame][field] = deque(maxlen=maxlen)
+                self.__data[symbol][time_frame][field] = deque(maxlen=maxlen)
             if symbol not in self.__current_positions:
                 position = Position(symbol)
                 self.__current_positions[symbol] = position

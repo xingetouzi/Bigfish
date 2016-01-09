@@ -55,14 +55,14 @@ def __replace_all(string, olds, new):
 
 __PATTERNS = {re.compile(r'\A' + __replace_all(format_, ['%m', '%d', '%H', '%M', '%S'], r'\d{2}')
                          .replace('%Y', r'\d{4}') + r'\Z'): format_ for format_
-              in ['%Y-%m-%d', '%Y-%m-%d %H:%M%:%S']}
+              in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S']}
 
 
 def get_datetime(string):
     for pattern, format_ in __PATTERNS.items():
         if pattern.match(string):
             return datetime.strptime(string, format_)
-    raise (ValueError("不合法的时间格式%s" % string))
+    raise (ValueError('不合法的时间格式"%s"' % string))
 
 
 ###################################################################

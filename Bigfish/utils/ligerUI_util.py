@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-from Bigfish.models.performance import StrategyPerformance, StrategyPerformanceManagerOffline
 from functools import reduce
+
+from Bigfish.models.performance import StrategyPerformance, StrategyPerformanceManagerOffline
+import pandas as pd
 
 
 class LigerUITranslator:
@@ -14,6 +16,7 @@ class LigerUITranslator:
     def __init__(self, options={}):
         self.__options = options
         self.__column_options = {}
+        self.__precision = 6
 
     def _get_column_dict(self, name):
         return dict(display=self.__display_dict[name], name=name, **self.__column_options.get(name, {}))
@@ -27,8 +30,14 @@ class LigerUITranslator:
     def set_column(self, column, options):
         self.__column_options[column] = options
 
+    def set_precision(self, n):
+        assert (n, isinstance(n, int) and n >= 0)
+        self.__precision = n
+
     def dumps(self, dataframe):
         columns = [self._get_column_dict(dataframe.index.name)] + list(
                 map(lambda x: self._get_column_dict(x), dataframe.columns))
-        data = {'Rows': dataframe.fillna('/').to_dict('records')}
+        temp = dataframe.applymap(lambda x: round(x, self.__precision)).fillna('/')
+        temp = pd.concat(pd.DataFrame(temp.index), axis=1, ignore_index=True)
+        data = {'Rows': temp.to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)

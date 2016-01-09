@@ -324,11 +324,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
-
+        print(self.__rate_of_return_percent['M'])
         return self._roll_std(self.__rate_of_return_percent['M'])
 
     @cache_calculator
     def sharpe_ratio(self):
+        print(self.__excess_return['M'])
         expected = self._roll_exp(self.__excess_return['M'])
         std = self._roll_std(self.__excess_return['M'])
         return expected / std

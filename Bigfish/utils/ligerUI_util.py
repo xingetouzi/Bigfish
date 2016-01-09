@@ -19,7 +19,7 @@ class LigerUITranslator:
         self.__precision = 6
 
     def _get_column_dict(self, name):
-        return dict(display=self.__display_dict[name], name=name, **self.__column_options.get(name, {}))
+        return dict(display=self.__display_dict.get(name, name), name=name, **self.__column_options.get(name, {}))
 
     def set_options(self, options):
         self.__options = options
@@ -41,3 +41,14 @@ class LigerUITranslator:
         temp = pd.concat(pd.DataFrame(temp.index), axis=1, ignore_index=True)
         data = {'Rows': temp.to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)
+
+
+if __name__ == '__main__':
+    import numpy as np
+
+    index = pd.Series(np.arange(9, 2), name='index')
+    a = pd.DataFrame(np.random.randn(4, 4), columns=['a', 'b', 'c', 'd'])
+    translator = LigerUITranslator({'Height': 200})
+    translator.set_precision(4)
+    translator.set_column('a', {'Weight': 10})
+    print(translator.dumps(a))

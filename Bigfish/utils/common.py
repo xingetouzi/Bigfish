@@ -62,7 +62,7 @@ def get_datetime(string):
     for pattern, format_ in __PATTERNS.items():
         if pattern.match(string):
             return datetime.strptime(string, format_)
-    raise (ValueError("不合法的时间格式"))
+    raise (ValueError("不合法的时间格式%s" % string))
 
 
 ###################################################################

@@ -38,7 +38,7 @@ class LigerUITranslator:
         columns = [self._get_column_dict(dataframe.index.name)] + list(
                 map(lambda x: self._get_column_dict(x), dataframe.columns))
         temp = dataframe.applymap(lambda x: round(x, self.__precision)).fillna('/')
-        temp = pd.concat([temp, pd.DataFrame(temp.index)], axis=1, ignore_index=True)
+        temp[temp.index.name] = temp.index.to_serires().astype(str)
         data = {'Rows': temp.to_dict('records')}
         return dict(columns=columns, data=data, **self.__options)
 

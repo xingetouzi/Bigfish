@@ -1,22 +1,28 @@
 # -*- coding: utf-8 -*-
 import time
+
 import redis
 from pymongo import MongoClient
+
 db = MongoClient("mongodb://root:Xinger520@act.fxdayu.com/forex").forex
 tf_peroids = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
 pool = redis.ConnectionPool(host='139.129.19.54', port=6379, db=0, password="Xinger520")
 
 
-def get_period_bars(symbol, time_frame, start_time, end_time=None):
+def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None):
     """
     获取从start_time至end_time这段时间内的所有 Bar
     :param symbol: 品种名称
     :param time_frame: 时间尺度
     :param start_time: 开始时间
     :param end_time: 结束时间
+    :param pattern: 时间日期格式(%Y-%m-%d %H:%M:%S ...)
     :return 包含所有 Bar 的列表
     """
     __check_tf__(time_frame)
+    if pattern:
+        start_time = time.mktime(time.strptime(start_time, pattern))
+        end_time = time.mktime(time.strptime(end_time, pattern))
     filters = {"ctime": {"$gte": start_time}}
     if end_time:
         filters["ctime"]["$lte"] = end_time
@@ -73,8 +79,8 @@ def __check_tf__(time_frame):
         raise ValueError("Not supported time_frame: %s" % time_frame)
 
 if __name__ == '__main__':
-    bar_array = get_number_bars("EURUSD", "M30", 20)
-    bar_array = get_period_bars("EURUSD", )
+    bar_array = get_period_bars("EURUSD", "M30", "2015-12-01", "2016-01-08", "%Y-%m-%d")
+    # bar_array = get_period_bars("EURUSD", )
     print(bar_array)
     bar_array = get_latest_bar("EURUSD", "M30", utf=True)
     print(bar_array)

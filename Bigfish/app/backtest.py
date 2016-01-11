@@ -50,9 +50,10 @@ class DataGeneratorMongoDB(DataGenerator):
 
 
 class Backtesting:
-    def __init__(self, user, name, code, data_generator=DataGeneratorMongoDB):
+    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
+                 data_generator=DataGeneratorMongoDB):
         self.__strategy_engine = StrategyEngine(backtesting=True)
-        self.__strategy = Strategy(self.__strategy_engine, user, name, code)
+        self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = data_generator(self.__strategy_engine)

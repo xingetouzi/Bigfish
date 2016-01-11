@@ -20,16 +20,17 @@ class Strategy(HasID):
                     maxlen="max_length")
 
     # ----------------------------------------------------------------------
-    def __init__(self, engine, user, name, code):
+    def __init__(self, engine, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None):
         """Constructor"""
         self.__id = self.next_auto_inc()
         self.user = user
         self.name = name
         self.engine = engine
-        self.time_frame = None
-        self.symbols = set()
-        self.start_time = None
-        self.end_time = None
+        self.time_frame = time_frame
+        self.symbols = symbols
+        self.start_time = start_time
+        self.end_time = end_time
+        self.max_length = 0
         self.capital_base = 100000
         self.handlers = {}
         self.listeners = {}
@@ -95,7 +96,8 @@ class Strategy(HasID):
 
         def get_global_attrs(locals_):
             for name, attr in self.ATTR_MAP.items():
-                setattr(self, attr, locals_.get(name))
+                if getattr(self, attr) is None:
+                    setattr(self, attr, locals_.get(name))
 
         locals_ = {}
         globals_ = {}
@@ -126,7 +128,8 @@ class Strategy(HasID):
                     # TODO加入真正的验证方法
                     symbols = get_parameter_default(paras, "symbols", lambda x: True, self.symbols)
                     time_frame = get_parameter_default(paras, "timeframe", check_time_frame, self.time_frame)
-                    max_length = get_parameter_default(paras, "maxlen", lambda x: isinstance(x, int) and (x > 0), 0)
+                    max_length = get_parameter_default(paras, "maxlen", lambda x: isinstance(x, int) and (x > 0),
+                                                       self.max_length)
                     self.engine.add_symbols(symbols, time_frame, max_length)
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
                     temp = []

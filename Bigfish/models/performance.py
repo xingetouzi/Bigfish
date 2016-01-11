@@ -12,6 +12,17 @@ import tushare
 from Bigfish.models.trade import *
 from Bigfish.utils.pandas_util import rolling_apply_2d
 
+# ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+pd.set_option('display.precision', 12)
+# ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+# math utils
+FLOAT_ERR = 1e-7
+
+
+def deal_float_error(dataframe, fill=0):
+    dataframe[abs(dataframe) <= FLOAT_ERR] = fill
+    return dataframe
+
 
 def cache_calculator(func, obj=None):
     cache = None
@@ -237,16 +248,22 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 result['color'] = 'lose'
 
         def next_position(position):
-            return (self.__positions_raw.get(position.next_id, None))
+            return self.__positions_raw.get(position.next_id, None)
 
         def prev_position(position):
-            return (self.__positions_raw.get(position.prev_id, None))
+            return self.__positions_raw.get(position.prev_id, None)
 
         deal_profits = self.__quotes_raw.groupby(['close_time', 'symbol'])['close'].last().swaplevel(0, 1)
-        positions = self.__positions_raw[['type', 'price_current', 'volume', 'deal']]
-        deals = self.__deals_raw[['time', 'price', 'volume', 'profit', 'entry']]
-        ts = pd.merge(positions, deals, how='right', left_on='deal', right_index=True, suffixes=('_p', '_d'))
-        print(ts)
+        positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
+        deals = self.__deals_raw[['position', 'time', 'type', 'price', 'volume', 'profit', 'entry']]
+        trade = pd.merge(deals, positions, how='right', left_on='position', right_index=True, suffixes=('_d', '_p'))
+        # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
+        trade_grouped = trade.groupby('symbol')
+        trade['groupnumber'] = trade_grouped.apply(
+             lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
+        # TODO 在多品种交易下进行测试
+        temp = trade_grouped['groupnumber'].last().cumsum().shift(1).fillna(0)
+        trade['groupnumber'] = trade['groupnumber'] + trade['symbol'].apply(lambda x: temp[x])
         """
         result = []
         stack = []
@@ -286,9 +303,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         return result
 
     def _roll_std(self, sample):
-        calculator = lambda x: math.sqrt(
-                max((x['rate_square'] - x['rate'] * x['rate'] / x['trade_days']) / (
-                    x['trade_days'] - (x['trade_days'] > 1)), 0))
+        calculator = lambda x: (x['rate_square'] - x['rate'] * x['rate'] / x['trade_days']) \
+                               / (x['trade_days'] - (x['trade_days'] > 1))
         ts = (lambda x: pd.DataFrame(
                 dict(rate=x['rate'],
                      rate_square=(x['rate'] * x['rate']),
@@ -296,8 +312,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
               .resample('MS', how='sum'))(sample)
         result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
-            result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
-        return result
+            result[value[0]] = deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
+        return deal_float_error(result)
 
     def alpha(self):
         pass
@@ -324,14 +340,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
-        print(self.__rate_of_return_percent['M'])
         return self._roll_std(self.__rate_of_return_percent['M'])
 
     @cache_calculator
     def sharpe_ratio(self):
-        print(self.__excess_return['M'])
         expected = self._roll_exp(self.__excess_return['M'])
-        std = self._roll_std(self.__excess_return['M'])
+        # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
+        std = deal_float_error(self._roll_std(self.__excess_return['M']), fill=np.nan)
         return expected / std
 
     def sortino_ratio(self):
@@ -359,7 +374,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(get_percent_from_log))
         self._max_drawdown = -get_percent_from_log(calculator(ts.values)[2])
         print(self._max_drawdown)
-        return result
+        return deal_float_error(result)
 
     @property
     def column_names(self):

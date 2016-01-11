@@ -55,7 +55,7 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def get_current_positions(self):
         # TODO 读取每个品种的有效Position
-        return (self.__current_positions)
+        return self.__current_positions
 
     def get_deals(self):
         return self.__deals
@@ -109,10 +109,10 @@ class StrategyEngine(object):
                 result['color'] = 'lose'
 
         def next_position(position):
-            return (self.__positions.get(position.next_id, None))
+            return self.__positions.get(position.next_id, None)
 
         def prev_position(position):
-            return (self.__positions.get(position.prev_id, None))
+            return self.__positions.get(position.prev_id, None)
 
         result = []
         stack = []
@@ -139,7 +139,7 @@ class StrategyEngine(object):
                     elif deal.entry == DEAL_ENTRY_INOUT and position.volume > 0:
                         stack.append((position, position.volume))
                 position = next_position(position)
-        return (result)
+        return result
 
     # ----------------------------------------------------------------------
     def set_capital_base(self, base):
@@ -323,9 +323,9 @@ class StrategyEngine(object):
                 self.__update_position(*result[0])
             else:
                 self.__orders_todo[order.get_id()] = order
-            return (True)
+            return True
         else:
-            return (False)
+            return False
 
     # ----------------------------------------------------------------------
     def cancel_order(self, order_id):
@@ -395,7 +395,7 @@ class StrategyEngine(object):
             time_ = time.time()
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return (self.send_order(order))
+        return self.send_order(order)
 
     # ----------------------------------------------------------------------
     def buy(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
@@ -412,7 +412,7 @@ class StrategyEngine(object):
             time_ = time.time()
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return (self.send_order(order))
+        return self.send_order(order)
 
     # ----------------------------------------------------------------------
     def cover(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
@@ -428,7 +428,7 @@ class StrategyEngine(object):
             time_ = time.time()
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return (self.send_order(order))
+        return self.send_order(order)
 
     # ----------------------------------------------------------------------
     def short(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
@@ -445,4 +445,4 @@ class StrategyEngine(object):
             time_ = time.time()
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return (self.send_order(order))
+        return self.send_order(order)

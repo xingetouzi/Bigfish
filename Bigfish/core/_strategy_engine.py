@@ -254,7 +254,7 @@ class StrategyEngine(object):
                 position_now.price_current = deal.price
                 position_now.time_open = deal.time
                 position_now.time_open_msc = deal.time_msc
-                position_now.price_open = price_now.price_current
+                position_now.price_open = position_now.price_current
             else:  # underweight position
                 # XXX 平部分仓位是直接计算入平仓收益还是将收益暂时算在浮动中
                 deal.entry = DEAL_ENTRY_OUT
@@ -276,9 +276,9 @@ class StrategyEngine(object):
     @staticmethod
     def check_order(order):
         if not isinstance(order, Order):
-            return (False)
+            return False
         # TODO更多关于订单合法性的检查
-        return (True)
+        return True
 
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
@@ -297,7 +297,7 @@ class StrategyEngine(object):
             # TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
-            return ([deal], {})
+            return [deal], {}
             # TODO 市价单成交
         else:
             pass
@@ -383,7 +383,8 @@ class StrategyEngine(object):
     # TODO 对限价单的支持
     # ----------------------------------------------------------------------
     def sell(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0: return
+        if volume == 0:
+            return
         position = self.__current_positions.get(symbol, None)
         if not position or position.type <= 0:
             return  # XXX可能的返回值
@@ -399,24 +400,30 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def buy(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0: return
-        position = self.__current_positions.get(symbol, None)
-        order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
-        if position and position.type < 0:
-            order.volume_initial = volume + position.volume
-        else:
-            order.volume_initial = volume
         if self.__backtesting:
             time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
+        position = self.__current_positions.get(symbol, None)
+        if position and position.type < 0:
+            order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
+            order.volume_initial = position.volume
+            order.time_setup = int(time_)
+            order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
+            # TODO 这里应该要支持事务性的下单操作
+            self.send_order(order)
+        if volume == 0:
+            return
+        order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
+        order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
         return self.send_order(order)
 
     # ----------------------------------------------------------------------
     def cover(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0: return
+        if volume == 0:
+            return
         position = self.__current_positions.get(symbol, None)
         order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
         if not position or position.type >= 0:
@@ -432,17 +439,22 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def short(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0: return
-        position = self.__current_positions.get(symbol, None)
-        order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
-        if position and position.type > 0:
-            order.volume_initial = volume + position.volume
-        else:
-            order.volume_initial = volume
         if self.__backtesting:
             time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
+        position = self.__current_positions.get(symbol, None)
+        if position and position.type > 0:
+            order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
+            order.volume_initial = position.volume
+            order.time_setup = int(time_)
+            order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
+            # TODO 这里应该要支持事务性的下单操作
+            self.send_order(order)
+        if volume == 0:
+            return
+        order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
+        order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
         return self.send_order(order)

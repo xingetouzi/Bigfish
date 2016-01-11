@@ -4,6 +4,7 @@ import math
 from copy import deepcopy
 from collections import OrderedDict
 from functools import partial, wraps, reduce
+from weakref import WeakKeyDictionary, proxy
 
 import pandas as pd
 import numpy as np
@@ -14,6 +15,7 @@ from Bigfish.utils.pandas_util import rolling_apply_2d
 
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 pd.set_option('display.precision', 12)
+pd.set_option('display.width', 160)
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 # math utils
 FLOAT_ERR = 1e-7
@@ -24,20 +26,16 @@ def deal_float_error(dataframe, fill=0):
     return dataframe
 
 
-def cache_calculator(func, obj=None):
-    cache = None
+def cache_calculator(func):
+    # XXX 由于python的垃圾回收机制只有引用计数，不像java一样也使用缩圈的拓扑算法，需要用弱引用防止内存泄漏,弱引用字典还会在垃圾回收发生时自动删除字典中所对应的键值对
+    cache = WeakKeyDictionary()
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(self, *args, **kwargs):
         nonlocal cache
-
-        if cache is not None:
-            return cache
-        if obj is not None:
-            cache = getattr(obj, '_%s__%s' % (obj.__class__, __name__, func.__name__))
-        if cache is None:
-            cache = func(*args, **kwargs)
-        return cache
+        if self not in cache:
+            cache[self] = func(self, *args, **kwargs)
+        return cache[self]
 
     return wrapper
 
@@ -51,7 +49,7 @@ class LazyCal:
         dict_ = getattr(instance, self.__dict_)
         if self.__name not in dict_:
             instance._manager.initialize()
-            dict_[self.__name] = getattr(instance._manager, self.__name)()
+            dict_[self.__name] = getattr(instance._manager, self.__name)
         return dict_[self.__name]
 
 
@@ -85,7 +83,7 @@ class Performance(metaclass=PerformanceMeta):
     def __init__(self, manager=None):
         self._curves = {}
         self._factors = {}
-        self._manager = manager
+        self._manager = proxy(manager)  # 避免循环引用
 
 
 class PerformanceManager:
@@ -112,10 +110,6 @@ class StrategyPerformance(Performance):
 
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
-
-    @property
-    def factor_keys(self):
-        return self._factor_keys
 
 
 def get_percent_from_log(n, factor=1):
@@ -189,6 +183,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__excess_return['M'] = self.__excess_return['D'].resample('MS', how='sum')
         self.__initialized = True
 
+    @property
+    @cache_calculator
     def yield_curve(self):
         rate_of_return = (self.__rate_of_return['R'] - 1) * 100
         return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
@@ -218,6 +214,50 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         rate_of_return.name = 'rate'
         return rate_of_return
 
+    @property
+    @cache_calculator
+    def trade_info(self):
+        positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
+        deals = self.__deals_raw[['position', 'time', 'type', 'price', 'volume', 'profit', 'entry']]
+        trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
+        # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
+        trade_grouped = trade.groupby('symbol')
+        trade['trade_number'] = trade_grouped.apply(
+                lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
+        # TODO 在多品种交易下进行测试
+        temp = trade_grouped['trade_number'].last().cumsum().shift(1).fillna(0)
+        trade['trade_number'] = trade['trade_number'] + trade['symbol'].apply(lambda x: temp[x])
+        temp = trade.groupby('trade_number')['type_p'].first()
+        trade['trade_type'] = trade['trade_number'].apply(lambda x: temp[x])
+        return trade, trade_grouped
+
+    @property
+    @cache_calculator
+    def trade_summary(self):
+        columns = ['total', 'long-position', 'short-position']
+        trade = {}
+        trade_grouped = {}
+        trade['total'], _ = self.trade_info
+        trade['long-position'] = trade['total'].query('trade_type>0')
+        trade['short-position'] = trade['total'].query('trade_type<0')
+        for key in columns:
+            trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
+        result = pd.DataFrame(index=columns)
+        result['total_trades'] = [trade_grouped[key].ngroups for key in columns]
+        result['winnings'] = [(lambda x: len(x[x > 0]))(trade_grouped[key]['profit'].sum()) for key in columns]
+        result['losings'] = result['total_trades'] - result['winnings']
+        result['winning_percentage'] = result['winnings'] / result['total_trades']
+        profit = [trade_grouped[key]['profit'].sum() for key in columns]
+        result['average_profit'] = list(map(lambda x: x.mean(), profit))
+        result['average_winning'] = list(map(lambda x: x[x >= 0].mean(), profit))
+        result['average_losing'] = list(map(lambda x: x[x < 0].mean(), profit))
+        result['average_winning_losing_ratio'] = result['average_winning']/-result['average_losing']
+        result['max_winning'] = list(map(lambda x: x.max(), profit))
+        result['max_losing'] = list(map(lambda x: x.min(), profit))
+        return result.T
+
+    @property
+    @cache_calculator
     def position_curve(self):
         def get_point(deal, entry, volume):
             if entry == DEAL_ENTRY_IN:
@@ -254,16 +294,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             return self.__positions_raw.get(position.prev_id, None)
 
         deal_profits = self.__quotes_raw.groupby(['close_time', 'symbol'])['close'].last().swaplevel(0, 1)
-        positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
-        deals = self.__deals_raw[['position', 'time', 'type', 'price', 'volume', 'profit', 'entry']]
-        trade = pd.merge(deals, positions, how='right', left_on='position', right_index=True, suffixes=('_d', '_p'))
-        # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
-        trade_grouped = trade.groupby('symbol')
-        trade['groupnumber'] = trade_grouped.apply(
-             lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
-        # TODO 在多品种交易下进行测试
-        temp = trade_grouped['groupnumber'].last().cumsum().shift(1).fillna(0)
-        trade['groupnumber'] = trade['groupnumber'] + trade['symbol'].apply(lambda x: temp[x])
+        trade, _ = self.trade_info
+        print(trade)
         """
         result = []
         stack = []
@@ -321,6 +353,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def beta(self):
         pass
 
+    @property
     @cache_calculator
     # @profile
     def ar(self):
@@ -332,16 +365,19 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
         return result
 
+    @property
     @cache_calculator
     def risk_free_rate(self):
         return self._roll_exp(self.__risk_free_rate['M'])
 
+    @property
     @cache_calculator
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
         return self._roll_std(self.__rate_of_return_percent['M'])
 
+    @property
     @cache_calculator
     def sharpe_ratio(self):
         expected = self._roll_exp(self.__excess_return['M'])
@@ -355,6 +391,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def information_ratio(self):
         pass
 
+    @property
     @cache_calculator
     # @profile
     def max_drawdown(self):
@@ -375,10 +412,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self._max_drawdown = -get_percent_from_log(calculator(ts.values)[2])
         print(self._max_drawdown)
         return deal_float_error(result)
-
-    @property
-    def column_names(self):
-        return self._column_names
 
 
 class StrategyPerformanceManageOnline(PerformanceManager):

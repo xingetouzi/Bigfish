@@ -30,7 +30,8 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     cursor = db[coll].find(filters)
     bar_list = []
     for row in cursor:
-        bar_list.append(row)
+        # bar_list.append(row)
+        bar_list.append({"open": row["open"], "close": row["close"], "low": row["low"], "high": row["high"], "ctime": row["ctime"], "volume": row["volume"]})
     return bar_list
 
 

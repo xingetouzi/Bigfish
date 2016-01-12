@@ -21,6 +21,21 @@ pd.set_option('display.width', 160)
 FLOAT_ERR = 1e-7
 
 
+class DataFrameWithTotal(pd.DataFrame):
+    def __init__(self, data=None, index=None, columns=None, dtype=None,
+                 copy=False, total=None):
+        super().__init__(data=data, index=index, columns=columns, dtype=dtype, copy=copy)
+        self.__total = total
+
+    def __get_total(self):
+        return self.__total
+
+    def __set_total(self, value):
+        self.__total = value
+
+    total = property(__get_total, __set_total)
+
+
 def deal_float_error(dataframe, fill=0):
     dataframe[abs(dataframe) <= FLOAT_ERR] = fill
     return dataframe
@@ -48,7 +63,6 @@ class LazyCal:
     def __get__(self, instance, owner):
         dict_ = getattr(instance, self.__dict_)
         if self.__name not in dict_:
-            instance._manager.initialize()
             dict_[self.__name] = getattr(instance._manager, self.__name)
         return dict_[self.__name]
 
@@ -108,10 +122,14 @@ class StrategyPerformance(Performance):
         result = {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率', 'max_drawdown': '最大回撤'}
         return list(result.items())
 
+    @staticmethod
+    def get_trade_info_list():
+        result = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
+
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
 
-
+#-----------------------------------------------------------------------------------------------------------------------
 def get_percent_from_log(n, factor=1):
     return (math.exp(n * factor) - 1) * 100
 
@@ -131,67 +149,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                                             index=positions.keys(),
                                             columns=Position.get_fields())  # positions in dataframe format
         self.__annual_factor = 250  # 年化因子
-        self.initialize = partial(self.__initialize, capital_base, period, num)
-        self.__initialized = False
+        self.__capital_base = capital_base
+        self.__period = period
+        self.__num = num
+        # @profile
 
-    # @profile
-    def __initialize(self, capital_base, period, num):
-        if self.__initialized:
-            return
-
-        self.__rate_of_return = {}
-        self.__rate_of_return['R'] = self.__get_rate_of_return_raw(capital_base, period, num)  # 'R' means raw
-        self.__rate_of_return['D'], self.__index_daily = \
-            (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                            self.__rate_of_return['R'].resample('D', how='last', label='left').apply(math.log)
-                    )
-            )
-        self.__rate_of_return['W'] = self.__rate_of_return['D'].resample('W-MON', how='sum').dropna()
-        self.__rate_of_return['M'] = self.__rate_of_return['D'].resample('MS', how='sum').dropna()
-        self.__rate_of_return_percent = {}
-        self.__rate_of_return_percent['D'] = \
-            (lambda x: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)),
-                     'trade_days': x['trade_days']}))(
-                    self.__rate_of_return['D']
-            )
-        self.__rate_of_return_percent['W'] = self.__rate_of_return_percent['D'].resample('W-MON', how='sum').dropna()
-        self.__rate_of_return_percent['M'] = self.__rate_of_return_percent['D'].resample('MS', how='sum').dropna()
-        # TODO 最后一个bfill本应是填入最近的上一个值
-        self.__risk_free_rate = {}
-        self.__risk_free_rate['D'] = \
-            (lambda x: pd.DataFrame({'rate': x, 'trade_days': np.ones(x.shape)}, index=x.index))(
-                    (lambda x: pd.Series(x['rate'].apply(float).values, index=pd.DatetimeIndex(x['date'])).reindex(
-                            self.__index_daily).fillna(method='ffill').fillna(method='bfill'))(
-                            (lambda x: x[(x['deposit_type'] == '定期存款整存整取(一年)') & (x['rate'] != '--')])(
-                                    tushare.get_deposit_rate()
-                            )
-                    )
-            )
-        self.__risk_free_rate['W'] = self.__risk_free_rate['D'].resample('W-MON', how='sum')
-        self.__risk_free_rate['M'] = self.__risk_free_rate['D'].resample('MS', how='sum')
-        self.__excess_return = {}
-        self.__excess_return['D'] = \
-            (lambda x, y: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)) - y[
-                        'rate'].reindex(x.index),
-                     'trade_days': x['trade_days']}))(
-                    self.__rate_of_return['D'], self.__risk_free_rate['D']
-            )
-        self.__excess_return['W'] = self.__excess_return['D'].resample('W-MON', how='sum')
-        self.__excess_return['M'] = self.__excess_return['D'].resample('MS', how='sum')
-        self.__initialized = True
-
-    @property
-    @cache_calculator
-    def yield_curve(self):
-        rate_of_return = (self.__rate_of_return['R'] - 1) * 100
-        return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
-
-    # @profile
-    def __get_rate_of_return_raw(self, capital_base, period, num):
-        interval = period // num
+    def __get_rate_of_return_raw(self):
+        interval = self.__period // self.__num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
         self.__deals_raw.sort_values('time', inplace=True)
         self.__positions_raw.sort_values('time_update', inplace=True)
@@ -208,11 +172,102 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         float_profit = pd.DataFrame(quotes).join(positions, how='outer').fillna(method='ffill').apply(
                 lambda x: (x.close - x.price_current) * x.volume * x.type, axis=1).sum(level='time_index').fillna(0)
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
-                0).sum(
-                axis=1).apply(lambda x: x / capital_base + 1)  # rate_of_return represent net yield now / capital base
+                0).sum(axis=1).apply(
+                lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
         rate_of_return.index = rate_of_return.index.map(pd.datetime.fromtimestamp)
         rate_of_return.name = 'rate'
         return rate_of_return
+
+    @property
+    @cache_calculator
+    def __rate_of_return(self):
+        result = {}
+        result['R'] = self.__get_rate_of_return_raw()  # 'R' means raw
+        result['D'], self.__index_daily = \
+            (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                            result['R'].resample('D', how='last', label='left').apply(math.log)
+                    )
+            )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
+
+    @property
+    @cache_calculator
+    def __rate_of_return_percent(self):
+        result = {}
+        result['D'] = \
+            (lambda x: pd.DataFrame(
+                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)),
+                     'trade_days': x['trade_days']}))(
+                    self.__rate_of_return['D']
+            )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
+
+    @property
+    @cache_calculator
+    def __risk_free_rate(self):
+        result = {}
+        result['D'] = \
+            (lambda x: pd.DataFrame({'rate': x, 'trade_days': np.ones(x.shape)}, index=x.index))(
+                    (lambda x: pd.Series(x['rate'].apply(float).values, index=pd.DatetimeIndex(x['date'])).reindex(
+                            self.__index_daily).fillna(method='ffill').fillna(method='bfill'))(
+                            (lambda x: x[(x['deposit_type'] == '定期存款整存整取(一年)') & (x['rate'] != '--')])(
+                                    tushare.get_deposit_rate()
+                            )
+                    )
+            )
+        # TODO 最后一个bfill本应是填入最近的上一个值
+        result['W'] = result['D'].resample('W-MON', how='sum')
+        result['M'] = result['D'].resample('MS', how='sum')
+        return result
+
+    @property
+    @cache_calculator
+    # @profile
+    def __excess_return(self):
+        result = {}
+        result['D'] = \
+            (lambda x, y: pd.DataFrame(
+                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)) - y[
+                        'rate'].reindex(x.index),
+                     'trade_days': x['trade_days']}))(
+                    self.__rate_of_return['D'], self.__risk_free_rate['D']
+            )
+        result['W'] = result['D'].resample('W-MON', how='sum')
+        result['M'] = result['D'].resample('MS', how='sum')
+        return result
+
+    @property
+    @cache_calculator
+    def yield_curve(self):
+        rate_of_return = (self.__rate_of_return['R'] - 1) * 100
+        return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
+
+    @property
+    @cache_calculator
+    def strategy_summary(self):
+        trade_summary = self.trade_summary
+        net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
+        winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
+        losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
+        rate_of_return = self.__rate_of_return['R'].tail(1)
+        annual_rate_of_return = get_percent_from_log(math.log(rate_of_return), self.__annual_factor)
+        max_potential_losing = self.__rate_of_return['R'].min()
+        max_losing = trade_summary['total']['最大亏损']
+        return {
+            '净利': net_profit,
+            '盈利': winning,
+            '亏损': losing,
+            '账户资金收益率': rate_of_return,
+            '年化收益率': annual_rate_of_return,
+            '策略最大潜在亏损': max_potential_losing,
+            '平仓交易最大亏损': max_losing,
+            '最大潜在亏损收益比': net_profit / max_potential_losing,
+        }
 
     @property
     @cache_calculator
@@ -229,32 +284,53 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['trade_number'] = trade['trade_number'] + trade['symbol'].apply(lambda x: temp[x])
         temp = trade.groupby('trade_number')['type_p'].first()
         trade['trade_type'] = trade['trade_number'].apply(lambda x: temp[x])
-        return trade, trade_grouped
+        return trade
 
     @property
     @cache_calculator
     def trade_summary(self):
         columns = ['total', 'long-position', 'short-position']
+        result = pd.DataFrame(index=columns)
+        result.index.name = ''
         trade = {}
         trade_grouped = {}
-        trade['total'], _ = self.trade_info
+        trade['total'] = self.trade_info
+        last_trade = trade['total'].tail(1)
+        if (last_trade.volume_p == 0).bool():
+            if (last_trade.type_p > 0).bool():
+                result['未平仓交易数'] = [1, 1, 0]
+            else:
+                result['未平仓交易数'] = [1, 0, 1]
+
+        else:
+            result['未平仓交易数'] = [0, 0, 0]
         trade['long-position'] = trade['total'].query('trade_type>0')
         trade['short-position'] = trade['total'].query('trade_type<0')
         for key in columns:
             trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
-        result = pd.DataFrame(index=columns)
-        result['total_trades'] = [trade_grouped[key].ngroups for key in columns]
-        result['winnings'] = [(lambda x: len(x[x > 0]))(trade_grouped[key]['profit'].sum()) for key in columns]
-        result['losings'] = result['total_trades'] - result['winnings']
-        result['winning_percentage'] = result['winnings'] / result['total_trades']
-        profit = [trade_grouped[key]['profit'].sum() for key in columns]
-        result['average_profit'] = list(map(lambda x: x.mean(), profit))
-        result['average_winning'] = list(map(lambda x: x[x >= 0].mean(), profit))
-        result['average_losing'] = list(map(lambda x: x[x < 0].mean(), profit))
-        result['average_winning_losing_ratio'] = result['average_winning']/-result['average_losing']
-        result['max_winning'] = list(map(lambda x: x.max(), profit))
-        result['max_losing'] = list(map(lambda x: x.min(), profit))
+        result['总交易数'] = [trade_grouped[key].ngroups for key in columns]
+        profits = [trade_grouped[key]['profit'].sum().dropna() for key in columns]
+        winnings = list(map(lambda x: x[x > 0], profits))
+        losings = list(map(lambda x: x[x < 0], profits))
+        result['盈利交易数'] = list(map(len, winnings))
+        result['亏损交易数'] = list(map(len, losings))
+        result['胜率'] = result['盈利交易数'] / result['总交易数']
+        result['平均净利'] = list(map(lambda x: x.mean(), profits))
+        result['平均盈利'] = list(map(lambda x: x.mean(), winnings))
+        result['平均亏损'] = list(map(lambda x: x.mean(), losings))
+        result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
+        result['最大盈利'] = list(map(lambda x: x.max(), profits))
+        result['最大亏损'] = list(map(lambda x: x.min(), profits))
         return result.T
+
+    @property
+    @cache_calculator
+    def trade_details(self):
+        quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
+        # print(quotes)
+        trade = self.trade_info.groupby(['symbol', 'trade_number'])
+        # pd.merge(trade, quotes, how='outer', left_on='time', right_index=True)
+        # return pd.DataFrame()
 
     @property
     @cache_calculator
@@ -329,9 +405,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def _roll_exp(self, sample):
         calculator = lambda x: x['rate'] / x['trade_days']
         ts = sample
-        result = pd.DataFrame([], index=ts.index.rename('time'))
+        result = DataFrameWithTotal([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        result.total = calculator(ts.sum())
         return result
 
     def _roll_std(self, sample):
@@ -342,9 +419,11 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                      rate_square=(x['rate'] * x['rate']),
                      trade_days=x['trade_days']))
               .resample('MS', how='sum'))(sample)
-        result = pd.DataFrame([], index=ts.index.rename('time'))
+        result = DataFrameWithTotal([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
+            # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
             result[value[0]] = deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
+        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5
         return deal_float_error(result)
 
     def alpha(self):
@@ -358,11 +437,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def ar(self):
         # TODO 可以抽象为日分析，周分析，月分析之类的
-        calculator = lambda x: (math.exp(self.__annual_factor / x['trade_days'] * x['rate']) - 1) * 100
+        calculator = lambda x: get_percent_from_log(x['rate'], factor=self.__annual_factor / x['trade_days'])
         ts = self.__rate_of_return['M']
-        result = pd.DataFrame([], index=ts.index.rename('time'))
+        result = DataFrameWithTotal([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        print(ts.sum())
+        result.total = calculator(ts.sum())
         return result
 
     @property
@@ -383,7 +464,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         expected = self._roll_exp(self.__excess_return['M'])
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
         std = deal_float_error(self._roll_std(self.__excess_return['M']), fill=np.nan)
-        return expected / std
+        result = expected / std
+        result.total = expected.total / std.total
+        return result
 
     def sortino_ratio(self):
         pass
@@ -409,8 +492,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(get_percent_from_log))
-        self._max_drawdown = -get_percent_from_log(calculator(ts.values)[2])
-        print(self._max_drawdown)
+        result.total = -get_percent_from_log(calculator(ts.values)[2])
         return deal_float_error(result)
 
 

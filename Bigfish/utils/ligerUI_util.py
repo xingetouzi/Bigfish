@@ -12,6 +12,11 @@ class LigerUITranslator:
                    dict()),
             time='起始时间',
             **StrategyPerformance._factor_keys)
+    __display_dict.update({'total': '总体', 'long-position': '多仓', 'short-position': '空仓', 'total_trades': '总交易数',
+                           'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
+                           'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
+                           'average_winning_losing_ratio': '平均盈利/平均亏损', 'max_winning': '最大盈利',
+                           'max_losing': '最大亏损'})
 
     def __init__(self, options={}):
         self.__options = options
@@ -38,10 +43,14 @@ class LigerUITranslator:
         columns = [self._get_column_dict(dataframe.index.name)] + list(
                 map(lambda x: self._get_column_dict(x), dataframe.columns))
         temp = dataframe.applymap(lambda x: round(x, self.__precision)).fillna('/')
-        temp[temp.index.name] = temp.index.to_series().astype(str)
-        data = {'Rows': temp.to_dict('records')}
-        return dict(columns=columns, data=data, **self.__options)
 
+        def deal_with_float(dict_):
+            for key in dict_.keys():
+                if isinstance(dict_[key], float) and dict_[key].is_integer():
+                    dict_[key] = int(dict_[key])
+        temp[temp.index.name] = temp.index.to_series().astype(str)
+        data = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
+        return dict(columns=columns, data=data, **self.__options)
 
 if __name__ == '__main__':
     import numpy as np

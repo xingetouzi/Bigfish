@@ -143,12 +143,15 @@ if __name__ == '__main__':
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code, data_generator=DataGeneratorMongoDB)
+    backtest = Backtesting(User('10032'), 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2015-06-01',
+                           data_generator=DataGeneratorMongoDB)
     backtest.start()
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标
-    print(performance._manager.trade_summary)
+    print('trade_summary:\n%s' % performance._manager.trade_summary)
+    print('trade_trade:\n%s' % performance._manager.trade_details)
+    print('strategy_summary:\n%s' % performance._manager.strategy_summary)
     print(performance.get_factor_list())
     print(performance.yield_curve)
     print('ar:\n%s' % performance.ar)  # 年化收益率

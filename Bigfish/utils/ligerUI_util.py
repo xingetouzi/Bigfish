@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from functools import reduce
+from numbers import Number
 
 from Bigfish.models.performance import StrategyPerformance, StrategyPerformanceManagerOffline
 import pandas as pd
@@ -12,11 +13,11 @@ class LigerUITranslator:
                    dict()),
             time='起始时间',
             **StrategyPerformance._factor_keys)
-    __display_dict.update({'total': '总体', 'long-position': '多仓', 'short-position': '空仓', 'total_trades': '总交易数',
+    __display_dict.update({'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
                            'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
                            'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
                            'average_winning_losing_ratio': '平均盈利/平均亏损', 'max_winning': '最大盈利',
-                           'max_losing': '最大亏损'})
+                           'max_losing': '最大亏损', '_': ''})
 
     def __init__(self, options={}):
         self.__options = options
@@ -40,17 +41,29 @@ class LigerUITranslator:
         self.__precision = n
 
     def dumps(self, dataframe):
-        columns = [self._get_column_dict(dataframe.index.name)] + list(
-                map(lambda x: self._get_column_dict(x), dataframe.columns))
-        temp = dataframe.applymap(lambda x: round(x, self.__precision)).fillna('/')
+        temp = dataframe.fillna('/')
+        if isinstance(dataframe.index, pd.MultiIndex):
+            columns = []
+            for name, label, level in zip(index.names, index.labels, index.levels):
+                columns.append(self._get_column_dict(name))
+                # TODO 此处应有更优方法
+                temp[name] = list(map(label, lambda x: level[x]))
+        else:
+            columns = [self._get_column_dict(dataframe.index.name)]
+            temp[temp.index.name] = temp.index.to_series().astype(str)
+        columns += list(map(lambda x: self._get_column_dict(x), dataframe.columns))
 
         def deal_with_float(dict_):
-            for key in dict_.keys():
-                if isinstance(dict_[key], float) and dict_[key].is_integer():
-                    dict_[key] = int(dict_[key])
-        temp[temp.index.name] = temp.index.to_series().astype(str)
+            for key, values in dict_.items():
+                if isinstance(values, float):
+                    if values.is_integer():
+                        dict_[key] = int(values)
+                    else:
+                        dict_[key] = round(values, self.__precision)
+
         data = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
         return dict(columns=columns, data=data, **self.__options)
+
 
 if __name__ == '__main__':
     import numpy as np

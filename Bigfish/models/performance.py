@@ -15,17 +15,18 @@ from Bigfish.utils.pandas_util import rolling_apply_2d
 
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 pd.set_option('display.precision', 12)
-pd.set_option('display.width', 160)
+pd.set_option('display.width', 200)
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 # math utils
 FLOAT_ERR = 1e-7
 
 
-class DataFrameWithTotal(pd.DataFrame):
+class DataFrameExtended(pd.DataFrame):
     def __init__(self, data=None, index=None, columns=None, dtype=None,
-                 copy=False, total=None):
+                 copy=False, total=None, title=''):
         super().__init__(data=data, index=index, columns=columns, dtype=dtype, copy=copy)
         self.__total = total
+        self.__title = title
 
     def __get_total(self):
         return self.__total
@@ -33,12 +34,14 @@ class DataFrameWithTotal(pd.DataFrame):
     def __set_total(self, value):
         self.__total = value
 
+    def __get_title(self):
+        return self.__title
+
+    def __set_title(self, value):
+        self.__title = value
+
     total = property(__get_total, __set_total)
-
-
-def deal_float_error(dataframe, fill=0):
-    dataframe[abs(dataframe) <= FLOAT_ERR] = fill
-    return dataframe
+    titie = property(__get_title, __set_title)
 
 
 def cache_calculator(func):
@@ -55,49 +58,18 @@ def cache_calculator(func):
     return wrapper
 
 
-class LazyCal:
-    def __init__(self, name, dict_):
-        self.__name = name
-        self.__dict_ = dict_
-
-    def __get__(self, instance, owner):
-        dict_ = getattr(instance, self.__dict_)
-        if self.__name not in dict_:
-            dict_[self.__name] = getattr(instance._manager, self.__name)
-        return dict_[self.__name]
-
-
-class PerformanceMeta(type):
-    def __init__(cls, *args, **kwargs):
-        def curves(self):
-            for field in self._curve_keys:
-                if field not in self._curves:
-                    getattr(self, field)
-            return deepcopy(self._curves)
-
-        def factors(self):
-            for field in self._factor_keys:
-                if field not in self._factors:
-                    getattr(self, field)
-            return deepcopy(self._factors)
-
-        for field in cls._curve_keys.keys():
-            setattr(cls, field, LazyCal(field, '_curves'))
-        for field in cls._factor_keys.keys():
-            setattr(cls, field, LazyCal(field, '_factors'))
-        setattr(cls, 'curves', property(curves))
-        setattr(cls, 'factors', property(factors))
-        setattr(cls, 'all', property(lambda self: dict(self.curves, **self.factors)))
-
-
-class Performance(metaclass=PerformanceMeta):
-    _curve_keys = {}
-    _factor_keys = {}
+class Performance:
+    _manager = None  # 避免循环引用
+    _dict = {}
 
     def __init__(self, manager=None):
-        self._curves = {}
-        self._factors = {}
-        self._manager = proxy(manager)  # 避免循环引用
+        self._manager = manager
+
+    def __getattr__(self, item):
+        if item in self._dict:
+            return getattr(self._manager, item)
+        else:
+            raise AttributeError
 
 
 class PerformanceManager:
@@ -112,26 +84,44 @@ class PerformanceManager:
 
 class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
-    _curve_keys = {'yield_curve': '收益曲线', 'position_curve': '持仓曲线'}
-    _factor_keys = {'ar': '策略年化收益率', 'risk_free_rate': '无风险年化收益率', 'alpha': '阿尔法', 'beta': '贝塔', "sharpe_ratio": '夏普比率',
-                    'volatility': '收益波动率', 'information_ratio': '信息比率', 'max_drawdown': '最大回撤',
-                    'excess_return': '超额收益率'}
 
-    @staticmethod
-    def get_factor_list():
-        result = {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率', 'max_drawdown': '最大回撤'}
-        return list(result.items())
+    _dict = {}
+    __factor_info = {'yield_curve': '收益曲线', 'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率',
+                     'max_drawdown': '最大回撤'}
+    __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
+    __strategy_info = {'strategy_summary': '策略绩效概要'}
 
-    @staticmethod
-    def get_trade_info_list():
-        result = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
+    _dict.update(__factor_info)
+    _dict.update(__trade_info)
+    _dict.update(__strategy_info)
+
+    @classmethod
+    def get_factor_list(cls):
+        return list(cls.__factor_info.items())
+
+    @classmethod
+    def get_factor_list(cls):
+        return list(cls.__trade_info.items())
+
+    @classmethod
+    def get_strategy_info_list(cls):
+        return list(cls.__strategy_info.items())
+
+    def get_info_on_home_page(self):
+        return self._manager.trade_summary['_'].to_dict()
 
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
 
-#-----------------------------------------------------------------------------------------------------------------------
-def get_percent_from_log(n, factor=1):
+
+# -----------------------------------------------------------------------------------------------------------------------
+def _get_percent_from_log(n, factor=1):
     return (math.exp(n * factor) - 1) * 100
+
+
+def _deal_float_error(dataframe, fill=0):
+    dataframe[abs(dataframe) <= FLOAT_ERR] = fill
+    return dataframe
 
 
 class StrategyPerformanceManagerOffline(PerformanceManager):
@@ -152,8 +142,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__capital_base = capital_base
         self.__period = period
         self.__num = num
-        # @profile
+        self.__precision = 4
+        self.__cache = {}  # 用于存放将要在函数中复用的变量
 
+    # @profile
     def __get_rate_of_return_raw(self):
         interval = self.__period // self.__num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
@@ -199,7 +191,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)),
+                    {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)),
                      'trade_days': x['trade_days']}))(
                     self.__rate_of_return['D']
             )
@@ -232,7 +224,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x, y: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(get_percent_from_log, factor=self.__annual_factor)) - y[
+                    {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)) - y[
                         'rate'].reindex(x.index),
                      'trade_days': x['trade_days']}))(
                     self.__rate_of_return['D'], self.__risk_free_rate['D']
@@ -244,7 +236,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def yield_curve(self):
-        rate_of_return = (self.__rate_of_return['R'] - 1) * 100
+        rate_of_return = ((self.__rate_of_return['R'] - 1) * 100).apply(lambda x: round(x, self.__precision))
         return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
 
     @property
@@ -254,29 +246,34 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
         winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
         losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
-        rate_of_return = self.__rate_of_return['R'].tail(1)
-        annual_rate_of_return = get_percent_from_log(math.log(rate_of_return), self.__annual_factor)
+        rate_of_return = self.__rate_of_return['R'].tail(1).sum()
+        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor)
         max_potential_losing = self.__rate_of_return['R'].min()
         max_losing = trade_summary['total']['最大亏损']
-        return {
+        result = pd.DataFrame({
             '净利': net_profit,
             '盈利': winning,
             '亏损': losing,
             '账户资金收益率': rate_of_return,
             '年化收益率': annual_rate_of_return,
+            '最大回撤': self.max_drawdown.total,
             '策略最大潜在亏损': max_potential_losing,
             '平仓交易最大亏损': max_losing,
             '最大潜在亏损收益比': net_profit / max_potential_losing,
-        }
+        }, index=['_']).T
+        result.index.name = '_'
+        return result
 
     @property
     @cache_calculator
     def trade_info(self):
         positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
-        deals = self.__deals_raw[['position', 'time', 'type', 'price', 'volume', 'profit', 'entry']]
+        deals = self.__deals_raw[
+            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'handle']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
         trade_grouped = trade.groupby('symbol')
+        self.__cache['trade_grouped_by_symbol'] = trade_grouped
         trade['trade_number'] = trade_grouped.apply(
                 lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
         # TODO 在多品种交易下进行测试
@@ -284,31 +281,35 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['trade_number'] = trade['trade_number'] + trade['symbol'].apply(lambda x: temp[x])
         temp = trade.groupby('trade_number')['type_p'].first()
         trade['trade_type'] = trade['trade_number'].apply(lambda x: temp[x])
+        trade['profit'] = trade['profit'].fillna(0)
+        trade.index.name = 'deal_number'
         return trade
 
     @property
     @cache_calculator
     def trade_summary(self):
-        columns = ['total', 'long-position', 'short-position']
+        columns = ['total', 'long_position', 'short_position']
         result = pd.DataFrame(index=columns)
         result.index.name = ''
         trade = {}
         trade_grouped = {}
         trade['total'] = self.trade_info
-        last_trade = trade['total'].tail(1)
-        if (last_trade.volume_p == 0).bool():
-            if (last_trade.type_p > 0).bool():
-                result['未平仓交易数'] = [1, 1, 0]
-            else:
-                result['未平仓交易数'] = [1, 0, 1]
-
-        else:
-            result['未平仓交易数'] = [0, 0, 0]
-        trade['long-position'] = trade['total'].query('trade_type>0')
-        trade['short-position'] = trade['total'].query('trade_type<0')
+        trade['long_position'] = trade['total'].query('trade_type>0')
+        trade['short_position'] = trade['total'].query('trade_type<0')
         for key in columns:
             trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
         result['总交易数'] = [trade_grouped[key].ngroups for key in columns]
+        last_trade = trade['total'].tail(1)
+        if (last_trade.volume_p == 0).bool():
+            result['总交易数']['total'] -= 1
+            if (last_trade.type_p > 0).bool():
+                result['未平仓交易数'] = [1, 1, 0]
+                result['总交易数']['long_position'] -= 1
+            else:
+                result['未平仓交易数'] = [1, 0, 1]
+                result['总交易数']['short_position'] -= 1
+        else:
+            result['未平仓交易数'] = [0, 0, 0]
         profits = [trade_grouped[key]['profit'].sum().dropna() for key in columns]
         winnings = list(map(lambda x: x[x > 0], profits))
         losings = list(map(lambda x: x[x < 0], profits))
@@ -326,9 +327,17 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def trade_details(self):
-        quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
+        columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current']
+        trade = (
+            lambda x: DataFrameExtended(x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
+                self.trade_info)
+        trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 0 else '出场(减仓)')
+        trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
+        trade['time'] = trade['time'].map(pd.datetime.fromtimestamp)
+        return trade
+        # quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
         # print(quotes)
-        trade = self.trade_info.groupby(['symbol', 'trade_number'])
+        # trade = self.trade_info.groupby(['symbol', 'trade_number'])
         # pd.merge(trade, quotes, how='outer', left_on='time', right_index=True)
         # return pd.DataFrame()
 
@@ -371,7 +380,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
         deal_profits = self.__quotes_raw.groupby(['close_time', 'symbol'])['close'].last().swaplevel(0, 1)
         trade, _ = self.trade_info
-        print(trade)
         """
         result = []
         stack = []
@@ -405,7 +413,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def _roll_exp(self, sample):
         calculator = lambda x: x['rate'] / x['trade_days']
         ts = sample
-        result = DataFrameWithTotal([], index=ts.index.rename('time'))
+        result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
         result.total = calculator(ts.sum())
@@ -419,12 +427,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                      rate_square=(x['rate'] * x['rate']),
                      trade_days=x['trade_days']))
               .resample('MS', how='sum'))(sample)
-        result = DataFrameWithTotal([], index=ts.index.rename('time'))
+        result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
-            result[value[0]] = deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
+            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
         result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5
-        return deal_float_error(result)
+        return _deal_float_error(result)
 
     def alpha(self):
         pass
@@ -437,12 +445,11 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def ar(self):
         # TODO 可以抽象为日分析，周分析，月分析之类的
-        calculator = lambda x: get_percent_from_log(x['rate'], factor=self.__annual_factor / x['trade_days'])
+        calculator = lambda x: _get_percent_from_log(x['rate'], factor=self.__annual_factor / x['trade_days'])
         ts = self.__rate_of_return['M']
-        result = DataFrameWithTotal([], index=ts.index.rename('time'))
+        result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
-        print(ts.sum())
         result.total = calculator(ts.sum())
         return result
 
@@ -463,7 +470,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def sharpe_ratio(self):
         expected = self._roll_exp(self.__excess_return['M'])
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
-        std = deal_float_error(self._roll_std(self.__excess_return['M']), fill=np.nan)
+        std = _deal_float_error(self._roll_std(self.__excess_return['M']), fill=np.nan)
         result = expected / std
         result.total = expected.total / std.total
         return result
@@ -491,9 +498,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                                         self.__rate_of_return['D']))))
         result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
-            result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(get_percent_from_log))
-        result.total = -get_percent_from_log(calculator(ts.values)[2])
-        return deal_float_error(result)
+            result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(_get_percent_from_log))
+        result.total = -_get_percent_from_log(calculator(ts.values)[2])
+        return _deal_float_error(result)
 
 
 class StrategyPerformanceManageOnline(PerformanceManager):

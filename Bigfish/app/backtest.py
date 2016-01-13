@@ -143,19 +143,20 @@ if __name__ == '__main__':
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2015-06-01',
+    backtest = Backtesting(User('10032'), 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2015-12-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标
-    print('trade_summary:\n%s' % performance._manager.trade_summary)
-    print('trade_trade:\n%s' % performance._manager.trade_details)
-    print('strategy_summary:\n%s' % performance._manager.strategy_summary)
+    print('trade_info:\n%s' % performance._manager.trade_info)
+    print('trade_summary:\n%s' % performance.trade_summary)
+    print('trade_details:\n%s' % performance.trade_details)
+    print('strategy_summary:\n%s' % performance.strategy_summary)
     print(performance.get_factor_list())
     print(performance.yield_curve)
     print('ar:\n%s' % performance.ar)  # 年化收益率
-    print('risk_free_rate:\n%s' % performance.risk_free_rate)  # 无风险收益率
+    print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
     print('volatility:\n%s' % performance.volatility)  # 波动率
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测

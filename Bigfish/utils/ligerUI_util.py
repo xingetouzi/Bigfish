@@ -12,7 +12,7 @@ class LigerUITranslator:
                    (lambda x: list(x.values()))(StrategyPerformanceManagerOffline._column_names),
                    dict()),
             time='起始时间',
-            **StrategyPerformance._factor_keys)
+            **StrategyPerformance._dict)
     __display_dict.update({'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
                            'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
                            'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',

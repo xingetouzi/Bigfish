@@ -53,7 +53,6 @@ class DataGeneratorMongoDB(DataGenerator):
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
                  data_generator=DataGeneratorMongoDB):
-        self.__user.start
         self.__strategy_engine = StrategyEngine(backtesting=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
@@ -63,8 +62,6 @@ class Backtesting:
         self.__strategy_engine.initialize()
 
     def start(self, paras=None):
-        old_path = sys.path
-        sys.path.append()
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self.__strategy_engine.start()
@@ -157,6 +154,7 @@ if __name__ == '__main__':
     print('trade_summary:\n%s' % performance.trade_summary)
     print('trade_details:\n%s' % performance.trade_details)
     print('strategy_summary:\n%s' % performance.strategy_summary)
+    print('info_on_home_page\n%s' % performance.get_info_on_home_page())
     print(performance.get_factor_list())
     print(performance.yield_curve)
     print('ar:\n%s' % performance.ar)  # 年化收益率

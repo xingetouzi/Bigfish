@@ -5,6 +5,7 @@ Created on Wed Nov  4 11:58:21 2015
 @author: BurdenBear
 """
 import ast
+import bigfish_functions
 
 
 class LocationPatcher(ast.NodeTransformer):
@@ -37,7 +38,9 @@ class LocalsInjector(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         self.generic_visit(node)
         if (self.__depth == 2) and (node.name in self.__to_inject):
-            code = '\n'.join(self.__to_inject[node.name])
+            code = '\n'.join(['from bigfish_functions import {0} as {0}'.format(func)
+                              for func in bigfish_functions.__all__]) + '\n'
+            code += '\n'.join(self.__to_inject[node.name])
             code += '\nbarnum = 0\n'
             location_patcher = LocationPatcher(node)
             code_ast = location_patcher.visit(ast.parse(code))
@@ -81,13 +84,16 @@ class SeriesExporter(ast.NodeTransformer):
                                  zip(arg_names, value.args)]
                 self.__series_id += 1
                 value.keywords.append(ast.copy_location(
-                    ast.keyword(arg='series_id', value=ast.copy_location(ast.Num(n=self.__series_id), value.args[-1])),
-                    value.args[-1]))
+                        ast.keyword(arg='series_id',
+                                    value=ast.copy_location(ast.Num(n=self.__series_id), value.args[-1])),
+                        value.args[-1]))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
                 new_node.targets.append(ast.copy_location(
-                    ast.Tuple(elts=[ast.copy_location(ast.Name(id=name, ctx=ast.Store()), node) for name in arg_names],
-                              ctx=ast.Store()), node))
+                        ast.Tuple(
+                                elts=[ast.copy_location(ast.Name(id=name, ctx=ast.Store()), node) for name in
+                                      arg_names],
+                                ctx=ast.Store()), node))
                 return new_node
         return node
 

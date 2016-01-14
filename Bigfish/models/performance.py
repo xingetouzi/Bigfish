@@ -107,11 +107,11 @@ class StrategyPerformance(Performance):
     def get_strategy_info_list(cls):
         return list(cls.__strategy_info.items())
 
-    def get_info_on_home_page(self):
-        return self._manager.trade_summary['_'].to_dict()
-
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
+
+    def get_info_on_home_page(self):
+        return self._manager.strategy_summary['_'].to_dict()
 
 
 # -----------------------------------------------------------------------------------------------------------------------

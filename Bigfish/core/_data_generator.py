@@ -33,8 +33,11 @@ class DataGenerator:
     def __insert_data(self, symbol, time_frame):
         bars = self.__get_data(symbol, time_frame)
         if bars:
-            temp = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
-            self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
+            if self.__dataframe is None:
+                self.__dataframe = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
+            else:
+                temp = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
+                self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
 
     def __initialize(self):

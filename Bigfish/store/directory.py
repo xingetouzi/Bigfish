@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import shutil
 
 BASE_DIR_NAME = "Bigfish"
 
@@ -42,7 +43,11 @@ class UserDirectory(object):
         """
         # 以user_id 作为用户的主目录
         if not code:
-            return self.__get_dir__(self.__get_root__(), self.__user__.user_id)
+            home = self.__get_dir__(self.__get_root__(), self.__user__.user_id)
+            demo = os.path.join(home, "demo")
+            if not os.path.exists(demo):
+                shutil.copy("demo", home)
+            return home
         elif code.code_type == 1:
             return self.get_strategy_dir()
         else:

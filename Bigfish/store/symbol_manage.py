@@ -74,3 +74,8 @@ def get_all_symbols():
             category = Symbol(row[0].replace('/', ''), row[1])
             all_symbol.append(category)
     return all_symbol
+
+
+if __name__ == '__main__':
+    create_symbol()
+    init_symbol()

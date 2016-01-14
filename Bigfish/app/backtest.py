@@ -5,7 +5,6 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 from functools import partial
-import sys
 
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
@@ -141,12 +140,16 @@ class Backtesting:
 
 if __name__ == '__main__':
     from Bigfish.models.model import User
+    from Bigfish.store.directory import UserDirectory
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code, ['XAUUSD'], 'M30', '2015-01-01', '2015-12-01',
+    user = User('10032')
+    backtest = Backtesting(user, 'test', code, ['XAUUSD'], 'M30', '2015-01-01', '2015-12-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
+    user_dir = UserDirectory(user)
+    print(user_dir.get_sys_func_list())
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标

@@ -100,7 +100,7 @@ class StrategyPerformance(Performance):
         return list(cls.__factor_info.items())
 
     @classmethod
-    def get_factor_list(cls):
+    def get_trade_info_list(cls):
         return list(cls.__trade_info.items())
 
     @classmethod

@@ -5,6 +5,7 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 from functools import partial
+import sys
 
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
@@ -52,6 +53,7 @@ class DataGeneratorMongoDB(DataGenerator):
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
                  data_generator=DataGeneratorMongoDB):
+        self.__user.start
         self.__strategy_engine = StrategyEngine(backtesting=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
@@ -61,6 +63,8 @@ class Backtesting:
         self.__strategy_engine.initialize()
 
     def start(self, paras=None):
+        old_path = sys.path
+        sys.path.append()
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self.__strategy_engine.start()

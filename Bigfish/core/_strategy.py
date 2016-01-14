@@ -161,7 +161,7 @@ class Strategy(HasID):
         injector = LocalsInjector(to_inject)
         ast_ = ast.parse(code)
         injector.visit(ast_)
-        ast_ = SeriesExporter().visit(ast_)
+        ast_ = SeriesExporter(__file__).visit(ast_)
         # TODO 解决行号的问题
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
         for key in to_inject.keys():

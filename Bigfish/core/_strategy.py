@@ -99,13 +99,21 @@ class Strategy(HasID):
                 if getattr(self, attr) is None:
                     setattr(self, attr, locals_.get(name))
 
+        def set_global_attrs(globals_):
+            for name, attr in self.ATTR_MAP.items():
+                value = getattr(self, attr)
+                if value is not None:
+                    globals_[name] = value
+                else:
+                    raise ValueError('全局变量%s未被赋值' % name)
+
         locals_ = {}
         globals_ = {}
         exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
         get_global_attrs(locals_)
+        set_global_attrs(globals_)
         self.engine.set_capital_base(self.capital_base)
         globals_.update(self.__locals_)
-        globals_.update(locals_)
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
         check_time_frame(self.time_frame)
@@ -133,6 +141,7 @@ class Strategy(HasID):
                     self.engine.add_symbols(symbols, time_frame, max_length)
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
                     temp = []
+                    print(symbols)
                     temp.extend(["%s = __globals['data']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
                                  for field in ["open", "high", "low", "close", "time", "volume"]])
                     temp.extend(["%s = functools.partial(__globals['%s'],listener=%d)" % (

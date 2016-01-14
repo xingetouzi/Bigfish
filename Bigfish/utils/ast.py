@@ -6,8 +6,8 @@ Created on Wed Nov  4 11:58:21 2015
 """
 import ast
 
-class LocationPatcher(ast.NodeTransformer):
 
+class LocationPatcher(ast.NodeTransformer):
     def __init__(self, node):
         assert isinstance(node, ast.AST)
         assert hasattr(node, 'lineno')
@@ -43,8 +43,9 @@ class LocalsInjector(ast.NodeVisitor):
             code_ast = location_patcher.visit(ast.parse(code))
             barnum_ast = location_patcher.visit(ast.parse('barnum += 1'))
             while_node = ast.copy_location(ast.While(
-                body=barnum_ast.body + node.body + [LocationPatcher(node.body[-1]).visit(ast.Expr(value=ast.Yield(value=None)))],
-                test=ast.copy_location(ast.NameConstant(value=True),node), orelse=[]),node)
+                    body=barnum_ast.body + node.body + [
+                        LocationPatcher(node.body[-1]).visit(ast.Expr(value=ast.Yield(value=None)))],
+                    test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
             node.body = code_ast.body + [while_node]
             # print(ast.dump(node))
 
@@ -68,19 +69,25 @@ class SeriesExporter(ast.NodeTransformer):
         node = self.generic_visit(node)
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and (value.func.id == 'export') and isinstance(value.func.ctx, ast.Load):
+            if isinstance(value.func, ast.Name) and (value.func.id == 'export') and isinstance(value.func.ctx,
+                                                                                               ast.Load):
                 if value.keywords:
-                    #TODO 自定义错误
+                    # TODO 自定义错误
                     raise ValueError
                 arg_names = [get_arg_name(arg_node) for arg_node in value.args]
                 if not arg_names:
-                    return(node)
-                value.args[:] = [ast.copy_location(ast.Str(s=name),arg_node) for name, arg_node in zip(arg_names,value.args)]
+                    return (node)
+                value.args[:] = [ast.copy_location(ast.Str(s=name), arg_node) for name, arg_node in
+                                 zip(arg_names, value.args)]
                 self.__series_id += 1
-                value.keywords.append(ast.copy_location(ast.keyword(arg='series_id',value=ast.copy_location(ast.Num(n=self.__series_id),value.args[-1])),value.args[-1]))
-                #TODO行号问题
-                new_node = ast.copy_location(ast.Assign(targets=[],value=value),node)
-                new_node.targets.append(ast.copy_location(ast.Tuple(elts=[ast.copy_location(ast.Name(id=name,ctx=ast.Store()),node) for name in arg_names],ctx=ast.Store()),node))
+                value.keywords.append(ast.copy_location(
+                    ast.keyword(arg='series_id', value=ast.copy_location(ast.Num(n=self.__series_id), value.args[-1])),
+                    value.args[-1]))
+                # TODO行号问题
+                new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
+                new_node.targets.append(ast.copy_location(
+                    ast.Tuple(elts=[ast.copy_location(ast.Name(id=name, ctx=ast.Store()), node) for name in arg_names],
+                              ctx=ast.Store()), node))
                 return new_node
         return node
 

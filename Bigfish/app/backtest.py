@@ -143,7 +143,7 @@ if __name__ == '__main__':
 
     with open('../test/testcode2.py') as f:
         code = f.read()
-    backtest = Backtesting(User('10032'), 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2015-12-01',
+    backtest = Backtesting(User('10032'), 'test', code, ['XAUUSD'], 'M30', '2015-01-01', '2015-12-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     print(backtest.get_profit_records())  # 获取浮动收益曲线

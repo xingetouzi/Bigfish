@@ -25,6 +25,7 @@ class Strategy(HasID):
         self.__id = self.next_auto_inc()
         self.user = user
         self.name = name
+        self.code = code
         self.engine = engine
         self.time_frame = time_frame
         self.symbols = symbols
@@ -48,10 +49,10 @@ class Strategy(HasID):
                               marketposition=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
                               context=self.__context, export=partial(export, self),
-                              put=self.put_context, get=self.get_context,
+                              put=self.put_context, get=self.get_context, print=self.__printer.print,
                               )
         # 将策略容器与对应代码文件关联
-        self.bind_code_to_strategy(code)
+        self.bind_code_to_strategy(self.code)
 
     # ----------------------------------------------------------------------
     def get_parameters(self):
@@ -119,7 +120,7 @@ class Strategy(HasID):
         check_time_frame(self.time_frame)
         to_inject = {}
         code_lines = ["import functools", "__globals = globals()"]
-        code_lines.extend(["%s = __globals['%s']" % (key, key) for key in self.__locals_.keys()
+        code_lines.extend(["{0} = __globals['{0}']".format(key) for key in self.__locals_.keys()
                            if key not in ["sell", "buy", "short", "cover"]])
         for key, value in locals_.items():
             if inspect.isfunction(value):
@@ -183,8 +184,7 @@ class Strategy(HasID):
         for listener in self.listeners.values():
             listener.start()
         self.__printer.start()
-        self.__locals_['print'] = self.__printer.get_print()
-        self.engine.writeLog(self.name + u'开始运行')
+        print(self.name + u'开始运行')
 
     # ----------------------------------------------------------------------
     def stop(self):
@@ -196,4 +196,4 @@ class Strategy(HasID):
         for listener in self.listeners.values():
             listener.stop()
         self.__printer.stop()
-        self.engine.writeLog(self.name + u'停止运行')
+        print(self.name + u'停止运行')

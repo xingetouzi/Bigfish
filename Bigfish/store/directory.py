@@ -44,9 +44,10 @@ class UserDirectory(object):
         # 以user_id 作为用户的主目录
         if not code:
             home = self.__get_dir__(self.__get_root__(), self.__user__.user_id)
-            demo = os.path.join(home, "demo")
+            demo = os.path.join(home, "demo.py")
             if not os.path.exists(demo):
-                shutil.copy("demo", home)
+                demo_ = os.path.join(os.path.dirname(__file__), '../../demo.py')
+                shutil.copy(demo_, home)
             return home
         elif code.code_type == 1:
             return self.get_strategy_dir()
@@ -93,7 +94,6 @@ class UserDirectory(object):
         """
         获取用户
         """
-        print(os.path.dirname(__file__))
         path = os.path.join(os.path.dirname(__file__), '../../bigfish_functions')
         return list(set(os.listdir(path))-{'__init__.py', '__pycache__'})
 

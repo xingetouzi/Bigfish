@@ -1,2 +1,2 @@
-def true_range(offset):
+def true_range(high, low, offset):
     return high[offset] - low[offset]

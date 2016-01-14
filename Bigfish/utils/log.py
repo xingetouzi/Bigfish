@@ -5,6 +5,7 @@ Created on Mon Nov  2 19:07:00 2015
 @author: BurdenBear
 """
 import os
+from functools import partial
 
 from contextlib import redirect_stdout
 from Bigfish.store.directory import UserDirectory
@@ -14,10 +15,8 @@ class Printer:
     def __init__(self, user, name):
         self.__user = user
         self.__name = name
-        self.__gene_instance = None
-        self.__stdout_redirector = None
 
-    #用于重载的方法
+    # 用于重载的方法
     def _get_redirector(self):
         raise NotImplementedError
 
@@ -45,19 +44,20 @@ class Printer:
             self.__gene_instance = None
 
 
-class FilePrinter(Printer):
+class FilePrinter:
     def __init__(self, user, name):
-        super(FilePrinter, self).__init__(user, name)
+        self.__user = user
+        self.__name = name
         self.__file_path = os.path.join(UserDirectory(user).get_temp_dir(), name + '.log')
         self.__file = None
 
-    def _get_redirector(self):
-        return redirect_stdout(self.__file)
-
     def start(self):
-        self.__file = open(self.__file_path, 'w')
-        super(FilePrinter, self).start()
+        self.__file = open(self.__file_path, 'w+')
+
+    def print(self, *args):
+        print(*args, file=self.__file)
 
     def stop(self):
-        super(FilePrinter, self).stop()
+        self.__file.flush()
         self.__file.close()
+        self.__file = None

@@ -42,7 +42,8 @@ class LigerUITranslator:
 
     def dumps(self, dataframe):
         temp = dataframe.fillna('/')
-        if isinstance(dataframe.index, pd.MultiIndex):
+        index = temp.index
+        if isinstance(index, pd.MultiIndex):
             columns = []
             for name, label, level in zip(index.names, index.labels, index.levels):
                 columns.append(self._get_column_dict(name))

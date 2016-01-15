@@ -51,6 +51,9 @@ class FilePrinter:
         self.__file_path = os.path.join(UserDirectory(user).get_temp_dir(), name + '.log')
         self.__file = None
 
+    def get_path(self):
+        return self.__file_path
+
     def start(self):
         self.__file = open(self.__file_path, 'w+')
 

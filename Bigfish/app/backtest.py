@@ -83,6 +83,9 @@ class Backtesting:
             self.__get_performance_manager()
         return self.__performance_manager.get_performance()
 
+    def get_output(self):
+        return self.__strategy.get_output()
+
     def get_parameters(self):
         if self.__strategy_parameters is None:
             temp = self.__strategy.get_parameters()
@@ -165,3 +168,4 @@ if __name__ == '__main__':
     print('volatility:\n%s' % performance.volatility)  # 波动率
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
+    print('output:\n%s' % backtest.get_output())

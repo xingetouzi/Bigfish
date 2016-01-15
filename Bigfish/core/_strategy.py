@@ -54,6 +54,13 @@ class Strategy(HasID):
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)
 
+    # -----------------------------------------------------------------------
+    def get_output(self):
+        with open(self.__printer.get_path()) as f:
+            content = f.read()
+            f.close()
+        return content
+
     # ----------------------------------------------------------------------
     def get_parameters(self):
         return {key: value.get_parameters() for key, value in self.listeners.items()}

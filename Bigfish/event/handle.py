@@ -87,7 +87,7 @@ class SymbolsListener(HasID):
         while True:
             event = yield
             bar = event.content["data"]
-            bits_now |= 1 << self.__symbols[bar.symbol]
+            bits_now |= 1 << self.__symbols_enum[bar.symbol]
             if bits_now == bits_ready:
                 self.__bar_num += 1
                 self.__gene_istance.__next__()

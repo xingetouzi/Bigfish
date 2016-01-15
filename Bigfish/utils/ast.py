@@ -21,6 +21,34 @@ class LocationPatcher(ast.NodeTransformer):
         return ast.copy_location(visitor(node), self.__benchmark)
 
 
+class FunctionsDetector(ast.NodeVisitor):
+    def __init__(self, functions):
+        self.__functions = functions
+        self.__functions_in_use = {}
+        self.__handler = None
+
+    def visit_Name(self, node):
+        if node.id in self.__functions and isinstance(node.ctx, ast.Load):
+            self.__functions_in_use[node.id] = self.__handler
+        self.generic_visit(node)
+
+    def get_functions_in_use(self):
+        return list(self.__functions_in_use)
+
+    def visit_FunctionDef(self, node):
+        if self.__handler is None:
+            self.__handler = node.name
+            self.generic_visit(node)
+            self.__handler = None
+        else:
+            self.generic_visit(node)
+
+
+class SystemFunctionsDetector(FunctionsDetector):
+    def __init__(self):
+        super(SystemFunctionsDetector, self).__init__(bigfish_functions.__all__)
+
+
 class LocalsInjector(ast.NodeVisitor):
     """向函数中注入局部变量，参考ast.NodeVisitor"""
 
@@ -86,7 +114,8 @@ class SeriesExporter(ast.NodeTransformer):
                 self.__count += 1
                 value.keywords.append(ast.copy_location(
                         ast.keyword(arg='series_id',
-                                    value=ast.copy_location(ast.Str(s=self.__series_id+self.__count), value.args[-1])),
+                                    value=ast.copy_location(ast.Str(s=self.__series_id + self.__count),
+                                                            value.args[-1])),
                         value.args[-1]))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)

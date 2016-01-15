@@ -246,9 +246,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
         winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
         losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
-        rate_of_return = self.__rate_of_return['R'].tail(1).sum()
+        rate_of_return = self.__rate_of_return['R'].tail(1).sum() * 100
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor)
-        max_potential_losing = self.__rate_of_return['R'].min()
+        max_potential_losing = (self.__rate_of_return['R'].min() - 1) * 100
         max_losing = trade_summary['total']['最大亏损']
         result = pd.DataFrame({
             '净利': net_profit,

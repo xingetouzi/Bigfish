@@ -48,7 +48,7 @@ class LigerUITranslator:
             for name, label, level in zip(index.names, index.labels, index.levels):
                 columns.append(self._get_column_dict(name))
                 # TODO 此处应有更优方法
-                temp[name] = list(map(label, lambda x: level[x]))
+                temp[name] = list(map(lambda x: level[x], label))
         else:
             columns = [self._get_column_dict(dataframe.index.name)]
             temp[temp.index.name] = temp.index.to_series().astype(str)

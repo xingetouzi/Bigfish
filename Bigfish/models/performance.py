@@ -261,7 +261,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '平仓交易最大亏损': max_losing,
             '最大潜在亏损收益比': net_profit / max_potential_losing,
         }, index=['_']).T
-        result.index.name = '_'
+        result.index.name = 'index'
         return result
 
     @property
@@ -322,6 +322,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
         result['最大盈利'] = list(map(lambda x: x.max(), profits))
         result['最大亏损'] = list(map(lambda x: x.min(), profits))
+        result.index.name = 'index'
         return result.T
 
     @property

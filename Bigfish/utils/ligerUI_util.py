@@ -13,11 +13,12 @@ class LigerUITranslator:
                    dict()),
             time='起始时间',
             **StrategyPerformance._dict)
-    __display_dict.update({'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
-                           'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
-                           'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
-                           'average_winning_losing_ratio': '平均盈利/平均亏损', 'max_winning': '最大盈利',
-                           'max_losing': '最大亏损', '_': ''})
+    __display_dict.update(
+            {'index': '', 'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
+             'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
+             'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
+             'average_winning_losing_ratio': '平均盈利/平均亏损', 'max_winning': '最大盈利',
+             'max_losing': '最大亏损', '_': ''})
 
     def __init__(self, options={}):
         self.__options = options

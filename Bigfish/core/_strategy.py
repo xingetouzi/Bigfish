@@ -176,11 +176,16 @@ class Strategy(HasID):
         series_exporter = SeriesExporter(__file__)  # deal with the export syntax
         # export the system functions in use
         ast_ = ast.parse(code)
-        # sys_func_detector = SystemFunctionsDetector()
-        # sys_func_detector.visit(ast_)
-        # sys_func_dir = self.user_dir.get_sys_func_dir()
-        # for func, handler in sys_func_detector.get_funcs_in_use().items():
-        #     fullname = os.path.join(sys_func_dir, func)
+        sys_func_detector = SystemFunctionsDetector()
+        sys_func_detector.visit(ast_)
+        sys_func_dir = self.user_dir.get_sys_func_dir()
+        for func, handler in sys_func_detector.get_funcs_in_use().items():
+            fullname = os.path.join(sys_func_dir, func+'.py')
+            with open(fullname) as f:
+                func_code = f.read()
+                print(fullname)
+                print(func_code)
+                f.close()
         # inject global vars into locals of handler
         injector = LocalsInjector(to_inject)
         injector.visit(ast_)

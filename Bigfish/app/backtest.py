@@ -144,6 +144,7 @@ class Backtesting:
 if __name__ == '__main__':
     from Bigfish.models.model import User
     from Bigfish.store.directory import UserDirectory
+    from Bigfish.utils.ligerUI_util import LigerUITranslator
 
     with open('../test/testcode2.py') as f:
         code = f.read()
@@ -151,14 +152,16 @@ if __name__ == '__main__':
     backtest = Backtesting(user, 'test', code, ['XAUUSD'], 'M30', '2015-01-01', '2015-12-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
+    translator = LigerUITranslator()
     user_dir = UserDirectory(user)
-    #print(user_dir.get_sys_func_list())
+    print(user_dir.get_sys_func_list())
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标
     print('trade_info:\n%s' % performance._manager.trade_info)
     print('trade_summary:\n%s' % performance.trade_summary)
     print('trade_details:\n%s' % performance.trade_details)
+    print(translator.dumps(performance.trade_details))
     print('strategy_summary:\n%s' % performance.strategy_summary)
     print('info_on_home_page\n%s' % performance.get_info_on_home_page())
     print(performance.get_factor_list())

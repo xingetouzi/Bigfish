@@ -46,7 +46,7 @@ class UserDirectory(object):
             home = self.__get_dir__(self.__get_root__(), self.__user__.user_id)
             demo = os.path.join(home, "demo.py")
             if not os.path.exists(demo):
-                demo_ = os.path.join(os.path.dirname(__file__), '../../demo.py')
+                demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo.py')
                 shutil.copy(demo_, home)
             return home
         elif code.code_type == 1:
@@ -76,7 +76,7 @@ class UserDirectory(object):
 
     @staticmethod
     def get_sys_func_dir():
-        return os.path.join(os.path.dirname(__file__), '../../bigfish_functions')
+        return os.path.join(os.path.dirname(__file__), '..', '..', 'bigfish_functions')
 
     @DeprecationWarning
     def get_func_list(self):
@@ -96,7 +96,7 @@ class UserDirectory(object):
         """
         获取用户
         """
-        return list(set(os.listdir(self.get_sys_func_list()))-{'__init__.py', '__pycache__'})
+        return list(set(os.listdir(self.get_sys_func_dir())) - {'__init__.py', '__pycache__'})
 
     def strategy_exists(self, strategy_name):
         """

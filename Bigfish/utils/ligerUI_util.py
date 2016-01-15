@@ -37,7 +37,7 @@ class LigerUITranslator:
         self.__column_options[column] = options
 
     def set_precision(self, n):
-        assert (n, isinstance(n, int) and n >= 0)
+        assert isinstance(n, int) and n >= 0
         self.__precision = n
 
     def dumps(self, dataframe):
@@ -61,6 +61,7 @@ class LigerUITranslator:
                         dict_[key] = int(values)
                     else:
                         dict_[key] = round(values, self.__precision)
+            return dict_
 
         data = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
         return dict(columns=columns, data=data, **self.__options)

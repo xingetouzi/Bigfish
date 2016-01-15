@@ -22,18 +22,15 @@ class LocationPatcher(ast.NodeTransformer):
 
 
 class FunctionsDetector(ast.NodeVisitor):
-    def __init__(self, functions):
-        self.__functions = functions
-        self.__functions_in_use = {}
+    def __init__(self, funcs):
+        self.__funcs = funcs
+        self.__funcs_in_use = {}
         self.__handler = None
 
     def visit_Name(self, node):
-        if node.id in self.__functions and isinstance(node.ctx, ast.Load):
-            self.__functions_in_use[node.id] = self.__handler
+        if node.id in self.__funcs and isinstance(node.ctx, ast.Load):
+            self.__funcs_in_use[node.id] = self.__handler
         self.generic_visit(node)
-
-    def get_functions_in_use(self):
-        return list(self.__functions_in_use)
 
     def visit_FunctionDef(self, node):
         if self.__handler is None:
@@ -42,6 +39,9 @@ class FunctionsDetector(ast.NodeVisitor):
             self.__handler = None
         else:
             self.generic_visit(node)
+
+    def get_funcs_in_use(self):
+        return self.__funcs_in_use
 
 
 class SystemFunctionsDetector(FunctionsDetector):
@@ -69,10 +69,9 @@ class LocalsInjector(ast.NodeVisitor):
             code = '\n'.join(['from bigfish_functions import {0} as {0}'.format(func)
                               for func in bigfish_functions.__all__]) + '\n'
             code += '\n'.join(self.__to_inject[node.name])
-            code += '\nbarnum = 0\n'
             location_patcher = LocationPatcher(node)
             code_ast = location_patcher.visit(ast.parse(code))
-            barnum_ast = location_patcher.visit(ast.parse('barnum += 1'))
+            barnum_ast = location_patcher.visit(ast.parse('barnum = get_current_bar()'))
             while_node = ast.copy_location(ast.While(
                     body=barnum_ast.body + node.body + [
                         LocationPatcher(node.body[-1]).visit(ast.Expr(value=ast.Yield(value=None)))],

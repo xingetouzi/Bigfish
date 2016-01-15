@@ -70,7 +70,7 @@ class SymbolsListener(HasID):
         self.__bar_num = 0
         if self.__generator:
             self.__gene_istance = self.__generator(**self.__parameters)
-            for symbol in self.__symbols.keys():
+            for symbol in self.__symbols_enum.keys():
                 self.__engine.register_event(EVENT_BAR_SYMBOL[symbol][self.__time_frame], self.__handler.send)
             self.__handler.send(None)  # start it
 

@@ -53,6 +53,7 @@ class Strategy(HasID):
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
                               context=self.__context, export=partial(export, self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
+                              liseners=self.listeners
                               )
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)
@@ -158,14 +159,14 @@ class Strategy(HasID):
                     temp.extend(["%s = functools.partial(__globals['%s'],listener=%d)" % (
                         field, field, self.listeners[key].get_id())
                                  for field in ["buy", "short", "sell", "cover"]])
-                    temp.extend(["{0} = __globals['listener']['{1}'].{0}".format('get_current_bar', key)])
+                    temp.extend(["{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key)])
                     to_inject[key] = code_lines + temp + ["del(functools)", "del(__globals)"]
                 else:
                     # TODO自定义事件处理
                     pass
                 for para_name in paras.keys():
                     # TODO加入类型检测
-                    default = get_parameter_default(paras, para_name, True, None,
+                    default = get_parameter_default(paras, para_name, lambda x: True, None,
                                                     pop=False)
                     if default is None:
                         raise ValueError('参数%s未指定初始值' % para_name)
@@ -175,11 +176,11 @@ class Strategy(HasID):
         series_exporter = SeriesExporter(__file__)  # deal with the export syntax
         # export the system functions in use
         ast_ = ast.parse(code)
-        sys_func_detector = SystemFunctionsDetector
-        sys_func_detector.visit(ast_)
-        sys_func_dir = self.user_dir.get_sys_func_dir()
-        for func, handler in sys_func_detector.get_funcs_in_use():
-            fullname = os.path.join(sys_func_dir, func)
+        # sys_func_detector = SystemFunctionsDetector()
+        # sys_func_detector.visit(ast_)
+        # sys_func_dir = self.user_dir.get_sys_func_dir()
+        # for func, handler in sys_func_detector.get_funcs_in_use().items():
+        #     fullname = os.path.join(sys_func_dir, func)
         # inject global vars into locals of handler
         injector = LocalsInjector(to_inject)
         injector.visit(ast_)

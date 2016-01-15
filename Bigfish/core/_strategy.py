@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 
 # 系统模块
+import os
 import ast
 import inspect
 from functools import partial
 
 # 自定义模块
 from Bigfish.utils.log import FilePrinter
+from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export
 from Bigfish.event.handle import SymbolsListener
-from Bigfish.utils.ast import LocalsInjector, SeriesExporter
+from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
 
@@ -24,6 +26,7 @@ class Strategy(HasID):
         """Constructor"""
         self.__id = self.next_auto_inc()
         self.user = user
+        self.user_dir = UserDirectory(user)
         self.name = name
         self.code = code
         self.engine = engine
@@ -120,8 +123,8 @@ class Strategy(HasID):
         exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
         get_global_attrs(locals_)
         set_global_attrs(globals_)
-        self.engine.set_capital_base(self.capital_base)
         globals_.update(self.__locals_)
+        self.engine.set_capital_base(self.capital_base)
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
         check_time_frame(self.time_frame)
@@ -149,27 +152,38 @@ class Strategy(HasID):
                     self.engine.add_symbols(symbols, time_frame, max_length)
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
                     temp = []
-                    print(symbols)
+                    # TODO 加入opens等，这里字典的嵌套结构
                     temp.extend(["%s = __globals['data']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
                                  for field in ["open", "high", "low", "close", "time", "volume"]])
                     temp.extend(["%s = functools.partial(__globals['%s'],listener=%d)" % (
                         field, field, self.listeners[key].get_id())
                                  for field in ["buy", "short", "sell", "cover"]])
+                    temp.extend(["{0} = __globals['listener']['{1}'].{0}".format('get_current_bar', key)])
                     to_inject[key] = code_lines + temp + ["del(functools)", "del(__globals)"]
                 else:
                     # TODO自定义事件处理
                     pass
                 for para_name in paras.keys():
                     # TODO加入类型检测
-                    default = get_parameter_default(paras, para_name, lambda x: isinstance(x, (int, float)), None,
+                    default = get_parameter_default(paras, para_name, True, None,
                                                     pop=False)
                     if default is None:
-                        raise ValueError('参数%s未指定初始值')
+                        raise ValueError('参数%s未指定初始值' % para_name)
+                    elif not isinstance(default, (int, float)):
+                        raise ValueError('参数%s的值必须为整数或浮点数', para_name)
                     self.listeners[key].add_parameters(para_name, default)
-        injector = LocalsInjector(to_inject)
+        series_exporter = SeriesExporter(__file__)  # deal with the export syntax
+        # export the system functions in use
         ast_ = ast.parse(code)
+        sys_func_detector = SystemFunctionsDetector
+        sys_func_detector.visit(ast_)
+        sys_func_dir = self.user_dir.get_sys_func_dir()
+        for func, handler in sys_func_detector.get_funcs_in_use():
+            fullname = os.path.join(sys_func_dir, func)
+        # inject global vars into locals of handler
+        injector = LocalsInjector(to_inject)
         injector.visit(ast_)
-        ast_ = SeriesExporter(__file__).visit(ast_)
+        ast_ = series_exporter.visit(ast_)
         # TODO 解决行号的问题
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
         for key in to_inject.keys():

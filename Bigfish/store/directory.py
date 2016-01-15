@@ -74,6 +74,10 @@ class UserDirectory(object):
         func_dir_name = "functions"
         return self.__get_dir__(self.get_home(), func_dir_name)
 
+    @staticmethod
+    def get_sys_func_dir():
+        return os.path.join(os.path.dirname(__file__), '../../bigfish_functions')
+
     @DeprecationWarning
     def get_func_list(self):
         """
@@ -88,14 +92,11 @@ class UserDirectory(object):
         """
         return os.listdir(self.get_strategy_dir())
 
-    # @DeprecationWarning
-    @staticmethod
-    def get_sys_func_list():
+    def get_sys_func_list(self):
         """
         获取用户
         """
-        path = os.path.join(os.path.dirname(__file__), '../../bigfish_functions')
-        return list(set(os.listdir(path))-{'__init__.py', '__pycache__'})
+        return list(set(os.listdir(self.get_sys_func_list()))-{'__init__.py', '__pycache__'})
 
     def strategy_exists(self, strategy_name):
         """

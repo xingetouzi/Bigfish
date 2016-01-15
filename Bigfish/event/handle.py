@@ -16,7 +16,8 @@ class SymbolsListener(HasID):
 
     def __init__(self, engine, symbols, time_frame):
         self.__id = self.next_auto_inc()
-        self.__symbols = {item: n for n, item in enumerate(symbols)}
+        self.__symbols = symbols
+        self.__symbols_enum = {item: n for n, item in enumerate(symbols)}
         self.__count = len(symbols)
         self.__parameters = OrderedDict()
         self.__time_frame = time_frame
@@ -30,6 +31,17 @@ class SymbolsListener(HasID):
     @classmethod
     def get_by_id(cls, id_):
         return cls.__SymbolsListeners[id_]
+
+    @property
+    def symbols(self):
+        return self.__symbols
+
+    @property
+    def time_frame(self):
+        return self.__time_frame
+
+    def get_current_bar(self):
+        return self.__bar_num
 
     def get_id(self):
         return self.__id

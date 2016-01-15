@@ -51,7 +51,7 @@ class LigerUITranslator:
                 # TODO 此处应有更优方法
                 temp[name] = list(map(lambda x: level[x], label))
         else:
-            columns = [self._get_column_dict(dataframe.index.name)]
+            columns = [self._get_column_dict(temp.index.name)]
             temp[temp.index.name] = temp.index.to_series().astype(str)
         columns += list(map(lambda x: self._get_column_dict(x), dataframe.columns))
 

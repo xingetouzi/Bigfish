@@ -290,7 +290,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def trade_summary(self):
         columns = ['total', 'long_position', 'short_position']
         result = pd.DataFrame(index=columns)
-        result.index.name = ''
         trade = {}
         trade_grouped = {}
         trade['total'] = self.trade_info
@@ -322,8 +321,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
         result['最大盈利'] = list(map(lambda x: x.max(), profits))
         result['最大亏损'] = list(map(lambda x: x.min(), profits))
+        result = result.T
         result.index.name = 'index'
-        return result.T
+        return result
 
     @property
     @cache_calculator

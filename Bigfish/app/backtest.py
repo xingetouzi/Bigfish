@@ -152,7 +152,7 @@ if __name__ == '__main__':
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     user_dir = UserDirectory(user)
-    print(user_dir.get_sys_func_list())
+    #print(user_dir.get_sys_func_list())
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标

@@ -53,7 +53,7 @@ class Strategy(HasID):
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
                               context=self.__context, export=partial(export, self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
-                              liseners=self.listeners
+                              listeners=self.listeners
                               )
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)

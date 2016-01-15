@@ -76,7 +76,7 @@ class SymbolsListener(HasID):
 
     def stop(self):
         if self.__generator:
-            for symbol in self.__symbols.keys():
+            for symbol in self.__symbols_enum.keys():
                 self.__engine.unregister_event(EVENT_BAR_SYMBOL[symbol][self.__time_frame], self.__handler.send)
             self.__gene_istance.close()
             self.__handler.close()  # stop it

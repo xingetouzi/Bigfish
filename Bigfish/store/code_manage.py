@@ -122,6 +122,22 @@ def get_strategy(user, code_name):
     return None
 
 
+def get_sys_func(code_name):
+    """
+    根据代码名称,获取该段策略代码
+    :param code_name: 代码名称
+    :return 返回一个code对象
+    """
+    sys_func_path = os.path.join(get_sys_func_dir(), code_name + ".py")
+
+    if os.path.exists(sys_func_path):
+        file = open(sys_func_path, 'r')
+        code = Code(code_name, code_type=2, content=file.read())
+        file.close()
+        return code
+    return None
+
+
 def get_code_list(home):
     code_list = []
     with sqlite3.connect(__get_store_db__(home)) as conn:

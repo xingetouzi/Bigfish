@@ -130,13 +130,15 @@ def get_code_list(home):
             code_list.append(dict(id=row[0], name=row[1]))
     return code_list
 
-def get_func_list(user):
-    """
-    获取用户编写的函数列表
-    :param user
-    """
-    u_dir = UserDirectory(user)
-    return get_code_list(u_dir.get_sys_func_dir())
+
+def get_sys_func_dir():
+    return os.path.join(os.path.dirname(__file__), '..', '..', 'bigfish_functions')
+
+
+def get_sys_func_list():
+    return list(map(lambda x: x.replace('.py', ''),
+                    set(os.listdir(get_sys_func_dir())) - {'__init__.py', '__pycache__'}))
+
 
 def get_func_list(user):
     """

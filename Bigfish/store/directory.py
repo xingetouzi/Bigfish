@@ -88,18 +88,6 @@ class UserDirectory(object):
         """
         return os.listdir(self.get_strategy_dir())
 
-    @staticmethod
-    def get_sys_func_dir():
-        return os.path.join(os.path.dirname(__file__), '..', '..', 'bigfish_functions')
-
-    @staticmethod
-    def get_sys_func_list():
-        """
-        获取用户
-        """
-        return list(map(lambda x: x.replace('.py', ''),
-                        set(os.listdir(UserDirectory.get_sys_func_dir())) - {'__init__.py', '__pycache__'}))
-
     def strategy_exists(self, strategy_name):
         """
         判断用户策略是否存在

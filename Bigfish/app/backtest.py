@@ -87,11 +87,11 @@ class Backtesting:
         return self.__strategy.get_output()
 
     @staticmethod
-    def get_optimize_goals(self):
+    def get_optimize_goals():
         return {'net_profit': '净利'}
 
     @staticmethod
-    def get_optimize_types(self):
+    def get_optimize_types():
         return {'enumerate': '枚举', 'genetic': '遗传'}
 
     def get_parameters(self):
@@ -136,6 +136,7 @@ class Backtesting:
             set_paras(paras, index[i], **stack[i])
             if i == n - 1:
                 self.start(paras)
+
             else:
                 i += 1
 

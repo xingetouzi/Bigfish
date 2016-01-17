@@ -339,7 +339,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade = (
             lambda x: DataFrameExtended(x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
                 self.trade_info)
-        trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 0 else '出场(减仓)')
+        trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
         trade['time'] = trade['time'].map(pd.datetime.fromtimestamp).astype(str)
         return trade

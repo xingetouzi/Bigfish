@@ -43,7 +43,7 @@ def export(strategy, *args, maxlen=1000, series_id=None):
     return (storage.series_args[arg_name] for arg_name in args)
 
 
-class SeriesFunction():
+class SeriesFunction:
     def __init__(self, generator=None):
         self.__generator = generator
         self.__cache = {}

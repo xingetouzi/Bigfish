@@ -201,7 +201,7 @@ class Strategy(HasID):
                     elif not isinstance(default, (int, float)):
                         raise ValueError('参数%s的值必须为整数或浮点数', para_name)
                     self.listeners[key].add_parameters(para_name, default)
-        series_exporter = SeriesExporter(__file__)  # deal with the export syntax
+        series_exporter = SeriesExporter()  # deal with the export syntax
         # export the system functions in use
         for func, signal in funcs_in_use.items():
             fullname = os.path.join(sys_func_dir, func + ".py")
@@ -210,6 +210,7 @@ class Strategy(HasID):
                 f.close()
             function_injector = LocalsInjector({func: function_instructions[signal]})
             function_injector.visit(func_ast)
+            func_ast = series_exporter.visit(func_ast)
             # TODO 多个handle时需要对每个handle调用的系统函数建立独立的系统函数
             exec(compile(func_ast, "[SysFunctions:%s]" % func, mode="exec"), function_globals_, function_locals)
             self.system_functions[func] = SeriesFunction(function_locals[func])

@@ -113,9 +113,8 @@ class SeriesExporter(ast.NodeTransformer):
     id由语句在代码中的位置唯一决定
     """
 
-    def __init__(self, file):
-        self.__count = 0
-        self.__series_id = file
+    def __init__(self):
+        self.__series_id = 0
 
     def visit_Expr(self, node):
 
@@ -137,10 +136,10 @@ class SeriesExporter(ast.NodeTransformer):
                     return node
                 value.args[:] = [ast.copy_location(ast.Str(s=name), arg_node) for name, arg_node in
                                  zip(arg_names, value.args)]
-                self.__count += 1
+                self.__series_id += 1
                 value.keywords.append(ast.copy_location(
                         ast.keyword(arg='series_id',
-                                    value=ast.copy_location(ast.Str(s=self.__series_id + self.__count),
+                                    value=ast.copy_location(ast.Num(n=self.__series_id),
                                                             value.args[-1])),
                         value.args[-1]))
                 # TODO行号问题

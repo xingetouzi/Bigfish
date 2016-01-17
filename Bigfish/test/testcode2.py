@@ -19,7 +19,7 @@ def handle(slowlength=20, fastlength=10, lots=100):
 				min = price[index+1]
 		return(min)
 
-	print(barnum, ':', ATR())
+	print('%s:(h:%s,l:%s,ATR:%s)' % (barnum, high[0], low[0], ATR()))
 	if barnum > slowlength:
 		symbol = symbols[0]
 		position = marketposition.get(symbol,None)

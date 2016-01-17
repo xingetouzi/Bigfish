@@ -6,6 +6,7 @@ from collections import OrderedDict
 from functools import partial, wraps, reduce
 from weakref import WeakKeyDictionary, proxy
 
+import pytz
 import pandas as pd
 import numpy as np
 from pandas.tseries.offsets import MonthBegin
@@ -341,8 +342,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 self.trade_info)
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
-        trade['trade_time'] = trade['time'].map(pd.datetime.fromtimestamp).astype(str)
-        print(trade['trade_time'])
+        trade['trade_time'] = trade['time'].map(
+            partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str)
         del trade['time']
         return trade
         # quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)

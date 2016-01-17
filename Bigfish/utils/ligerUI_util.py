@@ -74,7 +74,7 @@ class ParametersParser(LigerUITranslator):
     _columns = ['strategy', 'parameter', 'default', 'start', 'end', 'step']
 
     def __init__(self, option={}):
-        super(LigerUITranslator, self).__init__(option)
+        super(ParametersParser, self).__init__(option)
         self.set_column('start', {'editor': {'type': 'int'}})
         self.set_column('end', {'editor': {'type': 'int'}})
         self.set_column('step', {'editor': {'type': 'int'}})

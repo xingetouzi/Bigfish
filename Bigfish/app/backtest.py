@@ -175,10 +175,10 @@ if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import LigerUITranslator
 
-    with open('../test/testcode2.py') as f:
+    with open('../test/testcode1.py') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['XAUUSD'], 'M30', '2015-01-01', '2015-12-01',
+    backtest = Backtesting(user, 'test', code, ['GBPUSD'], 'M30', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     translator = LigerUITranslator()

@@ -69,9 +69,9 @@ class LigerUITranslator:
 
 
 class ParametersParser(LigerUITranslator):
-    _display_dict = {'singal': '信号名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
+    _display_dict = {'signal': '信号名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
                      'step': '步长'}
-    _columns = ['strategy', 'parameter', 'default', 'start', 'end', 'step']
+    _columns = ['signal', 'parameter', 'default', 'start', 'end', 'step']
 
     def __init__(self, option={}):
         super(ParametersParser, self).__init__(dict(option, enabledEdit='true'))

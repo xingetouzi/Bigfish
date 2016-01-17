@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 import shutil
+import Bigfish.store.code_manage as cm
+from Bigfish.models import Code
 
 BASE_DIR_NAME = "Bigfish"
 
@@ -47,6 +49,8 @@ class UserDirectory(object):
             demo = os.path.join(home, "demo.py")
             if not os.path.exists(demo):
                 demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo.py')
+                # 复制示例代码
+                cm.save_code(self.__user__, Code('demo'))
                 shutil.copy(demo_, home)
             return home
         elif code.code_type == 1:

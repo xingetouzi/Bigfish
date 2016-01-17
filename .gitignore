@@ -7,3 +7,4 @@ kernprof.py
 *.pyd
 *.c
 /site_packages
+Bigfish/utils/algos.cpython-35m-darwin.so

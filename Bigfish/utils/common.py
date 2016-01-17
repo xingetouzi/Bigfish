@@ -35,6 +35,10 @@ _TIME_FRAME = {item: n for n, item in
 _TIME_FRAME_PERIOD = {'W1': 604800, 'D1': 86400, 'H1': 3600, 'M30': 1800, 'M15': 900, 'M10': 600, 'M5': 300, 'M1': 60}
 
 
+def time_frame_to_seconds(time_frame):
+    return _TIME_FRAME_PERIOD[time_frame]
+
+
 def check_time_frame(time_frame):
     if not time_frame in _TIME_FRAME.keys():
         raise (ValueError("不合法的time_frame值:%s" % time_frame))

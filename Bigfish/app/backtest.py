@@ -52,6 +52,7 @@ class DataGeneratorMongoDB(DataGenerator):
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
                  data_generator=DataGeneratorMongoDB):
+        self.__setting = {'symbols': symbols, 'time_frame': time_frame, 'start_time': start_time, 'end_time': end_time}
         self.__strategy_engine = StrategyEngine(backtesting=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
@@ -85,6 +86,9 @@ class Backtesting:
 
     def get_output(self):
         return self.__strategy.get_output()
+
+    def get_setting(self):
+        return self.__setting
 
     @staticmethod
     def get_optimize_goals():
@@ -136,6 +140,7 @@ class Backtesting:
             set_paras(paras, index[i], **stack[i])
             if i == n - 1:
                 self.start(paras)
+                performance_now = self.get_parameters()
 
             else:
                 i += 1

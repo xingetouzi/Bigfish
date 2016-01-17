@@ -7,6 +7,8 @@ Created on Wed Nov 25 21:09:47 2015
 """
 
 from Bigfish.models.common import deque
+from functools import wraps, partial
+from weakref import WeakKeyDictionary
 
 
 class SeriesStorage:
@@ -39,3 +41,32 @@ def export(strategy, *args, maxlen=1000, series_id=None):
     storage = strategy.series_storage[series_id]
     storage.append_all()
     return (storage.series_args[arg_name] for arg_name in args)
+
+
+class SeriesFunction():
+    def __init__(self, generator=None):
+        self.__generator = generator
+        self.__cache = {}
+
+    def __call__(self, *args, **kwargs):
+        # TODO 根据generator的签名信息确定唯一的key，现在kwargs中参数顺序不同也会对应两个key，然而只能是一个
+        key = (args, tuple(kwargs.keys()), tuple(kwargs.values()))
+        if key not in self.__cache:
+            self.__cache[key] = self.__generator(*args, **kwargs)
+        return self.__cache[key].__next__()
+
+
+# --------------------------------------------------------------------------------------
+def time_series(*args, **kwargs):
+    dict_ = dict.fromkeys(args, 0)
+    dict_.update(kwargs)
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args_, **kwargs_):
+            kwargs.update(dict_)
+            return func(*args_, **kwargs_)
+
+        return wrapper
+
+    return partial(decorator, dict_=dict_)

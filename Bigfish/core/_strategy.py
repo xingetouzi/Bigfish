@@ -9,7 +9,7 @@ from functools import partial
 # 自定义模块
 from Bigfish.utils.log import FilePrinter
 from Bigfish.store.directory import UserDirectory
-from Bigfish.utils.export import export
+from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SymbolsListener
 from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector
 from Bigfish.utils.common import check_time_frame
@@ -38,6 +38,7 @@ class Strategy(HasID):
         self.capital_base = 100000
         self.handlers = {}
         self.listeners = {}
+        self.system_functions = {}
         self.series_storage = {}
         self.__printer = FilePrinter(user, name)
         self.__context = {}
@@ -53,7 +54,7 @@ class Strategy(HasID):
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
                               context=self.__context, export=partial(export, self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
-                              listeners=self.listeners
+                              listeners=self.listeners, system_functions=self.system_functions,
                               )
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)
@@ -119,21 +120,36 @@ class Strategy(HasID):
                 else:
                     raise ValueError('全局变量%s未被赋值' % name)
 
-        locals_ = {}
-        globals_ = {}
-        exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
-        get_global_attrs(locals_)
-        set_global_attrs(globals_)
-        globals_.update(self.__locals_)
+        signal_locals_ = {}
+        function_locals = {}
+        signal_globals_ = {}  # 可动态管理的全策略命名空间
+        function_globals_ = {}  # 可动态管理的系统函数命名空间
+        # 获取并检查一些全局变量的设定
+        exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
+        get_global_attrs(signal_locals_)
+        set_global_attrs(signal_globals_)
+        set_global_attrs(function_globals_)
+        signal_globals_.update(self.__locals_)
+        function_globals_.update(self.__locals_)
         self.engine.set_capital_base(self.capital_base)
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
         check_time_frame(self.time_frame)
-        to_inject = {}
+        # get the system functions in use
+        ast_ = ast.parse(code)
+        sys_func_detector = SystemFunctionsDetector()
+        sys_func_detector.visit(ast_)
+        sys_func_dir = self.user_dir.get_sys_func_dir()
+        funcs_in_use = sys_func_detector.get_funcs_in_use()
+        additional_instructions = ["{0} = system_functions['{0}']".format(f) for f in funcs_in_use.keys()] + [
+            'del(system_functions)']
+        # get the instructions to inject to every handle
+        signal_instructions = {}
+        function_instructions = {}
         code_lines = ["import functools", "__globals = globals()"]
         code_lines.extend(["{0} = __globals['{0}']".format(key) for key in self.__locals_.keys()
                            if key not in ["sell", "buy", "short", "cover"]])
-        for key, value in locals_.items():
+        for key, value in signal_locals_.items():
             if inspect.isfunction(value):
                 if key == "init":
                     self.handlers['init'] = value
@@ -156,11 +172,14 @@ class Strategy(HasID):
                     # TODO 加入opens等，这里字典的嵌套结构
                     temp.extend(["%s = __globals['data']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
                                  for field in ["open", "high", "low", "close", "time", "volume"]])
-                    temp.extend(["%s = functools.partial(__globals['%s'],listener=%d)" % (
-                        field, field, self.listeners[key].get_id())
-                                 for field in ["buy", "short", "sell", "cover"]])
                     temp.extend(["{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key)])
-                    to_inject[key] = code_lines + temp + ["del(functools)", "del(__globals)"]
+                    function_instructions[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
+                        additional_instructions
+                    temp.extend(["{0} = functools.partial(__globals['{0}'],listener={1})".format(
+                        field, self.listeners[key].get_id())
+                                 for field in ["buy", "short", "sell", "cover"]])
+                    signal_instructions[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
+                        additional_instructions
                 else:
                     # TODO自定义事件处理
                     pass
@@ -175,25 +194,24 @@ class Strategy(HasID):
                     self.listeners[key].add_parameters(para_name, default)
         series_exporter = SeriesExporter(__file__)  # deal with the export syntax
         # export the system functions in use
-        ast_ = ast.parse(code)
-        sys_func_detector = SystemFunctionsDetector()
-        sys_func_detector.visit(ast_)
-        sys_func_dir = self.user_dir.get_sys_func_dir()
-        for func, handler in sys_func_detector.get_funcs_in_use().items():
-            fullname = os.path.join(sys_func_dir, func+'.py')
+        for func, signal in funcs_in_use.items():
+            fullname = os.path.join(sys_func_dir, func + ".py")
             with open(fullname) as f:
-                func_code = f.read()
-                print(fullname)
-                print(func_code)
+                func_ast = ast.parse(f.read())
                 f.close()
+            function_injector = LocalsInjector({func: function_instructions[signal]})
+            function_injector.visit(func_ast)
+            # TODO 多个handle时需要对每个handle调用的系统函数建立独立的系统函数
+            exec(compile(func_ast, "[SysFunctions:%s]" % func, mode="exec"), function_globals_, function_locals)
+            self.system_functions[func] = SeriesFunction(function_locals[func])
         # inject global vars into locals of handler
-        injector = LocalsInjector(to_inject)
-        injector.visit(ast_)
+        signal_injector = LocalsInjector(signal_instructions)
+        signal_injector.visit(ast_)
         ast_ = series_exporter.visit(ast_)
         # TODO 解决行号的问题
-        exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), globals_, locals_)
-        for key in to_inject.keys():
-            self.listeners[key].set_generator(locals_[key])
+        exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
+        for key in signal_instructions.keys():
+            self.listeners[key].set_generator(signal_locals_[key])
         print("<%s>信号添加成功" % self.name)
         if 'init' in self.handlers:
             self.handlers['init']()

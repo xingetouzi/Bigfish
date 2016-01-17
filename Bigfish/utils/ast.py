@@ -5,7 +5,8 @@ Created on Wed Nov  4 11:58:21 2015
 @author: BurdenBear
 """
 import ast
-import bigfish_functions
+import os
+from Bigfish.store.directory import UserDirectory
 
 
 class LocationPatcher(ast.NodeTransformer):
@@ -23,30 +24,38 @@ class LocationPatcher(ast.NodeTransformer):
 
 class FunctionsDetector(ast.NodeVisitor):
     def __init__(self, funcs):
-        self.__funcs = funcs
-        self.__funcs_in_use = {}
-        self.__handler = None
-
-    def visit_Name(self, node):
-        if node.id in self.__funcs and isinstance(node.ctx, ast.Load):
-            self.__funcs_in_use[node.id] = self.__handler
-        self.generic_visit(node)
+        self._funcs = funcs
+        self._funcs_in_use = {}
+        self._handler = None
 
     def visit_FunctionDef(self, node):
-        if self.__handler is None:
-            self.__handler = node.name
+        if self._handler is None:
+            self._handler = node.name
             self.generic_visit(node)
-            self.__handler = None
+            self._handler = None
         else:
             self.generic_visit(node)
 
     def get_funcs_in_use(self):
-        return self.__funcs_in_use
+        return self._funcs_in_use
 
 
 class SystemFunctionsDetector(FunctionsDetector):
     def __init__(self):
-        super(SystemFunctionsDetector, self).__init__(bigfish_functions.__all__)
+        super(SystemFunctionsDetector, self).__init__(UserDirectory.get_sys_func_list())
+        self._sys_func_dir = UserDirectory.get_sys_func_dir()
+
+    def visit_Name(self, node):
+        name = node.id
+        if name in self._funcs and isinstance(node.ctx, ast.Load) and name not in self._funcs_in_use:
+            if self._handler is not None:
+                self._funcs_in_use[name] = self._handler
+            else:
+                raise RuntimeError('系统函数只能在handler中调用')
+            with open(os.path.join(self._sys_func_dir, name + '.py'), 'r') as f:
+                self.visit(ast.parse(f.read()))
+                f.close()
+        self.generic_visit(node)
 
 
 class LocalsInjector(ast.NodeVisitor):
@@ -67,17 +76,35 @@ class LocalsInjector(ast.NodeVisitor):
         self.generic_visit(node)
         if (self.__depth == 2) and (node.name in self.__to_inject):
             code = '\n'.join(['from bigfish_functions import {0} as {0}'.format(func)
-                              for func in bigfish_functions.__all__]) + '\n'
+                              for func in UserDirectory.get_sys_func_list()]) + '\n'
             code += '\n'.join(self.__to_inject[node.name])
             location_patcher = LocationPatcher(node)
             code_ast = location_patcher.visit(ast.parse(code))
             barnum_ast = location_patcher.visit(ast.parse('barnum = get_current_bar()'))
+
             while_node = ast.copy_location(ast.While(
-                    body=barnum_ast.body + node.body + [
-                        LocationPatcher(node.body[-1]).visit(ast.Expr(value=ast.Yield(value=None)))],
+                    body=barnum_ast.body + node.body,
                     test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
+            self.return_to_yield(while_node)
             node.body = code_ast.body + [while_node]
             # print(ast.dump(node))
+
+    @staticmethod
+    def return_to_yield(node):
+        has_return = False
+
+        def transform(stmt):
+            nonlocal has_return
+            if isinstance(stmt, ast.Return):
+                has_return = True
+                return LocationPatcher(stmt).visit(ast.Expr(value=ast.Yield(value=stmt.value)))
+            else:
+                return stmt
+        patcher = LocationPatcher(node.body[-1])
+        default_yield = patcher.visit(ast.Expr(value=ast.Yield(value=None)))
+        node.body = list(map(transform, node.body))
+        if not has_return:
+            node.body.append(default_yield)
 
 
 class SeriesExporter(ast.NodeTransformer):

@@ -90,10 +90,11 @@ class StrategyPerformance(Performance):
                      'max_drawdown': '最大回撤'}
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
-
+    __optimize_info = {'optimize_info': '优化信息'}
     _dict.update(__factor_info)
     _dict.update(__trade_info)
     _dict.update(__strategy_info)
+    _dict.update(__optimize_info)
 
     @classmethod
     def get_factor_list(cls):
@@ -241,6 +242,11 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
+    def optimize_info(self):
+        return pd.concat([self.trade_summary['total'], self.strategy_summary['_']])
+
+    @property
+    @cache_calculator
     def strategy_summary(self):
         trade_summary = self.trade_summary
         net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
@@ -248,7 +254,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
         rate_of_return = self.__rate_of_return['R'].tail(1).sum()
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
-        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor/trade_days)
+        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor / trade_days)
         max_potential_losing = (self.__rate_of_return['R'].min() - 1) * 100
         max_losing = trade_summary['total']['最大亏损']
         result = pd.DataFrame({

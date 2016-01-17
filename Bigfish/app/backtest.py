@@ -107,10 +107,11 @@ class Backtesting:
             self.__strategy_parameters = temp
         return self.__strategy_parameters
 
-    def _enumerate_optimize(self, ranges, goal):
+    def _enumerate_optimize(self, ranges, goal, num):
         stack = []
         range_length = []
         paras = {}
+        result = []
 
         def get_range(range_info):
             return np.arange(range_info['start'], range_info['end'] + range_info['step'], range_info['step'])
@@ -140,23 +141,24 @@ class Backtesting:
             set_paras(paras, index[i], **stack[i])
             if i == n - 1:
                 self.start(paras)
-                performance_now = self.get_parameters()
-
+                performance = self.get_performance()
+                optimize_info = performance.optimize_info()
+                result.append(performance.optimize_info())
             else:
                 i += 1
 
     def _genetic_optimize(self, ranges, goal):
         pass
 
-    def optimize(self, ranges, type, goal):
+    def optimize(self, ranges, type, goal, num=50):
         if not ranges:
             return
         if type is None:
             type = "enumerate"
         if goal is None:
-            goal = "net_profit"
+            goal = "净利"
         optimizer = getattr(self, '_%s_optimize' % type)
-        optimizer(ranges, goal)
+        optimizer(ranges, goal, num)
 
 
 if __name__ == '__main__':
@@ -181,6 +183,7 @@ if __name__ == '__main__':
     print('trade_details:\n%s' % performance.trade_details)
     print(translator.dumps(performance.trade_details))
     print('strategy_summary:\n%s' % performance.strategy_summary)
+    print('optimize_info:\n%s' % performance.optimize_info)
     print('info_on_home_page\n%s' % performance.get_info_on_home_page())
     print(performance.get_factor_list())
     print(performance.yield_curve)
@@ -190,3 +193,5 @@ if __name__ == '__main__':
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('output:\n%s' % backtest.get_output())
+    paras = {'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1}}}
+    #backtest.optimize(paras)

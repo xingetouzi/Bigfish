@@ -69,7 +69,7 @@ class LigerUITranslator:
 
 
 class ParametersParser(LigerUITranslator):
-    _display_dict = {'strategy': '策略名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
+    _display_dict = {'singal': '信号名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
                      'step': '步长'}
     _columns = ['strategy', 'parameter', 'default', 'start', 'end', 'step']
 
@@ -88,8 +88,15 @@ class ParametersParser(LigerUITranslator):
                                      'start': value['default'], 'end': value['default'], 'step': 1})
         return dict(columns=columns, data=rows, **self._options)
 
-    def loads(self, data):
-        pass
+    @staticmethod
+    def loads(data):
+        result = {}
+        for item in data:
+            if item['signal'] not in result:
+                result[item['signal']] = {}
+            result[item['signal']][item['parameter']] = {'start': item['start'], 'end': item['end'],
+                                                         'step': item['step']}
+        return result
 
 
 if __name__ == '__main__':

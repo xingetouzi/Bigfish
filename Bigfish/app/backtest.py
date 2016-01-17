@@ -78,8 +78,8 @@ class Backtesting:
         if False:
             raise ValueError('please run the backtest first')
         return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
-                                                                       self.__strategy_engine.get_deals(),
-                                                                       self.__strategy_engine.get_positions())
+                                                 self.__strategy_engine.get_deals(),
+                                                 self.__strategy_engine.get_positions())
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()
@@ -143,6 +143,7 @@ class Backtesting:
                     break
                 index[i] = -1
                 i -= 1
+                index[i] += 1
             if finished:
                 break
             set_paras(parameters, index[i], **stack[i])
@@ -201,5 +202,6 @@ if __name__ == '__main__':
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('output:\n%s' % backtest.get_output())
-    paras = {'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1}}}
+    paras = {
+        'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1}, 'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
     print('optimize\n%s' % backtest.optimize(paras, None, None))

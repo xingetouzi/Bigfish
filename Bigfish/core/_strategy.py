@@ -17,6 +17,10 @@ from Bigfish.models.common import HasID
 
 
 ########################################################################
+def set_parameters(paras):
+    pass
+
+
 class Strategy(HasID):
     ATTR_MAP = dict(timeframe="time_frame", base="capital_base", symbols="symbols", start="start_time", end="end_time",
                     maxlen="max_length")
@@ -51,7 +55,7 @@ class Strategy(HasID):
                               buy=partial(self.engine.buy, strategy=self.__id),
                               cover=partial(self.engine.cover, strategy=self.__id),
                               marketposition=self.engine.get_current_positions(),
-                              currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data(),
+                              currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data,
                               context=self.__context, export=partial(export, self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
                               listeners=self.listeners, system_functions=self.system_functions,
@@ -69,6 +73,11 @@ class Strategy(HasID):
     # ----------------------------------------------------------------------
     def get_parameters(self):
         return {key: value.get_parameters() for key, value in self.listeners.items()}
+
+    # ----------------------------------------------------------------------
+    def set_parameters(self, parameters):
+        for handle, paras in parameters.items():
+            self.listeners[handle].set_parameters(**paras)
 
     # ----------------------------------------------------------------------
     def get_id(self):
@@ -170,16 +179,16 @@ class Strategy(HasID):
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
                     temp = []
                     # TODO 加入opens等，这里字典的嵌套结构
-                    temp.extend(["%s = __globals['data']['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
+                    temp.extend(["%s = __globals['data']()['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
                                  for field in ["open", "high", "low", "close", "time", "volume"]])
                     temp.extend(["{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key)])
                     function_instructions[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
-                        additional_instructions
+                                                 additional_instructions
                     temp.extend(["{0} = functools.partial(__globals['{0}'],listener={1})".format(
-                        field, self.listeners[key].get_id())
+                            field, self.listeners[key].get_id())
                                  for field in ["buy", "short", "sell", "cover"]])
                     signal_instructions[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
-                        additional_instructions
+                                               additional_instructions
                 else:
                     # TODO自定义事件处理
                     pass

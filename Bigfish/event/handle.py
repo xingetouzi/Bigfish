@@ -22,9 +22,9 @@ class SymbolsListener(HasID):
         self.__parameters = OrderedDict()
         self.__time_frame = time_frame
         self.__engine = engine
+        self.__handler = None
         self.__generator = None
         self.__gene_istance = None
-        self.__handler = self.__handle()
         self.__SymbolsListeners[self.__id] = self
         self.__bar_num = 0  # 暂时使用在LocalsInjector中改写的方式
 
@@ -68,6 +68,7 @@ class SymbolsListener(HasID):
 
     def start(self):
         self.__bar_num = 0
+        self.__handler = self.__handle()
         if self.__generator:
             self.__gene_istance = self.__generator(**self.__parameters)
             for symbol in self.__symbols_enum.keys():

@@ -266,7 +266,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '最大回撤': self.max_drawdown.total,
             '策略最大潜在亏损': max_potential_losing,
             '平仓交易最大亏损': max_losing,
-            '最大潜在亏损收益比': net_profit / max_potential_losing,
+            '最大潜在亏损收益比': net_profit / -max_potential_losing,
         }, index=['_']).T
         result.index.name = 'index'
         return result

@@ -13,6 +13,7 @@ from Bigfish.utils.common import get_datetime
 import Bigfish.data.forex_data as fx
 import tushare as ts
 import numpy as np
+import pandas as pd
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -59,11 +60,15 @@ class Backtesting:
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = data_generator(self.__strategy_engine)
         self.__performance_manager = None
+
+    def initialize(self):
         self.__strategy_engine.initialize()
+        self.__performance_manager = None
 
     def start(self, paras=None):
         if paras is not None:
             self.__strategy.set_parameters(paras)
+        self.initialize()
         self.__strategy_engine.start()
         self.__data_generator.start()
         self.__strategy_engine.wait()
@@ -72,7 +77,7 @@ class Backtesting:
         # TODO 加入回测是否运行的判断
         if False:
             raise ValueError('please run the backtest first')
-        self.__performance_manager = StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
+        return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
                                                                        self.__strategy_engine.get_deals(),
                                                                        self.__strategy_engine.get_positions())
 
@@ -81,7 +86,7 @@ class Backtesting:
 
     def get_performance(self):
         if self.__performance_manager is None:
-            self.__get_performance_manager()
+            self.__performance_manager = self.__get_performance_manager()
         return self.__performance_manager.get_performance()
 
     def get_output(self):
@@ -110,27 +115,27 @@ class Backtesting:
     def _enumerate_optimize(self, ranges, goal, num):
         stack = []
         range_length = []
-        paras = {}
+        parameters = {}
         result = []
 
         def get_range(range_info):
             return np.arange(range_info['start'], range_info['end'] + range_info['step'], range_info['step'])
 
         for handle, paras in ranges.items():
-            paras[handle] = {}
-            for para, value in ranges.items():
+            parameters[handle] = {}
+            for para, value in paras.items():
                 range_value = get_range(value)
                 stack.append({'handle': handle, 'para': para, 'range': range_value})
                 range_length.append(len(range_value))
 
         def set_paras(paras, index, handle=None, para=None, range=None):
-            paras[handle][para] = range[index]
+            parameters[handle][para] = range[index]
 
         n = len(stack)
         index = [-1] * n
         i = 0
         finished = False
-        while not finished:
+        while 1:
             index[i] += 1
             while index[i] >= range_length[i]:
                 if i == 0:
@@ -138,14 +143,17 @@ class Backtesting:
                     break
                 index[i] = -1
                 i -= 1
-            set_paras(paras, index[i], **stack[i])
+            if finished:
+                break
+            set_paras(parameters, index[i], **stack[i])
             if i == n - 1:
-                self.start(paras)
-                performance = self.get_performance()
-                optimize_info = performance.optimize_info()
-                result.append(performance.optimize_info())
+                self.start(parameters)
+                performance = self.__get_performance_manager().get_performance()
+                optimize_info = performance.optimize_info
+                result.append(optimize_info)
             else:
                 i += 1
+        return pd.DataFrame(result).sort_values(goal, ascending=False).iloc[:num]
 
     def _genetic_optimize(self, ranges, goal):
         pass
@@ -158,7 +166,7 @@ class Backtesting:
         if goal is None:
             goal = "净利"
         optimizer = getattr(self, '_%s_optimize' % type)
-        optimizer(ranges, goal, num)
+        return optimizer(ranges, goal, num)
 
 
 if __name__ == '__main__':
@@ -194,4 +202,4 @@ if __name__ == '__main__':
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('output:\n%s' % backtest.get_output())
     paras = {'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1}}}
-    #backtest.optimize(paras)
+    print('optimize\n%s' % backtest.optimize(paras, None, None))

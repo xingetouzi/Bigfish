@@ -156,10 +156,13 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def initialize(self):
         # TODO数据结构还需修改
+        self.__deals = {}
+        self.__positions = {}
+        self.__data = {}
         for (symbol, time_frame), maxlen in self.__symbols.items():
-            if not symbol in self.__data:
+            if symbol not in self.__data:
                 self.__data[symbol] = {}
-            if not time_frame in self.__data[symbol]:
+            if time_frame not in self.__data[symbol]:
                 self.__data[symbol][time_frame] = {}
             if maxlen == 0:
                 maxlen = self.CACHE_MAXLEN

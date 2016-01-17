@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 def ATR(length=10):
     export(atr)
     if barnum == 1:

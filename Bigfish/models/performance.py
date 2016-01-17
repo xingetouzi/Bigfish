@@ -14,7 +14,7 @@ from Bigfish.models.trade import *
 from Bigfish.utils.pandas_util import rolling_apply_2d
 
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-pd.set_option('display.precision', 12)
+pd.set_option('display.precision', 6)
 pd.set_option('display.width', 200)
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 # math utils
@@ -98,15 +98,15 @@ class StrategyPerformance(Performance):
 
     @classmethod
     def get_factor_list(cls):
-        return list(cls.__factor_info.items())
+        return cls.__factor_info
 
     @classmethod
     def get_trade_info_list(cls):
-        return list(cls.__trade_info.items())
+        return cls.__trade_info
 
     @classmethod
     def get_strategy_info_list(cls):
-        return list(cls.__strategy_info.items())
+        return cls.__strategy_info
 
     def __init__(self, manager):
         super(StrategyPerformance, self).__init__(manager)
@@ -139,6 +139,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
                                             index=positions.keys(),
                                             columns=Position.get_fields())  # positions in dataframe format
+        self.__deals_raw.sort_values('time', kind='mergesort', inplace=True)
+        self.__positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
         self.__annual_factor = 250  # 年化因子
         self.__capital_base = capital_base
         self.__period = period
@@ -150,8 +152,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def __get_rate_of_return_raw(self):
         interval = self.__period // self.__num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
-        self.__deals_raw.sort_values('time', inplace=True)
-        self.__positions_raw.sort_values('time_update', inplace=True)
         self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
         self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)

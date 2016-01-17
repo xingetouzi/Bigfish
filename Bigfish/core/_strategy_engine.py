@@ -287,7 +287,7 @@ class StrategyEngine(object):
     def __send_order_to_broker(self, order):
         if self.__backtesting:
             time_frame = SymbolsListener.get_by_id(order.handle).get_time_frame()
-            time_ = self.__data[order.symbol][time_frame]["time"][0]
+            time_ = self.__data[order.symbol][time_frame]["close_time"][0]
             order.time_done = int(time_)
             order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
             order.volume_current = order.volume_initial

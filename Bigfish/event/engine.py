@@ -2,13 +2,14 @@
 
 # 系统模块
 from queue import Queue, Empty
-from functools import wraps,partial
+from functools import wraps, partial
 from threading import Thread
 import sys
 
 # 自定义模块
 from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event
 from Bigfish.utils.error import SlaverThreadError
+
 
 ########################################################################
 class EventEngine:
@@ -48,12 +49,12 @@ class EventEngine:
         
     """
 
-    #----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def __init__(self):
         """初始化事件引擎"""
         # 事件队列
         self.__queue = Queue()
-        
+
         # 事件引擎开关
         self.__active = False
         self.__finished = False
@@ -62,20 +63,21 @@ class EventEngine:
         self.__exc_value = None
         self.__exc_traceback = None
         # 计时器，用于触发计时器事件
-        #self.__timer = QTimer()
-        #self.__timer.timeout.connect(self.__onTimer)
-        
+        # self.__timer = QTimer()
+        # self.__timer.timeout.connect(self.__onTimer)
+
         # 这里的__handlers是一个字典，用来保存对应的事件调用关系
         # 其中每个键对应的值是一个列表，列表中保存了对该事件进行监听的函数功能
         self.__handlers = {}
         # 注册异步事件
-        self.register(EVENT_ASYNC,lambda event:event.content['func']())
-    #----------------------------------------------------------------------
+        self.register(EVENT_ASYNC, lambda event: event.content['func']())
+
+    # ----------------------------------------------------------------------
     def __run(self):
         """引擎运行"""
         while self.__active == True:
             try:
-                event = self.__queue.get(block = True, timeout = 0.5)  # 获取事件的阻塞时间设为0.5秒
+                event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
                 self.__process(event)
             except Empty:
                 if self.__finished:
@@ -83,8 +85,8 @@ class EventEngine:
             except Exception:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 self.__active = False
-            
-    #----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------
     def __process(self, event):
         """处理事件"""
         # 检查是否存在对该事件进行监听的处理函数
@@ -92,38 +94,40 @@ class EventEngine:
             # 若存在，则按顺序将事件传递给处理函数执行
             for handler in self.__handlers[event.type_]:
                 handler(event)
-               
-    #----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------
     def __onTimer(self):
         """向事件队列中存入计时器事件"""
         # 创建计时器事件
         event = Event(type_=EVENT_TIMER)
-        
-        # 向队列中存入计时器事件
-        self.put(event)    
 
-    #----------------------------------------------------------------------
+        # 向队列中存入计时器事件
+        self.put(event)
+
+        # ----------------------------------------------------------------------
+
     def start(self):
         """引擎启动"""
         # 将引擎设为启动
         self.__active = True
         self.__finished = False
         # 启动事件处理线程
-        self.__thread = Thread(target = self.__run)
+        self.__thread = Thread(target=self.__run)
         self.__thread.start()
         # 启动计时器，计时器事件间隔默认设定为1秒
-        #self.__timer.start(1000)
-    
-    #----------------------------------------------------------------------
+        # self.__timer.start(1000)
+
+    # ----------------------------------------------------------------------
     def stop(self):
         """停止引擎"""
         # 将引擎设为停止
         if self.__active == True:
             self.__active = False
-            self.__thread.join() # 等待事件处理线程退出
-        if self.__thread:           
+            self.__thread.join()  # 等待事件处理线程退出
+        if self.__thread:
             self.__thread = None
-    #-----------------------------------------------------------------------
+
+    # -----------------------------------------------------------------------
     def wait(self):
         """等待队列中所有事件被处理完成"""
         if self.__active == True:
@@ -133,7 +137,8 @@ class EventEngine:
             self.stop()
         else:
             self.throw_error()
-    #----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------
     def register(self, type_, handler):
         """注册事件处理函数监听"""
         # 尝试获取该事件类型对应的处理函数列表，若无则创建
@@ -146,14 +151,14 @@ class EventEngine:
         # 若要注册的处理器不在该事件的处理器列表中，则注册该事件
         if handler not in handlerList:
             handlerList.append(handler)
-            
-    #----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------
     def unregister(self, type_, handler):
         """注销事件处理函数监听"""
         # 尝试获取该事件类型对应的处理函数列表，若无则忽略该次注销请求
         try:
             handlerList = self.__handlers[type_]
-            
+
             # 如果该函数存在于列表中，则移除
             if handler in handlerList:
                 handlerList.remove(handler)
@@ -162,28 +167,33 @@ class EventEngine:
             if not handlerList:
                 del self.__handlers[type_]
         except KeyError:
-            pass             
+            pass
 
-    #----------------------------------------------------------------------
+            # ----------------------------------------------------------------------
+
     def put(self, event):
         """向事件队列中存入事件"""
         self.__queue.put(event)
-        
-    #----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------
     def throw_error(self):
         if self.__exc_type:
-            raise (SlaverThreadError(self.__exc_type,self.__exc_value,self.__exc_traceback))
-        
+            raise (SlaverThreadError(self.__exc_type, self.__exc_value, self.__exc_traceback))
+
+
 ########################################################################
 def async_handle(engine, callback):
     def wrap_func(func):
-        @wraps(func)        
+        @wraps(func)
         def wrapper(*args, **kwargs):
             def target(*args, **kwargs):
-                result = func(*args,**kwargs)
-                event = Event(EVENT_ASYNC,{'func':partial(callback,*result[0],**result[1])})
+                result = func(*args, **kwargs)
+                event = Event(EVENT_ASYNC, {'func': partial(callback, *result[0], **result[1])})
                 engine.put(event)
+
             thread = Thread(target=target, args=args, kwargs=kwargs)
             thread.start()
+
         return wrapper
-    return(wrap_func)
+
+    return wrap_func

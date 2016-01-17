@@ -7,13 +7,13 @@ import pandas as pd
 
 
 class LigerUITranslator:
-    __display_dict = dict(
+    _display_dict = dict(
             reduce(lambda x, y: dict(x, **{t[0]: t[1] for t in y.values()}),
                    (lambda x: list(x.values()))(StrategyPerformanceManagerOffline._column_names),
                    dict()),
             time='起始时间',
             **StrategyPerformance._dict)
-    __display_dict.update(
+    _display_dict.update(
             {'index': '', 'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
              'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
              'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
@@ -21,25 +21,25 @@ class LigerUITranslator:
              'max_losing': '最大亏损', '_': ''})
 
     def __init__(self, options={}):
-        self.__options = options
-        self.__column_options = {}
-        self.__precision = 6
+        self._options = options
+        self._column_options = {}
+        self._precision = 6
 
     def _get_column_dict(self, name):
-        return dict(display=self.__display_dict.get(name, name), name=name, **self.__column_options.get(name, {}))
+        return dict(display=self._display_dict.get(name, name), name=name, **self._column_options.get(name, {}))
 
     def set_options(self, options):
-        self.__options = options
+        self._options = options
 
     def get_options(self):
-        return self.__options.copy()
+        return self._options.copy()
 
     def set_column(self, column, options):
-        self.__column_options[column] = options
+        self._column_options[column] = options
 
     def set_precision(self, n):
         assert isinstance(n, int) and n >= 0
-        self.__precision = n
+        self._precision = n
 
     def dumps(self, dataframe):
         temp = dataframe.fillna('/')
@@ -61,11 +61,35 @@ class LigerUITranslator:
                     if values.is_integer():
                         dict_[key] = int(values)
                     else:
-                        dict_[key] = round(values, self.__precision)
+                        dict_[key] = round(values, self._precision)
             return dict_
 
         data = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
-        return dict(columns=columns, data=data, **self.__options)
+        return dict(columns=columns, data=data, **self._options)
+
+
+class ParametersParser(LigerUITranslator):
+    _display_dict = {'strategy': '策略名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
+                     'step': '步长'}
+    _columns = ['strategy', 'parameter', 'default', 'start', 'end', 'step']
+
+    def __init__(self, option={}):
+        super(LigerUITranslator, self).__init__(option)
+        self.set_column('start', {'editor': {'type': 'int'}})
+        self.set_column('end', {'editor': {'type': 'int'}})
+        self.set_column('step', {'editor': {'type': 'int'}})
+
+    def dumps(self, data):
+        columns = [self._get_column_dict(key) for key in self._display_dict.keys()]
+        data = {'Rows': []}
+        for strategy, paras in data.items():
+            for para, value in paras.items():
+                data['Rows'].append({'strategy': strategy, 'parameter': para, 'default': value['default'],
+                                     'start': value['default'], 'end': value['default'], 'step': 1})
+        return dict(columns=columns, data=data, **self._options)
+
+    def loads(self, data):
+        pass
 
 
 if __name__ == '__main__':

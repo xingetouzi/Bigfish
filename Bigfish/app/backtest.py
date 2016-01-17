@@ -86,6 +86,14 @@ class Backtesting:
     def get_output(self):
         return self.__strategy.get_output()
 
+    @staticmethod
+    def get_optimize_goals(self):
+        return {'net_profit': '净利'}
+
+    @staticmethod
+    def get_optimize_types(self):
+        return {'enumerate': '枚举', 'genetic': '遗传'}
+
     def get_parameters(self):
         if self.__strategy_parameters is None:
             temp = self.__strategy.get_parameters()
@@ -95,7 +103,7 @@ class Backtesting:
             self.__strategy_parameters = temp
         return self.__strategy_parameters
 
-    def _enumerate_optimize(self, ranges):
+    def _enumerate_optimize(self, ranges, goal):
         stack = []
         range_length = []
         paras = {}
@@ -131,14 +139,18 @@ class Backtesting:
             else:
                 i += 1
 
-    def _genetic_optimize(self, ranges):
+    def _genetic_optimize(self, ranges, goal):
         pass
 
-    def optimize(self, ranges, type):
+    def optimize(self, ranges, type, goal):
         if not ranges:
             return
+        if type is None:
+            type = "enumerate"
+        if goal is None:
+            goal = "net_profit"
         optimizer = getattr(self, '_%s_optimize' % type)
-        optimizer(ranges)
+        optimizer(ranges, goal)
 
 
 if __name__ == '__main__':

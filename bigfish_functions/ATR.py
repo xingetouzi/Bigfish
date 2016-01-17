@@ -1,10 +1,9 @@
-from .true_range import true_range
-
-
-def ATR(high, low, length=10):
-    barnum = len(high)
-    atr = 0
-    for i in range(min(length, barnum)-1, 0, -1):
-        atr += true_range(high, low, i)
-    atr /= length
-    return atr
+def ATR(length=10):
+    if barnum == 1:
+        atr = 0
+    if barnum <= length:
+        for i in range(barnum - 1, -1, -1):
+            atr += true_range(i)
+    else:
+        atr = atr + true_range(0) - true_range(length - 1)
+    return atr / length

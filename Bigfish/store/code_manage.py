@@ -6,6 +6,7 @@ from Bigfish.models import Code
 from Bigfish.store import UserDirectory
 import os
 import sqlite3
+import shutil
 
 
 def save_code(user, code):
@@ -140,6 +141,15 @@ def get_sys_func(code_name):
 
 def get_code_list(home):
     code_list = []
+
+    demo = os.path.join(home, "demo.py")
+    if not os.path.exists(demo):
+        demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo.py')
+
+        # 复制代码到用户目录
+        __execute_sql__(home, "insert into code_info (name) values (?)", 'demo.py')
+        shutil.copy(demo_, home)
+
     with sqlite3.connect(__get_store_db__(home)) as conn:
         cursor = conn.execute("select id, name from code_info")
         for row in cursor.fetchall():

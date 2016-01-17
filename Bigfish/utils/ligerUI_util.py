@@ -81,12 +81,12 @@ class ParametersParser(LigerUITranslator):
 
     def dumps(self, data):
         columns = [self._get_column_dict(key) for key in self._display_dict.keys()]
-        data = {'Rows': []}
+        rows = {'Rows': []}
         for strategy, paras in data.items():
             for para, value in paras.items():
                 data['Rows'].append({'strategy': strategy, 'parameter': para, 'default': value['default'],
                                      'start': value['default'], 'end': value['default'], 'step': 1})
-        return dict(columns=columns, data=data, **self._options)
+        return dict(columns=columns, data=rows, **self._options)
 
     def loads(self, data):
         pass

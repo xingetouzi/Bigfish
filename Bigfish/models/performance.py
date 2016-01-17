@@ -341,7 +341,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 self.trade_info)
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
-        trade['time'] = trade['time'].map(pd.datetime.fromtimestamp).astype(str)
+        trade['trade_time'] = trade['time'].map(pd.datetime.fromtimestamp).astype(str)
+        print(trade['trade_time'])
+        del trade['time']
         return trade
         # quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
         # print(quotes)

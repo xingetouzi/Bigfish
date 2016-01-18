@@ -29,8 +29,8 @@ class LigerUITranslator:
 
     def _get_column_dict(self, name):
         display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, weight=max(12 * len(display), 120),
-                    minWeight=120, **self._column_options.get(name, {}))
+        return dict(display=display, name=name,
+                    minWidth=max(12 * len(display), 120), **self._column_options.get(name, {}))
 
     def set_options(self, options):
         self._options = options

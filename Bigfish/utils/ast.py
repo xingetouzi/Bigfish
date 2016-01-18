@@ -100,6 +100,7 @@ class LocalsInjector(ast.NodeVisitor):
                 return LocationPatcher(stmt).visit(ast.Expr(value=ast.Yield(value=stmt.value)))
             else:
                 return stmt
+
         patcher = LocationPatcher(node.body[-1])
         default_yield = patcher.visit(ast.Expr(value=ast.Yield(value=None)))
         node.body = list(map(transform, node.body))
@@ -137,11 +138,10 @@ class SeriesExporter(ast.NodeTransformer):
                 value.args[:] = [ast.copy_location(ast.Str(s=name), arg_node) for name, arg_node in
                                  zip(arg_names, value.args)]
                 self.__series_id += 1
-                value.keywords.append(ast.copy_location(
-                        ast.keyword(arg='series_id',
-                                    value=ast.copy_location(ast.Num(n=self.__series_id),
-                                                            value.args[-1])),
-                        value.args[-1]))
+                patcher = LocationPatcher(value.args[-1])
+                value.keywords.append(patcher.visit(ast.keyword(arg='series_id', value=ast.Num(n=self.__series_id))))
+                value.keywords.append(patcher.visit(
+                    ast.keyword(arg='barnum', value=ast.Name(id='barnum', ctx=ast.Load()))))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
                 new_node.targets.append(ast.copy_location(

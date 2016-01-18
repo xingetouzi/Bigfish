@@ -14,9 +14,13 @@ from weakref import WeakKeyDictionary
 class SeriesStorage:
     def __init__(self, series_id, maxlen, *args):
         self.__id = series_id
+        self.__bar_now = 0
         self.series_args = {arg_name: deque([], maxlen) for arg_name in args}
 
-    def append_all(self):
+    def append_all(self, barnum):
+        if barnum == self.__bar_now:
+            return
+        self.__bar_now = barnum
         for series in self.series_args.values():
             if series:
                 series.appendleft(series[0])
@@ -28,7 +32,7 @@ class SeriesStorage:
 
 
 # TODO export只能支持写在策略主文件中，还是改用闭包的方案吧
-def export(strategy, *args, maxlen=1000, series_id=None):
+def export(strategy, *args, maxlen=1000, series_id=None, barnum=None):
     """访问序列变量，将其放入当前的堆栈
     :param maxlen: 回溯的最大长度（即缓存的最大长度）
     :param series_id: 对应的SeriesStorage的id，根据源码所在位置唯一确定
@@ -39,7 +43,7 @@ def export(strategy, *args, maxlen=1000, series_id=None):
     if series_id not in strategy.series_storage:
         strategy.series_storage[series_id] = SeriesStorage(series_id, maxlen, *args)
     storage = strategy.series_storage[series_id]
-    storage.append_all()
+    storage.append_all(barnum)
     return (storage.series_args[arg_name] for arg_name in args)
 
 

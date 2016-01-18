@@ -58,6 +58,8 @@ class LigerUITranslator:
             else:
                 columns = [self._get_column_dict(temp.index.name)]
                 temp[temp.index.name] = temp.index.to_series().astype(str)
+        else:
+            columns = []
         columns += list(map(lambda x: self._get_column_dict(x), dataframe.columns))
 
         def deal_with_float(dict_):

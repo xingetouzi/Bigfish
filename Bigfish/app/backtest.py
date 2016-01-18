@@ -149,12 +149,15 @@ class Backtesting:
             set_paras(parameters, index[i], **stack[i])
             if i == n - 1:
                 self.start(parameters)
+
                 performance = self.__get_performance_manager().get_performance()
                 optimize_info = performance.optimize_info
                 result.append(optimize_info)
             else:
                 i += 1
-        return pd.DataFrame(result).sort_values(goal, ascending=False).iloc[:num]
+        result = pd.DataFrame(result).sort_values(goal, ascending=False)
+        result.index.name = '_'
+        return result.iloc[:num]
 
     def _genetic_optimize(self, ranges, goal):
         pass
@@ -175,7 +178,7 @@ if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import LigerUITranslator
 
-    with open('../test/testcode1.py') as f:
+    with open('../test/testcode2.py') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['GBPUSD'], 'M30', '2015-01-01', '2016-01-01',
@@ -203,5 +206,7 @@ if __name__ == '__main__':
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('output:\n%s' % backtest.get_output())
     paras = {
-        'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1}, 'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
-    print('optimize\n%s' % backtest.optimize(paras, None, None))
+        'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1},
+                   'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
+    optimize = backtest.optimize(paras, None, None)
+    print('optimize\n%s' % optimize)

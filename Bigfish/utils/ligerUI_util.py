@@ -31,7 +31,7 @@ class LigerUITranslator:
         if name is None:
             name = ""
         display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, weight=12 * len(display),
+        return dict(display=display, name=name, weight=max(12 * len(display), 60),
                     minWeight=60, **self._column_options.get(name, {}))
 
     def set_options(self, options):

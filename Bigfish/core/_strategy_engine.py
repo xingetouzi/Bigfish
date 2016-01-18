@@ -160,6 +160,8 @@ class StrategyEngine(object):
         self.__deals = {}
         self.__positions = {}
         self.__data = {}
+        Deal.set_auto_inc(0)
+        Position.set_auto_inc(0)
         for (symbol, time_frame), maxlen in self.__symbols.items():
             if symbol not in self.__data:
                 self.__data[symbol] = {}

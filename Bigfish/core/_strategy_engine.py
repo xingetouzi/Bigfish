@@ -156,10 +156,11 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def initialize(self):
-        # TODO数据结构还需修改
+        # TODO 数据结构还需修改
         self.__deals = {}
         self.__positions = {}
         self.__data = {}
+        # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
         Deal.set_auto_inc(0)
         Position.set_auto_inc(0)
         for (symbol, time_frame), maxlen in self.__symbols.items():

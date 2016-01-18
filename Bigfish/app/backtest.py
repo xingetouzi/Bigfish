@@ -117,6 +117,7 @@ class Backtesting:
         range_length = []
         parameters = {}
         result = []
+        head_index = []
 
         def get_range(range_info):
             return np.arange(range_info['start'], range_info['end'] + range_info['step'], range_info['step'])
@@ -126,13 +127,16 @@ class Backtesting:
             for para, value in paras.items():
                 range_value = get_range(value)
                 stack.append({'handle': handle, 'para': para, 'range': range_value})
+                head_index.append('%s(%s)' % (para, handle))
                 range_length.append(len(range_value))
-
-        def set_paras(paras, index, handle=None, para=None, range=None):
-            parameters[handle][para] = range[index]
-
         n = len(stack)
         index = [-1] * n
+        head = [0] * n
+
+        def set_paras(n, handle=None, para=None, range=None):
+            nonlocal parameters, head, index
+            parameters[handle][para] = head[n] = range[index[n]]
+
         i = 0
         finished = False
         while 1:
@@ -146,12 +150,12 @@ class Backtesting:
                 index[i] += 1
             if finished:
                 break
-            set_paras(parameters, index[i], **stack[i])
+            set_paras(i, **stack[i])
             if i == n - 1:
                 self.start(parameters)
-
+                head = pd.Series(head, index=head_index)
                 performance = self.__get_performance_manager().get_performance()
-                optimize_info = performance.optimize_info
+                optimize_info = pd.concat([head, performance.optimize_info])
                 result.append(optimize_info)
             else:
                 i += 1

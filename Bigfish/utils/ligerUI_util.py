@@ -28,11 +28,9 @@ class LigerUITranslator:
         self._precision = 6
 
     def _get_column_dict(self, name):
-        if name is None:
-            name = ""
         display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, weight=max(12 * len(display), 60),
-                    minWeight=60, **self._column_options.get(name, {}))
+        return dict(display=display, name=name, weight=max(12 * len(display), 120),
+                    minWeight=120, **self._column_options.get(name, {}))
 
     def set_options(self, options):
         self._options = options
@@ -47,18 +45,19 @@ class LigerUITranslator:
         assert isinstance(n, int) and n >= 0
         self._precision = n
 
-    def dumps(self, dataframe):
+    def dumps(self, dataframe, display_index=True):
         temp = dataframe.fillna('/')
-        index = temp.index
-        if isinstance(index, pd.MultiIndex):
-            columns = []
-            for name, label, level in zip(index.names, index.labels, index.levels):
-                columns.append(self._get_column_dict(name))
-                # TODO 此处应有更优方法
-                temp[name] = list(map(lambda x: level[x], label))
-        else:
-            columns = [self._get_column_dict(temp.index.name)]
-            temp[temp.index.name] = temp.index.to_series().astype(str)
+        if display_index:
+            index = temp.index
+            if isinstance(index, pd.MultiIndex):
+                columns = []
+                for name, label, level in zip(index.names, index.labels, index.levels):
+                    columns.append(self._get_column_dict(name))
+                    # TODO 此处应有更优方法
+                    temp[name] = list(map(lambda x: level[x], label))
+            else:
+                columns = [self._get_column_dict(temp.index.name)]
+                temp[temp.index.name] = temp.index.to_series().astype(str)
         columns += list(map(lambda x: self._get_column_dict(x), dataframe.columns))
 
         def deal_with_float(dict_):

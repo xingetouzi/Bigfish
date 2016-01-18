@@ -28,7 +28,11 @@ class LigerUITranslator:
         self._precision = 6
 
     def _get_column_dict(self, name):
-        return dict(display=self._display_dict.get(name, name), name=name, **self._column_options.get(name, {}))
+        if name is None:
+            name = ""
+        display = self._display_dict.get(name, name)
+        return dict(display=display, name=name, weight=12 * len(display),
+                    minWeight=60, **self._column_options.get(name, {}))
 
     def set_options(self, options):
         self._options = options
@@ -82,7 +86,7 @@ class ParametersParser(LigerUITranslator):
         self.set_column('step', {'editor': {'type': 'int'}})
 
     def dumps(self, data):
-        columns = [self._get_column_dict(key) for key in self._display_dict.keys()]
+        columns = [self._get_column_dict(key) for key in self._columns]
         rows = {'Rows': []}
         for signal, paras in data.items():
             for para, value in paras.items():

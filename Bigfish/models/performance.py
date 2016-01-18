@@ -336,7 +336,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def trade_details(self):
-        columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current']
+        columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit']
         trade = (
             lambda x: DataFrameExtended(x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
                 self.trade_info)
@@ -345,7 +345,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['trade_time'] = trade['time'].map(
             partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
             .map(lambda x: x.split('+')[0])
-        del trade['time']
+        trade['trade_profit'] = trade['profit']
+        del trade['time'], trade['profit']
         return trade
         # quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
         # print(quotes)

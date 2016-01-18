@@ -142,12 +142,12 @@ def get_sys_func(code_name):
 def get_code_list(home):
     code_list = []
 
-    demo = os.path.join(home, "demo.py")
+    demo = os.path.join(home, "demo")
     if not os.path.exists(demo):
-        demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo.py')
+        demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo')
 
         # 复制代码到用户目录
-        __execute_sql__(home, "insert into code_info (name) values (?)", 'demo.py')
+        __execute_sql__(home, "insert into code_info (name) values (?)", 'demo')
         shutil.copy(demo_, home)
 
     with sqlite3.connect(__get_store_db__(home)) as conn:

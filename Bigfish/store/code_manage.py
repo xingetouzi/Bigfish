@@ -76,7 +76,12 @@ def rename_func(user, old_name, new_name):
 def delete_strategy(user, name):
     udir = UserDirectory(user)
     home = udir.get_strategy_dir()
-    os.remove(os.path.join(home, name))
+
+    # with sqlite3.connect(__get_store_db__(home)) as conn:
+    #     cursor = conn.execute("select id, name from code_info")
+    #     if cursor.fetchone():
+    #         print("exist")
+    # os.remove(os.path.join(home, name))
     __execute_sql__(home, "delete from code_info where name=?", name)
 
 

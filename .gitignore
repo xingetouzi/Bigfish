@@ -6,4 +6,5 @@ kernprof.py
 /build
 *.pyd
 *.c
+*.so
 /site_packages

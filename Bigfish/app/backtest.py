@@ -155,8 +155,10 @@ class Backtesting:
                 self.start(parameters)
                 head = pd.Series(head, index=head_index)
                 performance = self.__get_performance_manager().get_performance()
-                optimize_info = pd.concat([head, performance.optimize_info])
-                result.append(optimize_info)
+                optimize_info = performance.optimize_info.copy()
+                target = optimize_info[goal]
+                del optimize_info[goal]
+                result.append(pd.concat([head, pd.Series([target], index=[goal]), optimize_info]))
             else:
                 i += 1
         result = pd.DataFrame(result).sort_values(goal, ascending=False)

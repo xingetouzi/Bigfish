@@ -95,6 +95,7 @@ class Strategy(HasID):
     # ----------------------------------------------------------------------
     def initialize(self):
         self.__context.clear()
+        self.series_storage.clear()
 
     # ----------------------------------------------------------------------
     # 将策略容器与策略代码关联
@@ -238,6 +239,8 @@ class Strategy(HasID):
         self.initialize()
         for listener in self.listeners.values():
             listener.start()
+        for function in self.system_functions.values():
+            function.start()
         self.__printer.start()
         print(self.name + u'开始运行')
 
@@ -250,5 +253,7 @@ class Strategy(HasID):
         self.trading = False
         for listener in self.listeners.values():
             listener.stop()
+        for function in self.system_functions.values():
+            function.stop()
         self.__printer.stop()
         print(self.name + u'停止运行')

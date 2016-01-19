@@ -183,11 +183,13 @@ if __name__ == '__main__':
     from Bigfish.models.model import User
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import LigerUITranslator
+    import time
 
-    with open('../test/testcode2.py') as f:
+    start_time = time.time()
+    with open('../test/testcode3.py') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['GBPUSD'], 'M30', '2015-01-01', '2016-01-01',
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M1', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     translator = LigerUITranslator()
@@ -211,8 +213,11 @@ if __name__ == '__main__':
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('output:\n%s' % backtest.get_output())
+    print(time.time()-start_time)
     paras = {
-        'handle': {'slowlength': {'start': 18, 'end': 22, 'step': 1},
-                   'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
+        'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
+                   'fastlength': {'start': 10, 'end': 10, 'step': 1},
+                   'lots': {'start': 100, 'end': 100, 'step': 1}}}
     optimize = backtest.optimize(paras, None, None)
     print('optimize\n%s' % optimize)
+    print(time.time()-start_time)

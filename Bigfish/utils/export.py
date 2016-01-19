@@ -59,6 +59,13 @@ class SeriesFunction:
             self.__cache[key] = self.__generator(*args, **kwargs)
         return self.__cache[key].__next__()
 
+    def start(self):
+        self.__cache.clear()
+
+    def stop(self):
+        for item in self.__cache.values():
+            item.close()
+
 
 # --------------------------------------------------------------------------------------
 def time_series(*args, **kwargs):

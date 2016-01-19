@@ -280,8 +280,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'handle']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
+        if trade.empty:
+            trade.index.name = 'deal_number'
+            return trade
         trade_grouped = trade.groupby('symbol')
         self.__cache['trade_grouped_by_symbol'] = trade_grouped
+        # XXX 此操作在trade为空时会报错
         trade['trade_number'] = trade_grouped.apply(
                 lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
         # TODO 在多品种交易下进行测试

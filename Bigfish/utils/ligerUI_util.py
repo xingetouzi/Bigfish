@@ -49,7 +49,7 @@ class LigerUITranslator:
 
     def dumps(self, dataframe, display_index=True):
         temp = dataframe.fillna('/')
-        columns = list(map(lambda x: self._get_column_dict(temp[x]), temp.columns))
+        columns = []
         if display_index:
             index = temp.index
             if isinstance(index, pd.MultiIndex):
@@ -60,6 +60,7 @@ class LigerUITranslator:
             else:
                 temp[temp.index.name] = temp.index.to_series().astype(str)
                 columns.append(self._get_column_dict(temp.index))
+        columns += list(map(lambda x: self._get_column_dict(temp[x]), dataframe.columns))
 
         def deal_with_float(dict_):
             for key, values in dict_.items():

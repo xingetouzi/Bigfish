@@ -31,7 +31,7 @@ class LigerUITranslator:
     def _get_column_dict(self, series):
         name = series.name
         display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, type='float' if issubclass(series.dtype, np.number) else 'string',
+        return dict(display=display, name=name, type='float' if issubclass(series.dtype.type, np.number) else 'string',
                     minWidth=max(12 * len(display), 120), **self._column_options.get(name, {}))
 
     def set_options(self, options):

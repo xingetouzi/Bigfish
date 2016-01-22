@@ -4,6 +4,7 @@ from numbers import Number
 
 from Bigfish.models.performance import StrategyPerformance, StrategyPerformanceManagerOffline
 import pandas as pd
+import numpy as np
 
 
 class LigerUITranslator:
@@ -27,9 +28,10 @@ class LigerUITranslator:
         self._column_options = {}
         self._precision = 6
 
-    def _get_column_dict(self, name):
+    def _get_column_dict(self, series):
+        name = series.name
         display = self._display_dict.get(name, name)
-        return dict(display=display, name=name,
+        return dict(display=display, name=name, type='float' if issubclass(series.dtype, np.number) else 'string',
                     minWidth=max(12 * len(display), 120), **self._column_options.get(name, {}))
 
     def set_options(self, options):
@@ -47,20 +49,17 @@ class LigerUITranslator:
 
     def dumps(self, dataframe, display_index=True):
         temp = dataframe.fillna('/')
+        columns = list(map(lambda x: self._get_column_dict(temp[x]), temp.columns))
         if display_index:
             index = temp.index
             if isinstance(index, pd.MultiIndex):
-                columns = []
                 for name, label, level in zip(index.names, index.labels, index.levels):
-                    columns.append(self._get_column_dict(name))
                     # TODO 此处应有更优方法
                     temp[name] = list(map(lambda x: level[x], label))
+                    columns.append(self._get_column_dict(temp[name]))
             else:
-                columns = [self._get_column_dict(temp.index.name)]
                 temp[temp.index.name] = temp.index.to_series().astype(str)
-        else:
-            columns = []
-        columns += list(map(lambda x: self._get_column_dict(x), dataframe.columns))
+                columns = [self._get_column_dict(temp.index)]
 
         def deal_with_float(dict_):
             for key, values in dict_.items():
@@ -107,8 +106,6 @@ class ParametersParser(LigerUITranslator):
 
 
 if __name__ == '__main__':
-    import numpy as np
-
     index = pd.Series(np.arange(9, 2), name='index')
     a = pd.DataFrame(np.random.randn(4, 4), columns=['a', 'b', 'c', 'd'])
     translator = LigerUITranslator({'Height': 200})

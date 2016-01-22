@@ -59,7 +59,7 @@ class LigerUITranslator:
                     columns.append(self._get_column_dict(temp[name]))
             else:
                 temp[temp.index.name] = temp.index.to_series().astype(str)
-                columns = [self._get_column_dict(temp.index)]
+                columns.append(self._get_column_dict(temp.index))
 
         def deal_with_float(dict_):
             for key, values in dict_.items():

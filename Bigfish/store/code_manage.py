@@ -17,7 +17,8 @@ def save_code(user, code):
     """
     udir = UserDirectory(user)
     home = udir.get_home(code=code)
-    current_path = os.path.join(home, code.name)
+    code_name = code.name + ".py"
+    current_path = os.path.join(home, code_name)
 
     if not os.path.exists(current_path):  # 如果是第一次创建,则记录相关信息
         __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
@@ -54,8 +55,8 @@ def rename_code(user, code, new_name):
     """
     udir = UserDirectory(user)
     home = udir.get_home(code=code)
-    old_path = os.path.join(home, code.name)
-    new_path = os.path.join(home, new_name)
+    old_path = os.path.join(home, code.name) + ".py"
+    new_path = os.path.join(home, new_name) + ".py"
     if os.path.exists(new_path):
         return False
     os.rename(old_path, new_path)
@@ -81,14 +82,15 @@ def delete_strategy(user, name):
     #     cursor = conn.execute("select id, name from code_info")
     #     if cursor.fetchone():
     #         print("exist")
-    # os.remove(os.path.join(home, name))
+    if not name == "demo":
+        os.remove(os.path.join(home, name) + ".py")
     __execute_sql__(home, "delete from code_info where name=?", name)
 
 
 def delete_func(user, name):
     udir = UserDirectory(user)
     home = udir.get_func_dir()
-    os.remove(os.path.join(home, name))
+    os.remove(os.path.join(home, name) + ".py")
     __execute_sql__(home, "delete from code_info where name=?", name)
 
 
@@ -100,7 +102,7 @@ def get_func(user, code_name):
     :return 返回一个code对象
     """
     udir = UserDirectory(user)
-    func_path = os.path.join(udir.get_func_dir(), code_name)
+    func_path = os.path.join(udir.get_func_dir(), code_name) + ".py"
 
     if os.path.exists(func_path):
         file = open(func_path, 'r')
@@ -118,7 +120,7 @@ def get_strategy(user, code_name):
     :return 返回一个code对象
     """
     udir = UserDirectory(user)
-    strategy_path = os.path.join(udir.get_strategy_dir(), code_name)
+    strategy_path = os.path.join(udir.get_strategy_dir(), code_name) + ".py"
 
     if os.path.exists(strategy_path):
         file = open(strategy_path, 'r')
@@ -146,13 +148,13 @@ def get_sys_func(code_name):
 
 def get_code_list(home):
     code_list = []
-
-    demo = os.path.join(home, "demo")
+    demo_name = "demo.py"
+    demo = os.path.join(home, demo_name)
     if not os.path.exists(demo):
-        demo_ = os.path.join(os.path.dirname(__file__), '..', '..', 'demo')
+        demo_ = os.path.join(os.path.dirname(__file__), '..', '..', demo_name)
 
         # 复制代码到用户目录
-        __execute_sql__(home, "insert into code_info (name) values (?)", 'demo')
+        __execute_sql__(home, "insert into code_info (name) values (?)", "demo")
         shutil.copy(demo_, home)
 
     with sqlite3.connect(__get_store_db__(home)) as conn:

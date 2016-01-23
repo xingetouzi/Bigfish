@@ -254,7 +254,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
         winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
         losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
-        rate_of_return = self.__rate_of_return['R'].tail(1).sum()
+        rate_of_return = net_profit/self.__capital_base + 1
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor / trade_days)
         max_potential_losing = (self.__rate_of_return['R'].min() - 1) * 100
@@ -312,7 +312,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
         result['总交易数'] = [trade_grouped[key].ngroups for key in columns]
         last_trade = trade['total'].tail(1)
-        if (last_trade.volume_p == 0).bool():
+        if (last_trade.volume_p != 0).bool():
             result['总交易数']['total'] -= 1
             if (last_trade.type_p > 0).bool():
                 result['未平仓交易数'] = [1, 1, 0]
@@ -322,12 +322,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 result['总交易数']['short_position'] -= 1
         else:
             result['未平仓交易数'] = [0, 0, 0]
-        profits = [trade_grouped[key]['profit'].sum().dropna() for key in columns]
+        profits = [(lambda x: x[:-1] if result['未平仓交易数'][key] else x)(trade_grouped[key]['profit'].sum())
+                   for key in columns]
         winnings = list(map(lambda x: x[x > 0], profits))
         losings = list(map(lambda x: x[x < 0], profits))
         result['盈利交易数'] = list(map(len, winnings))
         result['亏损交易数'] = list(map(len, losings))
-        result['胜率'] = result['盈利交易数'] / result['总交易数']
+        result['胜率(%)'] = result['盈利交易数'] / result['总交易数'] * 100
         result['平均净利'] = list(map(lambda x: x.mean(), profits))
         result['平均盈利'] = list(map(lambda x: x.mean(), winnings))
         result['平均亏损'] = list(map(lambda x: x.mean(), losings))

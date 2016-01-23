@@ -8,6 +8,35 @@ import numpy as np
 
 
 class LigerUITranslator:
+    _display_dict = {}
+
+    def __init__(self, options={}):
+        self._options = options
+        self._column_options = {}
+
+    def set_options(self, options):
+        self._options = options
+
+    def get_options(self):
+        return self._options.copy()
+
+    def set_column(self, column, options):
+        self._column_options[column] = options
+
+    def _get_column(self, name):
+        display = self._display_dict.get(name, name)
+        return dict(display=display, name=name, type='float', minWidth=max(12 * len(display), 120),
+                    **self._column_options.get(name, {}))
+
+    def _get_content(self, data, *args, **kwargs):
+        raise NotImplementedError
+
+    def dumps(self, data, *args, **kwargs):
+        columns, rows = self._get_content(data, *args, **kwargs)
+        return dict(columns=columns, data=rows, **self._options)
+
+
+class DataframeTranslator(LigerUITranslator):
     _display_dict = dict(
             reduce(lambda x, y: dict(x, **{t[0]: t[1] for t in y.values()}),
                    (lambda x: list(x.values()))(StrategyPerformanceManagerOffline._column_names),
@@ -24,30 +53,18 @@ class LigerUITranslator:
              'trade_type': '持仓类型', 'symbol': '品种', 'trade_time': '成交时间', 'trade_profit': '平仓收益'})
 
     def __init__(self, options={}):
-        self._options = options
-        self._column_options = {}
+        super().__init__(options)
         self._precision = 6
-
-    def _get_column_dict(self, series):
-        name = series.name
-        display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, type='float' if issubclass(series.dtype.type, np.number) else 'string',
-                    minWidth=max(12 * len(display), 120), **self._column_options.get(name, {}))
-
-    def set_options(self, options):
-        self._options = options
-
-    def get_options(self):
-        return self._options.copy()
-
-    def set_column(self, column, options):
-        self._column_options[column] = options
 
     def set_precision(self, n):
         assert isinstance(n, int) and n >= 0
         self._precision = n
 
-    def dumps(self, dataframe, display_index=True):
+    def _get_column(self, series):
+        name = series.name
+        return dict(super()._get_column(name), type='float' if issubclass(series.dtype.type, np.number) else 'string')
+
+    def _get_content(self, dataframe, display_index=True):
         temp = dataframe.fillna('/')
         columns = []
         if display_index:
@@ -56,11 +73,11 @@ class LigerUITranslator:
                 for name, label, level in zip(index.names, index.labels, index.levels):
                     # TODO 此处应有更优方法
                     temp[name] = list(map(lambda x: level[x], label))
-                    columns.append(self._get_column_dict(temp[name]))
+                    columns.append(self._get_column(temp[name]))
             else:
                 temp[temp.index.name] = temp.index.to_series().astype(str)
-                columns.append(self._get_column_dict(temp.index))
-        columns += list(map(lambda x: self._get_column_dict(temp[x]), dataframe.columns))
+                columns.append(self._get_column(temp.index))
+        columns += list(map(lambda x: self._get_column(temp[x]), dataframe.columns))
 
         def deal_with_float(dict_):
             for key, values in dict_.items():
@@ -71,8 +88,8 @@ class LigerUITranslator:
                         dict_[key] = round(values, self._precision)
             return dict_
 
-        data = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
-        return dict(columns=columns, data=data, **self._options)
+        rows = {'Rows': list(map(deal_with_float, temp.to_dict('records')))}
+        return columns, rows
 
 
 class ParametersParser(LigerUITranslator):
@@ -81,19 +98,19 @@ class ParametersParser(LigerUITranslator):
     _columns = ['signal', 'parameter', 'default', 'start', 'end', 'step']
 
     def __init__(self, option={}):
-        super(ParametersParser, self).__init__(dict(option, enabledEdit='true'))
+        super().__init__(dict(option, enabledEdit='true'))
         self.set_column('start', {'editor': {'type': 'int'}})
         self.set_column('end', {'editor': {'type': 'int'}})
         self.set_column('step', {'editor': {'type': 'int'}})
 
-    def dumps(self, data):
-        columns = [self._get_column_dict(key) for key in self._columns]
+    def _get_content(self, data):
+        columns = [self._get_column(key) for key in self._columns]
         rows = {'Rows': []}
         for signal, paras in data.items():
             for para, value in paras.items():
                 rows['Rows'].append({'signal': signal, 'parameter': para, 'default': value['default'],
                                      'start': value['default'], 'end': value['default'], 'step': 1})
-        return dict(columns=columns, data=rows, **self._options)
+        return columns, rows
 
     @staticmethod
     def loads(data):

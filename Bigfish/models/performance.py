@@ -17,6 +17,7 @@ from Bigfish.utils.pandas_util import rolling_apply_2d
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 pd.set_option('display.precision', 6)
 pd.set_option('display.width', 200)
+pd.set_option('display.max_columns', 30)
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 # math utils
 FLOAT_ERR = 1e-7
@@ -64,7 +65,7 @@ class Performance:
     _dict = {}
 
     def __init__(self, manager=None):
-        self._manager = manager
+        self._manager = proxy(manager)
 
     def __getattr__(self, item):
         if item in self._dict:
@@ -347,7 +348,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
         trade['trade_time'] = trade['time'].map(
-            partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
+                partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
             .map(lambda x: x.split('+')[0])
         trade['trade_profit'] = trade['profit']
         del trade['time'], trade['profit']

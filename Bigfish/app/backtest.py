@@ -60,18 +60,21 @@ class Backtesting:
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = data_generator(self.__strategy_engine)
         self.__performance_manager = None
+        self.__performance = None
 
     def initialize(self):
         self.__strategy_engine.initialize()
         self.__performance_manager = None
 
-    def start(self, paras=None):
+    def start(self, paras=None, refresh=True):
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self.initialize()
         self.__strategy_engine.start()
         self.__data_generator.start()
         self.__strategy_engine.wait()
+        if refresh:
+            self.__performance_manager = self.__get_performance_manager()
 
     def __get_performance_manager(self):
         # TODO 加入回测是否运行的判断
@@ -85,8 +88,6 @@ class Backtesting:
         return self.__strategy_engine.get_profit_records()
 
     def get_performance(self):
-        if self.__performance_manager is None:
-            self.__performance_manager = self.__get_performance_manager()
         return self.__performance_manager.get_performance()
 
     def get_output(self):
@@ -152,10 +153,10 @@ class Backtesting:
                 break
             set_paras(i, **stack[i])
             if i == n - 1:
-                self.start(parameters)
+                self.start(parameters, refresh=False)
                 head = pd.Series(head, index=head_index)
-                performance = self.__get_performance_manager().get_performance()
-                optimize_info = performance.optimize_info.copy()
+                performance_manager = self.__get_performance_manager()
+                optimize_info = performance_manager.get_performance().optimize_info.copy()
                 target = optimize_info[goal]
                 del optimize_info[goal]
                 result.append(pd.concat([head, pd.Series([target], index=[goal]), optimize_info]))
@@ -186,10 +187,10 @@ if __name__ == '__main__':
     import time
 
     start_time = time.time()
-    with open('../test/testcode3.py') as f:
+    with open('../test/testcode1.py') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M1', '2015-01-01', '2016-01-01',
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMongoDB)
     backtest.start()
     translator = LigerUITranslator()

@@ -14,7 +14,7 @@ def handle(slowlength=20, fastlength=10, lots=100):
         return max_
 
     atr = ATR(fastlength)
-    print('%s:%s' % (barnum, atr))
+    # print('%s:%s' % (barnum, atr))
     if barnum > slowlength:
         symbol = symbols[0]
         position = marketposition.get(symbol, None)

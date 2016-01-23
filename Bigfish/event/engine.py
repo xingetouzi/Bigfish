@@ -54,7 +54,7 @@ class EventEngine:
         """初始化事件引擎"""
         # 事件队列
         self.__queue = Queue()
-
+        self.__file_opened = []
         # 事件引擎开关
         self.__active = False
         self.__finished = False
@@ -85,6 +85,9 @@ class EventEngine:
             except Exception:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 self.__active = False
+        for file in self.__file_opened:
+            if not file.closed:
+                file.close()
 
     # ----------------------------------------------------------------------
     def __process(self, event):
@@ -93,7 +96,8 @@ class EventEngine:
         if event.type_ in self.__handlers:
             # 若存在，则按顺序将事件传递给处理函数执行
             for handler in self.__handlers[event.type_]:
-                handler(event)
+                    handler(event)
+
 
     # ----------------------------------------------------------------------
     def __onTimer(self):
@@ -169,8 +173,12 @@ class EventEngine:
         except KeyError:
             pass
 
-            # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+    def add_file(self, file):
+        if file not in self.__file_opened:
+            self.__file_opened.append(file)
 
+    # ----------------------------------------------------------------------
     def put(self, event):
         """向事件队列中存入事件"""
         self.__queue.put(event)

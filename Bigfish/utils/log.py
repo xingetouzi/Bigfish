@@ -45,9 +45,10 @@ class Printer:
 
 
 class FilePrinter:
-    def __init__(self, user, name):
+    def __init__(self, user, name, engine):
         self.__user = user
         self.__name = name
+        self.__engine = engine
         self.__file_path = os.path.join(UserDirectory(user).get_temp_dir(), name + '.log')
         self.__file = None
 
@@ -56,11 +57,13 @@ class FilePrinter:
 
     def start(self):
         self.__file = open(self.__file_path, 'w+')
+        self.__engine.add_file(self.__file)
 
     def print(self, *args):
         print(*args, file=self.__file)
 
     def stop(self):
-        self.__file.flush()
-        self.__file.close()
+        if not self.__file.closed:
+            self.__file.flush()
+            self.__file.close()
         self.__file = None

@@ -61,9 +61,10 @@ class SystemFunctionsDetector(FunctionsDetector):
 class LocalsInjector(ast.NodeVisitor):
     """向函数中注入局部变量，参考ast.NodeVisitor"""
 
-    def __init__(self, to_inject={}):
+    def __init__(self, to_inject={}, is_signal=True):
         self.__depth = 0
         self.__to_inject = to_inject
+        self.__is_signal = True
 
     def visit(self, node):
         self.__depth += 1
@@ -75,9 +76,8 @@ class LocalsInjector(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         self.generic_visit(node)
         if (self.__depth == 2) and (node.name in self.__to_inject):
-            code = '\n'.join(['from bigfish_functions import {0} as {0}'.format(func)
-                              for func in UserDirectory.get_sys_func_list()]) + '\n'
-            code += '\n'.join(self.__to_inject[node.name])
+            # 注入变量
+            code = '\n'.join(self.__to_inject[node.name])
             location_patcher = LocationPatcher(node)
             code_ast = location_patcher.visit(ast.parse(code))
             barnum_ast = location_patcher.visit(ast.parse('barnum = get_current_bar()'))
@@ -87,6 +87,9 @@ class LocalsInjector(ast.NodeVisitor):
                     test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
             self.return_to_yield(while_node)
             node.body = code_ast.body + [while_node]
+            # 改变函数签名
+            node.args.kwonlyargs.append(location_patcher.visit(ast.arg(arg='series_id', annotation=None)))
+            node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
             # print(ast.dump(node))
 
     @staticmethod
@@ -115,7 +118,7 @@ class SeriesExporter(ast.NodeTransformer):
     """
 
     def __init__(self):
-        self.__series_id = 0
+        self.__export_id = 0
 
     def visit_Expr(self, node):
 
@@ -137,11 +140,13 @@ class SeriesExporter(ast.NodeTransformer):
                     return node
                 value.args[:] = [ast.copy_location(ast.Str(s=name), arg_node) for name, arg_node in
                                  zip(arg_names, value.args)]
-                self.__series_id += 1
+                self.__export_id += 1
                 patcher = LocationPatcher(value.args[-1])
-                value.keywords.append(patcher.visit(ast.keyword(arg='series_id', value=ast.Num(n=self.__series_id))))
-                value.keywords.append(patcher.visit(
-                    ast.keyword(arg='barnum', value=ast.Name(id='barnum', ctx=ast.Load()))))
+                value.keywords.append(
+                        patcher.visit(ast.keyword(arg='series_id', value=ast.Name(id='series_id', ctx=ast.Load()))))
+                value.keywords.append(patcher.visit(ast.keyword(arg='export_id', value=ast.Num(n=self.__export_id))))
+                value.keywords.append(
+                        patcher.visit(ast.keyword(arg='barnum', value=ast.Name(id='barnum', ctx=ast.Load()))))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
                 new_node.targets.append(ast.copy_location(

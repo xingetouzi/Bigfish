@@ -157,12 +157,13 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def initialize(self):
         # TODO 数据结构还需修改
-        self.__deals = {}
-        self.__positions = {}
-        self.__data = {}
+        self.__deals.clear()
+        self.__positions.clear()
+        self.__data.clear()
         # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
         Deal.set_auto_inc(0)
         Position.set_auto_inc(0)
+        self.__current_positions.clear()
         for (symbol, time_frame), maxlen in self.__symbols.items():
             if symbol not in self.__data:
                 self.__data[symbol] = {}
@@ -177,6 +178,10 @@ class StrategyEngine(object):
                 self.__current_positions[symbol] = position
                 self.__initial_positions[symbol] = position
                 self.__positions[position.get_id()] = position
+
+    # ----------------------------------------------------------------------
+    def add_file(self, file):
+        self.__event_engine.add_file(file)
 
     # ----------------------------------------------------------------------
     def add_strategy(self, strategy):
@@ -218,11 +223,11 @@ class StrategyEngine(object):
     def __update_position(self, deal):
         def sign(num):
             if abs(num) <= 10 ** -7:
-                return (0)
+                return 0
             elif num > 0:
-                return (1)
+                return 1
             else:
-                return (-1)
+                return -1
 
         if deal.volume == 0:    return
         position_prev = self.__current_positions[deal.symbol]

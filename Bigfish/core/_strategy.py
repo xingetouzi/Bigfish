@@ -44,7 +44,7 @@ class Strategy(HasID):
         self.listeners = {}
         self.system_functions = {}
         self.series_storage = {}
-        self.__printer = FilePrinter(user, name)
+        self.__printer = FilePrinter(user, name, self.engine)
         self.__context = {}
         # 是否完成了初始化
         self.trading = False
@@ -56,7 +56,7 @@ class Strategy(HasID):
                               cover=partial(self.engine.cover, strategy=self.__id),
                               marketposition=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data,
-                              context=self.__context, export=partial(export, self),
+                              context=self.__context, export=partial(export, strategy=self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
                               listeners=self.listeners, system_functions=self.system_functions,
                               )
@@ -151,8 +151,7 @@ class Strategy(HasID):
         sys_func_detector.visit(ast_)
         sys_func_dir = self.user_dir.get_sys_func_dir()
         funcs_in_use = sys_func_detector.get_funcs_in_use()
-        additional_instructions = ["{0} = system_functions['{0}']".format(f) for f in funcs_in_use.keys()] + [
-            'del(system_functions)']
+
         # get the instructions to inject to every handle
         signal_instructions = {}
         function_instructions = {}
@@ -178,6 +177,8 @@ class Strategy(HasID):
                                                        self.max_length)
                     self.engine.add_symbols(symbols, time_frame, max_length)
                     self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
+                    additional_instructions = ["{0} = system_functions['%s.%s'%('{1}','{0}')]".format(f, key)
+                                               for f in funcs_in_use.keys()] + ['del(system_functions)']
                     temp = []
                     # TODO 加入opens等，这里字典的嵌套结构
                     temp.extend(["%s = __globals['data']()['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
@@ -214,7 +215,9 @@ class Strategy(HasID):
             func_ast = series_exporter.visit(func_ast)
             # TODO 多个handle时需要对每个handle调用的系统函数建立独立的系统函数
             exec(compile(func_ast, "[SysFunctions:%s]" % func, mode="exec"), function_globals_, function_locals)
-            self.system_functions[func] = SeriesFunction(function_locals[func])
+            self.system_functions['%s.%s' % (signal, func)] = SeriesFunction(function_locals[func], signal)
+            # new方法是对__init__的封装，创建SeriesFunction对象所需信息有其所在的函数体本身，signal和其运行时传入的参数，
+            # 编译时所能确定的只有前者，采用偏函数的方式将两者结合到一起
         # inject global vars into locals of handler
         signal_injector = LocalsInjector(signal_instructions)
         signal_injector.visit(ast_)

@@ -144,13 +144,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                                             columns=Position.get_fields())  # positions in dataframe format
         self.__deals_raw.sort_values('time', kind='mergesort', inplace=True)
         self.__positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
-        self.__currency_symbol = currency_symbol
+        self.__currency_symbol = currency_symbol  # 账户的结算货币类型
         self.__annual_factor = 250  # 年化因子
         self.__capital_base = capital_base
         self.__period = period
         self.__num = num
         self.__precision = 4
         self.__cache = {}  # 用于存放将要在函数中复用的变量
+        self.__units = {}  # 用于存储计算中需要用到的单位信息
 
     # @profile
     def __get_rate_of_return_raw(self):
@@ -174,6 +175,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         rate_of_return.index = rate_of_return.index.map(pd.datetime.fromtimestamp)
         rate_of_return.name = 'rate'
         return rate_of_return
+
+    def __with_units(self, x):
+        return x + self.__units[x]
+
+    def __update_units(self, d):
+        for key, value in d.items():
+            self.__units.update(dict.fromkeys(value, key))
 
     @property
     @cache_calculator
@@ -252,20 +260,22 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def strategy_summary(self):
-        units = (lambda d: reduce(lambda x, y: dict(x, **(dict.fromkeys(y[1], y[0]))), d.items(), {}))(
+        self.__update_units(
                 {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
                  '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
-                 '': ['最大潜在亏损收益比']})
-        names = ['净利', '盈利', '亏损', '账户资金收益率', '年化收益率',  '最大回撤', '策略最大潜在亏损', '平仓交易最大亏损', '最大潜在亏损收益比']
+                 '': ['最大潜在亏损收益比']}
+        )
+        names = ['净利', '盈利', '亏损', '账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', '平仓交易最大亏损', '最大潜在亏损收益比']
+        with_units = self.__with_units
         trade_summary = self.trade_summary
-        net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
-        winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
-        losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
+        net_profit = trade_summary['total'][with_units('平均净利')] * trade_summary['total'][with_units('总交易数')]
+        winning = trade_summary['total'][with_units('平均盈利')] * trade_summary['total'][with_units('盈利交易数')]
+        losing = trade_summary['total'][with_units('平均亏损')] * trade_summary['total'][with_units('亏损交易数')]
         rate_of_return = net_profit / self.__capital_base
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1), self.__annual_factor / trade_days)
         max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
-        max_losing = trade_summary['total']['最大亏损']
+        max_losing = trade_summary['total'][with_units('最大亏损')]
         result = pd.DataFrame({
             '净利': net_profit,
             '盈利': winning,
@@ -276,7 +286,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '策略最大潜在亏损': max_potential_losing * 100,
             '平仓交易最大亏损': max_losing,
             '最大潜在亏损收益比': rate_of_return / -max_potential_losing if abs(max_potential_losing) > FLOAT_ERR else np.nan
-        }, index=['_']).T.reindex(names).rename(partial(lambda units, x: x + units[x], units))
+        }, index=['_']).T.reindex(names).rename(lambda x: self.__with_units(x))
         result.index.name = 'index'
         return result
 
@@ -308,6 +318,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def trade_summary(self):
+        self.__update_units(
+                {'(%s)' % self.__currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
+                 '(%)': ['胜率'],
+                 '': ['总交易数', '未平仓交易数', '盈利交易数', '亏损交易数']})
         columns = ['total', 'long_position', 'short_position']
         result = pd.DataFrame(index=columns)
         trade = {}
@@ -335,14 +349,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         losings = list(map(lambda x: x[x < 0], profits))
         result['盈利交易数'] = list(map(len, winnings))
         result['亏损交易数'] = list(map(len, losings))
-        result['胜率(%)'] = result['盈利交易数'] / result['总交易数'] * 100
+        result['胜率'] = result['盈利交易数'] / result['总交易数'] * 100
         result['平均净利'] = list(map(lambda x: x.mean(), profits))
         result['平均盈利'] = list(map(lambda x: x.mean(), winnings))
         result['平均亏损'] = list(map(lambda x: x.mean(), losings))
         result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
         result['最大盈利'] = list(map(lambda x: x.max(), profits))
         result['最大亏损'] = list(map(lambda x: x.min(), profits))
-        result = result.T
+        result = result.T.rename(lambda x: self.__with_units(x))
         result.index.name = 'index'
         return result
 

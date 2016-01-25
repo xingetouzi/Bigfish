@@ -4,7 +4,7 @@ import time
 import redis
 from pymongo import MongoClient
 
-db = MongoClient("mongodb://root:Xinger520@act.fxdayu.com/forex").forex
+db = MongoClient("mongodb://root:Xinger520@act.fxdayu.com/forex").forex_data
 tf_peroids = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
 pool = redis.ConnectionPool(host='139.129.19.54', port=6379, db=0, password="Xinger520")
 

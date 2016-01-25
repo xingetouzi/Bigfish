@@ -8,11 +8,12 @@ import numpy as np
 
 
 class LigerUITranslator:
-    _display_dict = {}
+    _display = {}
 
     def __init__(self, options={}):
         self._options = options
         self._column_options = {}
+        self._units = {}
 
     def set_options(self, options):
         self._options = options
@@ -24,8 +25,8 @@ class LigerUITranslator:
         self._column_options[column] = options
 
     def _get_column(self, name):
-        display = self._display_dict.get(name, name)
-        return dict(display=display, name=name, type='float', minWidth=max(12 * len(display), 120),
+        display = (lambda x: x+self._units.get(x, ''))(self._display.get(name, name))
+        return dict(display=display, name=name, minWidth=max(20 * len(display), 80),
                     **self._column_options.get(name, {}))
 
     def _get_content(self, data, *args, **kwargs):
@@ -37,13 +38,13 @@ class LigerUITranslator:
 
 
 class DataframeTranslator(LigerUITranslator):
-    _display_dict = dict(
+    _display = dict(
             reduce(lambda x, y: dict(x, **{t[0]: t[1] for t in y.values()}),
                    (lambda x: list(x.values()))(StrategyPerformanceManagerOffline._column_names),
                    dict()),
             time='起始时间',
             **StrategyPerformance._dict)
-    _display_dict.update(
+    _display.update(
             {'index': '', 'total': '总体', 'long_position': '多仓', 'short_position': '空仓', 'total_trades': '总交易数',
              'winnings': '盈利交易数', 'losings': '亏损交易数', 'winning_percentage': '胜率',
              'average_profit': '平均净利', 'average_winning': '平均盈利', 'average_losing': '平均亏损',
@@ -52,9 +53,14 @@ class DataframeTranslator(LigerUITranslator):
              'volume_p': '现有仓位', 'price': '成交价格', 'price_current': '持仓均价', 'entry': '成交方向',
              'trade_type': '持仓类型', 'symbol': '品种', 'trade_time': '成交时间', 'trade_profit': '平仓收益'})
 
-    def __init__(self, options={}):
+    def __init__(self, options={}, currency='$'):
         super().__init__(options)
         self._precision = 6
+        self._units = (lambda d: reduce(lambda x, y: dict(x, **dict.fromkeys(y[1], y[0])), d.items(), {}))(
+                {'(%s)' % currency: ['平仓收益'],
+                 '(手)': ['成交手数', '现有仓位', ]}
+        )
+        print(self._units)
 
     def set_precision(self, n):
         assert isinstance(n, int) and n >= 0
@@ -93,7 +99,7 @@ class DataframeTranslator(LigerUITranslator):
 
 
 class ParametersParser(LigerUITranslator):
-    _display_dict = {'signal': '信号名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
+    _display = {'signal': '信号名', 'parameter': '参数名', 'default': '默认值', 'start': '起始值', 'end': '结束值',
                      'step': '步长'}
     _columns = ['signal', 'parameter', 'default', 'start', 'end', 'step']
 

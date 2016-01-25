@@ -64,7 +64,6 @@ class Backtesting:
 
     def initialize(self):
         self.__strategy_engine.initialize()
-        self.__performance_manager = None
 
     def start(self, paras=None, refresh=True):
         if paras is not None:
@@ -174,8 +173,10 @@ class Backtesting:
             return
         if type is None:
             type = "enumerate"
+        # TODO 不要使用硬编码
         if goal is None:
-            goal = "净利"
+            goal = "净利($)"
+        goal = "净利($)"
         optimizer = getattr(self, '_%s_optimize' % type)
         return optimizer(ranges, goal, num)
 

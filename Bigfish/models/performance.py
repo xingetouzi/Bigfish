@@ -114,7 +114,7 @@ class StrategyPerformance(Performance):
         super(StrategyPerformance, self).__init__(manager)
 
     def get_info_on_home_page(self):
-        return self._manager.strategy_summary['_'].to_dict()
+        return {key.split('(')[0]: value for key, value in self._manager.strategy_summary['_'].to_dict().items()}
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -133,7 +133,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
             {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
-    def __init__(self, quotes, deals, positions, capital_base=100000, period=86400, num=20):  # 1day = 86400seconds
+    def __init__(self, quotes, deals, positions, currency_symbol='$', capital_base=100000, period=86400,
+                 num=20):  # 1day = 86400seconds
         super(StrategyPerformanceManagerOffline, self).__init__(StrategyPerformance)
         self.__quotes_raw = quotes
         self.__deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
@@ -143,6 +144,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                                             columns=Position.get_fields())  # positions in dataframe format
         self.__deals_raw.sort_values('time', kind='mergesort', inplace=True)
         self.__positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
+        self.__currency_symbol = currency_symbol
         self.__annual_factor = 250  # 年化因子
         self.__capital_base = capital_base
         self.__period = period
@@ -250,26 +252,31 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def strategy_summary(self):
+        units = (lambda d: reduce(lambda x, y: dict(x, **(dict.fromkeys(y[1], y[0]))), d.items(), {}))(
+                {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
+                 '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
+                 '': ['最大潜在亏损收益比']})
+        names = ['净利', '盈利', '亏损', '账户资金收益率', '年化收益率',  '最大回撤', '策略最大潜在亏损', '平仓交易最大亏损', '最大潜在亏损收益比']
         trade_summary = self.trade_summary
         net_profit = trade_summary['total']['平均净利'] * trade_summary['total']['总交易数']
         winning = trade_summary['total']['平均盈利'] * trade_summary['total']['盈利交易数']
         losing = trade_summary['total']['平均亏损'] * trade_summary['total']['亏损交易数']
-        rate_of_return = net_profit/self.__capital_base + 1
+        rate_of_return = net_profit / self.__capital_base
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
-        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return), self.__annual_factor / trade_days)
-        max_potential_losing = (self.__rate_of_return['R'].min() - 1) * 100
+        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1), self.__annual_factor / trade_days)
+        max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
         max_losing = trade_summary['total']['最大亏损']
         result = pd.DataFrame({
             '净利': net_profit,
             '盈利': winning,
             '亏损': losing,
-            '账户资金收益率': (rate_of_return - 1) * 100,
+            '账户资金收益率': rate_of_return * 100,
             '年化收益率': annual_rate_of_return,
             '最大回撤': self.max_drawdown.total,
-            '策略最大潜在亏损': max_potential_losing,
+            '策略最大潜在亏损': max_potential_losing * 100,
             '平仓交易最大亏损': max_losing,
-            '最大潜在亏损收益比': net_profit / -max_potential_losing,
-        }, index=['_']).T
+            '最大潜在亏损收益比': rate_of_return / -max_potential_losing if abs(max_potential_losing) > FLOAT_ERR else np.nan
+        }, index=['_']).T.reindex(names).rename(partial(lambda units, x: x + units[x], units))
         result.index.name = 'index'
         return result
 

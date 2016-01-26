@@ -2,7 +2,7 @@
 import time
 
 import redis
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 
 db = MongoClient("mongodb://root:Xinger520@act.fxdayu.com/forex").forex_data
 tf_peroids = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
@@ -27,7 +27,7 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     if end_time:
         filters["ctime"]["$lte"] = end_time
     coll = "%s_%s" % (symbol, time_frame)
-    cursor = db[coll].find(filters).sort({"ctime": 1})
+    cursor = db[coll].find(filters).sort([("ctime", ASCENDING)])
     bar_list = []
     for row in cursor:
         # bar_list.append(row)

@@ -27,7 +27,7 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     if end_time:
         filters["ctime"]["$lte"] = end_time
     coll = "%s_%s" % (symbol, time_frame)
-    cursor = db[coll].find(filters)
+    cursor = db[coll].find(filters).sort({"ctime": 1})
     bar_list = []
     for row in cursor:
         # bar_list.append(row)

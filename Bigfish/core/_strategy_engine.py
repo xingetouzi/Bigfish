@@ -33,7 +33,8 @@ class StrategyEngine(object):
         self.__account_manager = AccountManager()  # 账户管理
         self.__backtesting = backtesting  # 是否为回测
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
-        self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典
+        self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
+        self.__orders_todo_index = {}  # 同上 key:symbol
         self.__symbol_pool = {}  # 保存交易物
         self.__deals = {}  # 保存所有成交数据的字典
         self.__positions = {}  # Key:id, value:position with responding id
@@ -146,6 +147,11 @@ class StrategyEngine(object):
         time_frame = bar.time_frame
         for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
             self.__data[symbol][time_frame][field].appendleft(getattr(bar, field))
+        for order in self.__orders_todo:
+            if bar.symbol == bar.symbol:
+                result = self.__send_order_to_broker(order)
+                self.__orders_done[order.get_id()] = order
+                self.__update_position(*result[0])
 
     # ----------------------------------------------------------------------
     def __process_order(self, tick):
@@ -281,20 +287,23 @@ class StrategyEngine(object):
         # TODO 更多属性的处理
         if self.check_order(order):
             if order.type <= 1:  # market order
-                # send_order_to_broker = async_handle(self.__event_engine, self.__update_position)(self.__send_order_to_broker)
+                # send_order_to_broker = async_handle(self.__event_engine, self.__update_position)
+                # (self.__send_order_to_broker)
                 # send_order_to_broker(order)
                 result = self.__send_order_to_broker(order)
+                self.__orders_done[order.get_id()] = order
                 self.__update_position(*result[0])
             else:
                 self.__orders_todo[order.get_id()] = order
-            return True
+            return order.get_id()
         else:
-            return False
+            return 0
 
     # ----------------------------------------------------------------------
     def cancel_order(self, order_id):
         """
         撤单
+        :param order_id: 所要取消的订单ID，为0时为取消所有订单
         """
         if order_id == 0:
             self.__orders_todo = {}
@@ -346,13 +355,27 @@ class StrategyEngine(object):
 
     # TODO 对限价单的支持
     # ----------------------------------------------------------------------
-    def sell(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0:
-            return
+    def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None,
+                       direction=0):
+        """
+        平仓下单指令
+        :param symbol: 品种
+        :param volume: 手数
+        :param price: 限价单价格阈值
+        :param stop: 是否为止损单
+        :param limit: 是否为止盈单
+        :param strategy: 发出下单指令的策略
+        :param listener: 发出下单指令的信号
+        :param direction: 下单指令的方向(多头或者空头)
+        :return: 如果为0，表示下单失败，否则返回所下订单的ID
+        """
+        if volume == 0 or not direction:  # direction 对应多空头，1为多头，-1为空头
+            return 0
         position = self.__current_positions.get(symbol, None)
-        if not position or position.type <= 0:
-            return  # XXX可能的返回值
-        order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
+        if not position or position.type != direction:
+            return 0
+        order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
+        order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         if self.__backtesting:
             time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
@@ -363,14 +386,29 @@ class StrategyEngine(object):
         return self.send_order(order)
 
     # ----------------------------------------------------------------------
-    def buy(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
+    def open_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None,
+                      direction=0):
+        """
+        开仓下单指令
+        :param symbol: 品种
+        :param volume: 手数
+        :param price: 限价单价格阈值
+        :param stop: 是否为止损单
+        :param limit: 是否为止盈单
+        :param strategy: 发出下单指令的策略
+        :param listener: 发出下单指令的信号
+        :param direction: 下单指令的方向(多头或者空头)
+        :return: 如果为0，表示下单失败，否则返回所下订单的ID
+        """
+
         if self.__backtesting:
             time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
         else:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)
+        order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
         if position and position.type < 0:
-            order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
+            order = Order(symbol, order_type, strategy, listener)
             order.volume_initial = position.volume
             order.time_setup = int(time_)
             order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
@@ -378,46 +416,7 @@ class StrategyEngine(object):
             self.send_order(order)
         if volume == 0:
             return
-        order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
-        order.volume_initial = volume
-        order.time_setup = int(time_)
-        order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return self.send_order(order)
-
-    # ----------------------------------------------------------------------
-    def cover(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if volume == 0:
-            return
-        position = self.__current_positions.get(symbol, None)
-        order = Order(symbol, ORDER_TYPE_BUY, strategy, listener)
-        if not position or position.type >= 0:
-            return  # XXX可能的返回值
-        order.volume_initial = volume
-        if self.__backtesting:
-            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
-        else:
-            time_ = time.time()
-        order.time_setup = int(time_)
-        order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return self.send_order(order)
-
-    # ----------------------------------------------------------------------
-    def short(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None):
-        if self.__backtesting:
-            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
-        else:
-            time_ = time.time()
-        position = self.__current_positions.get(symbol, None)
-        if position and position.type > 0:
-            order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
-            order.volume_initial = position.volume
-            order.time_setup = int(time_)
-            order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-            # TODO 这里应该要支持事务性的下单操作
-            self.send_order(order)
-        if volume == 0:
-            return
-        order = Order(symbol, ORDER_TYPE_SELL, strategy, listener)
+        order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))

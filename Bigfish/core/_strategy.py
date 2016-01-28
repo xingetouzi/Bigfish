@@ -50,10 +50,10 @@ class Strategy(HasID):
         self.trading = False
         # 在字典中保存Open,High,Low,Close,Volumn，CurrentBar，MarketPosition，
         # 手动为exec语句提供local命名空间
-        self.__locals_ = dict(sell=partial(self.engine.sell, strategy=self.__id),
-                              short=partial(self.engine.short, strategy=self.__id),
-                              buy=partial(self.engine.buy, strategy=self.__id),
-                              cover=partial(self.engine.cover, strategy=self.__id),
+        self.__locals_ = dict(buy=partial(self.engine.open_position, strategy=self.__id, direction=1),
+                              sell=partial(self.engine.close_position, strategy=self.__id, direction=1),
+                              short=partial(self.engine.open_position, strategy=self.__id, direction=-1),
+                              cover=partial(self.engine.close_position, strategy=self.__id, direction=-1),
                               marketposition=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data,
                               context=self.__context, export=partial(export, strategy=self),

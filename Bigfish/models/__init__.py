@@ -4,6 +4,6 @@
 """
 from .model import User
 from .model import Code
-from .model import Symbol
+from Bigfish.models.symbol import Symbol
 
 __all__ = ['model']

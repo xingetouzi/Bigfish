@@ -6,7 +6,7 @@ def init():
     pass
 
 
-def handle(slowlength=20, fastlength=10, lots=100):
+def handle(slowlength=20, fastlength=10, lots=1):
     def highest(price, len, offset=0):
         max_ = 0
         for index in range(len):

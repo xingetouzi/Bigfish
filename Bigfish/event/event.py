@@ -2,7 +2,7 @@
 from operator import itemgetter
 
 from Bigfish.models.common import HasID
-from Bigfish.utils.base import Symbol
+from Bigfish.models import Symbol
 from Bigfish.utils.common import _TIME_FRAME
 from Bigfish.store.symbol_manage import get_all_symbols
 

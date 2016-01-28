@@ -214,12 +214,12 @@ if __name__ == '__main__':
     print('volatility:\n%s' % performance.volatility)  # 波动率
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
+    print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
     print('output:\n%s' % backtest.get_output())
     print(time.time() - start_time)
     paras = {
         'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
-                   'fastlength': {'start': 10, 'end': 10, 'step': 1},
-                   'lots': {'start': 100, 'end': 100, 'step': 1}}}
+                   'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
     optimize = backtest.optimize(paras, None, None)
     print('optimize\n%s' % optimize)
     print(time.time() - start_time)

@@ -2,7 +2,7 @@
 
 import math
 from copy import deepcopy
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from functools import partial, wraps, reduce
 from weakref import WeakKeyDictionary, proxy
 
@@ -87,7 +87,7 @@ class PerformanceManager:
 class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
 
-    _dict = {'yield_curve': '收益曲线'}
+    _dict = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
     __factor_info = {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率',
                      'max_drawdown': '最大回撤'}
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
@@ -185,15 +185,28 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
+    def is_negative(self):
+        return self.__rate_of_return['R'].min() <= 0
+
+    @property
+    @cache_calculator
     def __rate_of_return(self):
         result = {}
         result['R'] = self.__get_rate_of_return_raw()  # 'R' means raw
-        result['D'], self.__index_daily = \
-            (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                            result['R'].resample('D', how='last', label='left').apply(math.log)
-                    )
-            )
+        # TODO 对爆仓情况的考虑
+        if result['R'].min() <= 0:
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                        *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                                result['R'].resample('D', how='last', label='left') * 0))
+
+        else:
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                        *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                                result['R'].resample('D', how='last', label='left').apply(math.log)
+                        )
+                )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
         result['M'] = result['D'].resample('MS', how='sum').dropna()
         return result
@@ -282,7 +295,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '亏损': losing,
             '账户资金收益率': rate_of_return * 100,
             '年化收益率': annual_rate_of_return,
-            '最大回撤': self.max_drawdown.total,
+            '最大回撤': self.max_drawdown.total if not self.is_negative else 100,
             '策略最大潜在亏损': max_potential_losing * 100,
             '平仓交易最大亏损': max_losing,
             '最大潜在亏损收益比': rate_of_return / -max_potential_losing if abs(max_potential_losing) > FLOAT_ERR else np.nan
@@ -383,71 +396,53 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
-    def position_curve(self):
-        def get_point(deal, entry, volume):
-            if entry == DEAL_ENTRY_IN:
-                if deal.type == DEAL_TYPE_BUY:
-                    return ({'type': 'point', 'x': deal.time + deal.time_msc / (10 ** 6),
-                             'y': deal.price, 'color': 'buy', 'text': 'Buy %s' % volume})
-                elif deal.type == DEAL_TYPE_SELL:
-                    return ({'type': 'point', 'x': deal.time + deal.time_msc / (10 ** 6),
-                             'y': deal.price, 'color': 'short', 'text': 'Short %s' % volume})
-            elif entry == DEAL_ENTRY_OUT:
-                if deal.type == DEAL_TYPE_BUY:
-                    return ({'type': 'point', 'x': deal.time + deal.time_msc / (10 ** 6),
-                             'y': deal.price, 'color': 'cover', 'text': 'Cover %s' % volume})
-                elif deal.type == DEAL_TYPE_SELL:
-                    return ({'type': 'point', 'x': deal.time + deal.time_msc / (10 ** 6),
-                             'y': deal.price, 'color': 'sell', 'text': 'Sell %s' % volume})
+    def trade_positions(self):
+        trade = self.trade_details
+        result = {}
 
-        def get_lines(position_start, position_end):
-            deal_start = self.__deals_raw[position_start.deal]
-            deal_end = self.__deals_raw[position_end.deal]
-            start_time = deal_start.time + deal_start.time_msc / (10 ** 6)
-            end_time = deal_end.time + deal_end.time_msc / (10 ** 6)
-            result = {'type': 'line', 'x_start': start_time, 'x_end': end_time, 'y_start': deal_start.price,
-                      'y_end': deal_end.price}
-            if (deal_end.type == DEAL_TYPE_BUY) ^ (deal_start.price >= deal_end.price):
-                result['color'] = 'win'
+        def condition2num(bool_):
+            return (bool_ << 1) - 1
+
+        def is_win(price1, price2, trade_type):
+            return condition2num(price2 >= price1) * condition2num(trade_type == '多头')
+
+        def get_position_lines(out, queue, row):
+            if row['entry'] == '入场(加仓)':
+                queue.append([row['volume_d'], row['price'], row['trade_time']])
             else:
-                result['color'] = 'lose'
+                volume = row['volume_d']
+                while volume > 0:
+                    entry = queue.popleft()
+                    out.append({'x1': entry[2], 'y1': entry[1],
+                                'x2': row['trade_time'], 'y2': row['price'],
+                                'type': is_win(entry[1], row['price'], row['trade_type'])})
+                    volume -= entry[0]
+                if volume < 0:
+                    queue.appendleft([-volume, entry[1], entry[2]])
 
-        def next_position(position):
-            return self.__positions_raw.get(position.next_id, None)
+        def get_position_lines_raw(out, queue, row):
+            if row[3] == '入场(加仓)':
+                queue.append(row[0:2])
+            else:
+                volume = row[0]
+                while volume > 0:
+                    entry = queue.popleft()
+                    out.append({'x1': entry[2], 'y1': entry[1],
+                                'x2': row[2], 'y2': row[1],
+                                'type': is_win(entry[1], row[1], row[4])})
+                    volume -= entry[0]
+                if volume < 0:
+                    queue.appendleft([-volume, entry[1], entry[2]])
 
-        def prev_position(position):
-            return self.__positions_raw.get(position.prev_id, None)
-
-        deal_profits = self.__quotes_raw.groupby(['close_time', 'symbol'])['close'].last().swaplevel(0, 1)
-        trade, _ = self.trade_info
-        """
-        result = []
-        stack = []
-        for symbol in {symbol for (symbol, _) in self.__symbols}:
-            position = next_position(self.__init_positions[symbol])
-            while (position != None):
-                deal = self.__deals_raw[position.deal]
-                if deal.entry == DEAL_ENTRY_IN:  # open or overweight position
-                    result.append(get_point(deal, DEAL_ENTRY_IN, deal.volume))
-                    stack.append((position, deal.volume))
-                else:
-                    if deal.entry == DEAL_ENTRY_INOUT:  # reverse position
-                        volume_left = deal.volume - position.volume
-                        result.append(get_point(deal, DEAL_ENTRY_IN, position.volume))
-                    else:  # underweight position
-                        volume_left = deal.volume
-                    result.append(get_point(deal, DEAL_ENTRY_OUT, volume_left))
-                    while volume_left > 0:
-                        position_start, volume = stack.pop()
-                        result.append(get_lines(position_start, position))
-                        volume_left -= volume
-                    if volume_left < 0:
-                        stack.append(position_start, -volume_left)
-                    elif deal.entry == DEAL_ENTRY_INOUT and position.volume > 0:
-                        stack.append((position, position.volume))
-                position = next_position(position)
+        for name, data in trade[['volume_d', 'price', 'trade_time', 'entry', 'trade_type']].groupby(level=0):
+            result[name] = {}
+            result[name]['lines'] = []
+            deal_queue = deque([])
+            data.apply(partial(get_position_lines, result[name]['lines'], deal_queue), axis=1)
+            # TODO 比较两者的速度差距，看看是否有必要把所有的apply都加上RAW=TRUE
+            # data.apply(partial(get_position_lines_raw, result[name]['lines'], deal_queue), axis=1， raw=True)
+            result[name]['points'] = list(map(lambda x: {'x': x[2], 'y': x[1]}, deal_queue))
         return result
-        """
 
     # -----------------------------------------------------------------------------------------------------------------------
     def _roll_exp(self, sample):
@@ -468,6 +463,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                      trade_days=x['trade_days']))
               .resample('MS', how='sum'))(sample)
         result = DataFrameExtended([], index=ts.index.rename('time'))
+        # TODO numpy.sqrt np自带有开根号运算
         for key, value in self._column_names['M'].items():
             # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
             result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
@@ -503,14 +499,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
-        return self._roll_std(self.__rate_of_return_percent['M'])
+        return self._roll_std(self.__rate_of_return_percent['D'])
 
     @property
     @cache_calculator
     def sharpe_ratio(self):
-        expected = self._roll_exp(self.__excess_return['M'])
+        expected = self._roll_exp(self.__rate_of_return_percent['M'])
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
-        std = _deal_float_error(self._roll_std(self.__excess_return['M']), fill=np.nan)
+        std = _deal_float_error(self.volatility, fill=np.nan)
         result = expected / std
         result.total = expected.total / std.total
         return result

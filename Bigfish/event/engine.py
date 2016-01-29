@@ -96,8 +96,7 @@ class EventEngine:
         if event.type_ in self.__handlers:
             # 若存在，则按顺序将事件传递给处理函数执行
             for handler in self.__handlers[event.type_]:
-                    handler(event)
-
+                handler(event)
 
     # ----------------------------------------------------------------------
     def __onTimer(self):

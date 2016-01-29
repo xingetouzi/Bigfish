@@ -60,20 +60,31 @@ class Backtesting:
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = data_generator(self.__strategy_engine)
         self.__performance_manager = None
-        self.__performance = None
+        self.__thread = None
+        self.__is_alive = False
 
-    def initialize(self):
+    def _initialize(self):
         self.__strategy_engine.initialize()
 
+    @property
+    def is_finished(self):
+        return self.__is_alive
+
     def start(self, paras=None, refresh=True):
+        self.__is_alive = True
         if paras is not None:
             self.__strategy.set_parameters(paras)
-        self.initialize()
+        self._initialize()
         self.__strategy_engine.start()
         self.__data_generator.start()
         self.__strategy_engine.wait()
         if refresh:
             self.__performance_manager = self.__get_performance_manager()
+
+    def stop(self):
+        self.__is_alive = False
+        self.__data_generator.stop()
+        self.__strategy_engine.stop()
 
     def __get_performance_manager(self):
         # TODO 加入回测是否运行的判断

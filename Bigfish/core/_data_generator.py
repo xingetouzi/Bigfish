@@ -21,6 +21,7 @@ class DataGenerator:
         self.__data_events = None
         self.__get_data = None
         self.__dataframe = None
+        self.__is_alive = False
 
     # TODO 多态
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
@@ -49,8 +50,14 @@ class DataGenerator:
         self.__dataframe.sort_values('close_time', inplace=True)
 
     def start(self):
+        self.__is_alive = True
         if self.__data_events is None:
             self.__initialize()
         # 回放数据
         for data_event in self.__data_events:
             self.__engine.put_event(data_event)
+            if not self.__is_alive:  # 判断用户是否取消
+                break
+
+    def stop(self):
+        self.__is_alive = False

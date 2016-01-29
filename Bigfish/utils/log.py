@@ -63,7 +63,7 @@ class FilePrinter:
         print(*args, file=self.__file)
 
     def stop(self):
-        if not self.__file.closed:
+        if self.__file and not self.__file.closed:
             self.__file.flush()
             self.__file.close()
         self.__file = None

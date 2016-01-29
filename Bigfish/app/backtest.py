@@ -92,7 +92,8 @@ class Backtesting:
             raise ValueError('please run the backtest first')
         return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
                                                  self.__strategy_engine.get_deals(),
-                                                 self.__strategy_engine.get_positions())
+                                                 self.__strategy_engine.get_positions(),
+                                                 self.__strategy_engine.get_symbols())
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()

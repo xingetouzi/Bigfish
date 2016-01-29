@@ -133,9 +133,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
             {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
-    def __init__(self, quotes, deals, positions, currency_symbol='$', capital_base=100000, period=86400,
+    def __init__(self, quotes, deals, positions, symbols, currency_symbol='$', capital_base=100000, period=86400,
                  num=20):  # 1day = 86400seconds
         super(StrategyPerformanceManagerOffline, self).__init__(StrategyPerformance)
+        self.__symbols = symbols
         self.__quotes_raw = quotes
         self.__deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
                                         columns=Deal.get_fields())  # deals in dataframe format
@@ -154,21 +155,24 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__units = {}  # 用于存储计算中需要用到的单位信息
 
     # @profile
+    @property
     def __get_rate_of_return_raw(self):
         interval = self.__period // self.__num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
         self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
         self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
-        quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])['close'].last()
+        quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol']].last()
+        # TODO 计算交叉盘报价货币的汇率
         deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
                 self.__deals_raw['time_index']).sum().cumsum()
         # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
         positions = self.__positions_raw.groupby(['time_index', 'symbol'])[
             ['type', 'price_current', 'volume']].last()
         # TODO 检查outer连接是否会影响交易日的计算
-        float_profit = pd.DataFrame(quotes).join(positions, how='outer').fillna(method='ffill').apply(
-                lambda x: (x.close - x.price_current) * x.volume * x.type, axis=1).sum(level='time_index').fillna(0)
+        calculator = lambda x: self.__symbols[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume)
+        float_profit = quotes.join(positions, how='outer').fillna(method='ffill').fillna(0) \
+            .apply(calculator, axis=1).sum(level='time_index').fillna(0)
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
                 0).sum(axis=1).apply(
                 lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
@@ -192,7 +196,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @cache_calculator
     def __rate_of_return(self):
         result = {}
-        result['R'] = self.__get_rate_of_return_raw()  # 'R' means raw
+        result['R'] = self.__get_rate_of_return_raw  # 'R' means raw
         # TODO 对爆仓情况的考虑
         if result['R'].min() <= 0:
             result['D'], self.__index_daily = \
@@ -286,6 +290,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         losing = trade_summary['total'][with_units('平均亏损')] * trade_summary['total'][with_units('亏损交易数')]
         rate_of_return = net_profit / self.__capital_base
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
+        # TODO 交易日计算是否正确
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1), self.__annual_factor / trade_days)
         max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
         max_losing = trade_summary['total'][with_units('最大亏损')]

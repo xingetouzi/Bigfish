@@ -50,6 +50,10 @@ class StrategyEngine(object):
     end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
 
     # ----------------------------------------------------------------------
+    def get_symbols(self):
+        return self.__symbol_pool
+
+    # ----------------------------------------------------------------------
     def get_symbol_timeframe(self):
         return self.__max_len_info.keys()
 

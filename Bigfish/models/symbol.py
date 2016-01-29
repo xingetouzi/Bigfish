@@ -56,6 +56,8 @@ class Symbol:
         :param kwargs: 其他参数
         :return: lot手合约的价值
         """
+        if not lot:
+            return 0
         return (self.lot_size * self.point_value(**kwargs) * (point - slippage) - commission * self.commission) * lot
 
     def caution_money(self, point, lot=1, **kwargs):

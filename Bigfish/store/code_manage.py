@@ -20,7 +20,10 @@ def save_code(user, code):
     code_name = code.name + ".py"
     current_path = os.path.join(home, code_name)
 
-    if not os.path.exists(current_path):  # 如果是第一次创建,则记录相关信息
+    # if not os.path.exists(current_path):  # 如果是第一次创建,则记录相关信息
+    #     __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
+
+    if not strategy_exists(user, code_name):
         __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
 
     file = open(current_path, 'w+')  # 打开一个文件的句柄
@@ -189,3 +192,11 @@ def get_strategy_list(user):
     """
     u_dir = UserDirectory(user)
     return get_code_list(u_dir.get_strategy_dir())
+
+
+def strategy_exists(user, name):
+    u_dir = UserDirectory(user)
+    with sqlite3.connect(__get_store_db__(u_dir.get_strategy_dir())) as conn:
+        cursor = conn.execute("select id, name from code_info where name=?", (name,))
+        return cursor.fetchone() is not None
+    return False

@@ -172,8 +172,8 @@ def get_sys_func_dir():
 
 
 def get_sys_func_list():
-    return list(map(lambda x: x.replace('.py', ''),
-                    set(os.listdir(get_sys_func_dir())) - {'__init__.py', '__pycache__'}))
+    return sorted(list(map(lambda x: x.replace('.py', ''),
+                    set(os.listdir(get_sys_func_dir())) - {'__init__.py', '__pycache__'})))
 
 
 def get_func_list(user):

@@ -55,8 +55,8 @@ def rename_code(user, code, new_name):
     """
     udir = UserDirectory(user)
     home = udir.get_home(code=code)
-    old_path = os.path.join(home, code.name) + ".py"
-    new_path = os.path.join(home, new_name) + ".py"
+    old_path = os.path.join(home, code.name + ".py")
+    new_path = os.path.join(home, new_name + ".py")
     if os.path.exists(new_path):
         return False
     os.rename(old_path, new_path)
@@ -83,14 +83,14 @@ def delete_strategy(user, name):
     #     if cursor.fetchone():
     #         print("exist")
     if not name == "demo":
-        os.remove(os.path.join(home, name) + ".py")
+        os.remove(os.path.join(home, name + ".py"))
     __execute_sql__(home, "delete from code_info where name=?", name)
 
 
 def delete_func(user, name):
     udir = UserDirectory(user)
     home = udir.get_func_dir()
-    os.remove(os.path.join(home, name) + ".py")
+    os.remove(os.path.join(home, name + ".py"))
     __execute_sql__(home, "delete from code_info where name=?", name)
 
 
@@ -102,7 +102,7 @@ def get_func(user, code_name):
     :return 返回一个code对象
     """
     udir = UserDirectory(user)
-    func_path = os.path.join(udir.get_func_dir(), code_name) + ".py"
+    func_path = os.path.join(udir.get_func_dir(), code_name + ".py")
 
     if os.path.exists(func_path):
         file = open(func_path, 'r')
@@ -120,7 +120,7 @@ def get_strategy(user, code_name):
     :return 返回一个code对象
     """
     udir = UserDirectory(user)
-    strategy_path = os.path.join(udir.get_strategy_dir(), code_name) + ".py"
+    strategy_path = os.path.join(udir.get_strategy_dir(), code_name + ".py")
 
     if os.path.exists(strategy_path):
         file = open(strategy_path, 'r')

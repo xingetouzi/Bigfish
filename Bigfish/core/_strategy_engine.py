@@ -6,6 +6,8 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 import time
+from functools import partial
+from collections import defaultdict
 
 # 自定义模块
 from Bigfish.core import AccountManager
@@ -17,7 +19,7 @@ from Bigfish.utils.common import set_attr, get_attr
 from Bigfish.models.common import deque
 from Bigfish.utils.common import time_frame_to_seconds
 from Bigfish.event.handle import SymbolsListener
-from functools import partial
+
 
 
 # %% 策略引擎语句块
@@ -44,7 +46,6 @@ class StrategyEngine(object):
         self.start_time = None
         self.end_time = None
         self.__current_positions = {}  # key：symbol，value：current position
-        self.__initial_positions = {}  # key：symbol，value：initial position
 
     start_time = property(partial(get_attr, attr='start_time'), partial(set_attr, attr='start_time'), None)
     end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
@@ -106,26 +107,23 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def initialize(self):
         # TODO 数据结构还需修改
+        self.__data.clear()
         self.__deals.clear()
         self.__positions.clear()
-        self.__data.clear()
+        self.__current_positions.clear()
         # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
         Deal.set_auto_inc(0)
         Position.set_auto_inc(0)
-        self.__current_positions.clear()
         for (symbol, time_frame), maxlen in self.__max_len_info.items():
-            if symbol not in self.__data:
-                self.__data[symbol] = {}
-            if time_frame not in self.__data[symbol]:
-                self.__data[symbol][time_frame] = {}
+            if time_frame not in self.__data:
+                self.__data[time_frame] = defaultdict(dict)
             if maxlen == 0:
                 maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-                self.__data[symbol][time_frame][field] = deque(maxlen=maxlen)
+                self.__data[time_frame][field][symbol] = deque(maxlen=maxlen)
             if symbol not in self.__current_positions:
                 position = Position(symbol)
                 self.__current_positions[symbol] = position
-                self.__initial_positions[symbol] = position
                 self.__positions[position.get_id()] = position
 
     # ----------------------------------------------------------------------
@@ -150,7 +148,7 @@ class StrategyEngine(object):
         symbol = bar.symbol
         time_frame = bar.time_frame
         for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-            self.__data[symbol][time_frame][field].appendleft(getattr(bar, field))
+            self.__data[time_frame][field][symbol].appendleft(getattr(bar, field))
         for order in self.__orders_todo:
             if bar.symbol == bar.symbol:
                 result = self.__send_order_to_broker(order)
@@ -258,7 +256,7 @@ class StrategyEngine(object):
     def __send_order_to_broker(self, order):
         if self.__backtesting:
             time_frame = SymbolsListener.get_by_id(order.handle).get_time_frame()
-            time_ = self.__data[order.symbol][time_frame]["time"][0] + time_frame_to_seconds(time_frame)
+            time_ = self.__data[time_frame]["time"][order.symbol][0] + time_frame_to_seconds(time_frame)
             order.time_done = int(time_)
             order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
             order.volume_current = order.volume_initial
@@ -267,7 +265,7 @@ class StrategyEngine(object):
             deal.time = order.time_done
             deal.time_msc = order.time_done_msc
             deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.__data[order.symbol][time_frame]["close"][0]
+            deal.price = self.__data[time_frame]["close"][order.symbol][0]
             # TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
@@ -382,7 +380,7 @@ class StrategyEngine(object):
         order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         if self.__backtesting:
-            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -406,7 +404,7 @@ class StrategyEngine(object):
         """
 
         if self.__backtesting:
-            time_ = self.__data[symbol][SymbolsListener.get_by_id(listener).get_time_frame()]['time'][0]
+            time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
         else:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)

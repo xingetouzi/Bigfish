@@ -54,7 +54,7 @@ class Strategy(HasID):
                               sell=partial(self.engine.close_position, strategy=self.__id, direction=1),
                               short=partial(self.engine.open_position, strategy=self.__id, direction=-1),
                               cover=partial(self.engine.close_position, strategy=self.__id, direction=-1),
-                              marketposition=self.engine.get_current_positions(),
+                              marketpositions=self.engine.get_current_positions(),
                               currentcontracts=self.engine.get_current_contracts(), data=self.engine.get_data,
                               context=self.__context, export=partial(export, strategy=self),
                               put=self.put_context, get=self.get_context, print=self.__printer.print,
@@ -181,7 +181,9 @@ class Strategy(HasID):
                                                for f in funcs_in_use.keys()] + ['del(system_functions)']
                     temp = []
                     # TODO 加入opens等，这里字典的嵌套结构
-                    temp.extend(["%s = __globals['data']()['%s']['%s']['%s']" % (field, symbols[0], time_frame, field)
+                    temp.extend(["{0} = __globals['data']()['{1}']['{0}']['{2}']".format(field, time_frame, symbols[0])
+                                 for field in ["open", "high", "low", "close", "time", "volume"]])
+                    temp.extend(["{0}s = __globals['data']()['{1}']['{0}']".format(field, time_frame)
                                  for field in ["open", "high", "low", "close", "time", "volume"]])
                     temp.extend(["{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key)])
                     function_instructions[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \

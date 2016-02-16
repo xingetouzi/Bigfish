@@ -139,6 +139,7 @@ class Strategy(HasID):
         get_global_attrs(signal_locals_)
         set_global_attrs(signal_globals_)
         set_global_attrs(function_globals_)
+        signal_globals_.update(signal_locals_)
         signal_globals_.update(self.__locals_)
         function_globals_.update(self.__locals_)
         self.engine.set_capital_base(self.capital_base)
@@ -224,7 +225,6 @@ class Strategy(HasID):
         signal_injector = LocalsInjector(signal_instructions)
         signal_injector.visit(ast_)
         ast_ = series_exporter.visit(ast_)
-        # TODO 解决行号的问题
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_instructions.keys():
             self.listeners[key].set_generator(signal_locals_[key])

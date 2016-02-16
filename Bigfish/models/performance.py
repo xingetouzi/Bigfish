@@ -161,11 +161,16 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
         self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
         self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
+        self.__positions_raw = self.__positions_raw.dropna()  # XXX 去掉初始时的零仓位
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
         quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol']].last()
         # TODO 计算交叉盘报价货币的汇率
         deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
                 self.__deals_raw['time_index']).sum().cumsum()
+        # XXX deals_profit为空，即没有下单的情况，非常丑陋的补丁 @ ^ @
+        if deals_profit.empty:
+            deals_profit = pd.DataFrame(columns=['profit'])
+            deals_profit.index.name = 'time_index'
         # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
         positions = self.__positions_raw.groupby(['time_index', 'symbol'])[
             ['type', 'price_current', 'volume']].last()
@@ -173,6 +178,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         calculator = lambda x: self.__symbols[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume)
         float_profit = quotes.join(positions, how='outer').fillna(method='ffill').fillna(0) \
             .apply(calculator, axis=1).sum(level='time_index').fillna(0)
+        # XXX 多品种情况这里还要测试一下正确性
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
                 0).sum(axis=1).apply(
                 lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
@@ -316,7 +322,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'handle']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
-        if trade.empty:
+        if trade.empty:  # 依旧丑陋的补丁
+            trade = pd.DataFrame(columns=['symbol', 'type_d', 'price_current', 'volume_d', 'position', 'time',
+                                          'type_p', 'price', 'volume_p', 'profit', 'entry', 'strategy', 'handle',
+                                          'trade_number', 'trade_type'])
             trade.index.name = 'deal_number'
             return trade
         trade_grouped = trade.groupby('symbol')
@@ -351,7 +360,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
         result['总交易数'] = [trade_grouped[key].ngroups for key in columns]
         last_trade = trade['total'].tail(1)
-        if (last_trade.volume_p != 0).bool():
+        if not last_trade.empty and (last_trade.volume_p != 0).bool():  # XXX last_trade为空的情况
             result['总交易数']['total'] -= 1
             if (last_trade.type_p > 0).bool():
                 result['未平仓交易数'] = [1, 1, 0]
@@ -382,9 +391,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @cache_calculator
     def trade_details(self):
         columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit']
-        trade = (
-            lambda x: DataFrameExtended(x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
-                self.trade_info)
+        if not self.trade_info.empty:
+            trade = (
+                lambda x: pd.DataFrame(
+                        x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
+                    self.trade_info)
+        else:  # 丑陋补丁X3
+            trade = pd.DataFrame(columns=columns)
+            trade.index.name = '_'
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
         trade['trade_time'] = trade['time'].map(
@@ -393,11 +407,6 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['trade_profit'] = trade['profit']
         del trade['time'], trade['profit']
         return trade
-        # quotes = self.__quotes_raw.groupby(['close_time', 'symbol'])[['close']].last().swaplevel(0, 1)
-        # print(quotes)
-        # trade = self.trade_info.groupby(['symbol', 'trade_number'])
-        # pd.merge(trade, quotes, how='outer', left_on='time', right_index=True)
-        # return pd.DataFrame()
 
     @property
     @cache_calculator

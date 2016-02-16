@@ -14,6 +14,7 @@ import Bigfish.data.forex_data as fx
 import tushare as ts
 import numpy as np
 import pandas as pd
+import codecs
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -200,7 +201,7 @@ if __name__ == '__main__':
     import time
 
     start_time = time.time()
-    with open('../test/testcode3.py') as f:
+    with codecs.open('../test/testcode1.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
@@ -215,6 +216,7 @@ if __name__ == '__main__':
     print('trade_info:\n%s' % performance._manager.trade_info)
     print('trade_summary:\n%s' % performance.trade_summary)
     print('trade_details:\n%s' % performance.trade_details)
+    print(translator.dumps(performance._manager.trade_info))
     print(translator.dumps(performance.trade_details))
     print('strategy_summary:\n%s' % performance.strategy_summary)
     print('optimize_info:\n%s' % performance.optimize_info)

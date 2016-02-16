@@ -21,7 +21,6 @@ from Bigfish.utils.common import time_frame_to_seconds
 from Bigfish.event.handle import SymbolsListener
 
 
-
 # %% 策略引擎语句块
 ########################################################################
 class StrategyEngine(object):
@@ -29,23 +28,23 @@ class StrategyEngine(object):
     CACHE_MAXLEN = 10000
 
     # ----------------------------------------------------------------------
-    def __init__(self, backtesting=False):
+    def __init__(self, is_backtest=False):
         """Constructor"""
         self.__event_engine = EventEngine()  # 事件处理引擎
         self.__account_manager = AccountManager()  # 账户管理
-        self.__backtesting = backtesting  # 是否为回测
+        self.__is_backtest = is_backtest  # 是否为回测
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
         self.__symbol_pool = {}  # 保存交易物
         self.__deals = {}  # 保存所有成交数据的字典
         self.__positions = {}  # Key:id, value:position with responding id
+        self.__current_positions = {}  # key：symbol，value：current position
         self.__strategys = {}  # 保存策略对象的字典,key为策略名称,value为策略对象
         self.__data = {}  # 统一的数据视图
         self.__max_len_info = {}  # key:(symbol,timeframe),value:maxlen
         self.start_time = None
         self.end_time = None
-        self.__current_positions = {}  # key：symbol，value：current position
 
     start_time = property(partial(get_attr, attr='start_time'), partial(set_attr, attr='start_time'), None)
     end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
@@ -254,7 +253,7 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
-        if self.__backtesting:
+        if self.__is_backtest:
             time_frame = SymbolsListener.get_by_id(order.handle).get_time_frame()
             time_ = self.__data[time_frame]["time"][order.symbol][0] + time_frame_to_seconds(time_frame)
             order.time_done = int(time_)
@@ -379,7 +378,7 @@ class StrategyEngine(object):
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
         order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
-        if self.__backtesting:
+        if self.__is_backtest:
             time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
         else:
             time_ = time.time()
@@ -403,7 +402,7 @@ class StrategyEngine(object):
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
 
-        if self.__backtesting:
+        if self.__is_backtest:
             time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
         else:
             time_ = time.time()

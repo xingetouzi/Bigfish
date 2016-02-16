@@ -6,10 +6,10 @@ def init():  # init函数将在策略被加载时执行，进行一些初始化�
     pass
 
 
-# 每一个不以init为名的函数都将别视为一个信号，信号在每根K线的数据到来时都会被执行
+# 每一个不以init为名的函数都将被视为一个信号，信号在每次行情数据到来时都会被执行
 def handle(slowlength=20, fastlength=10, lots=1):  # 函数签名的中只支持带默认值的参数(即关键字参数)，可以对此处的参数使用我们平台的参数优化功能
     # 如果需要定义普通的函数而非信号，可以在信号中嵌套定义
-    def highest(price, len, offset=0):  # 计算从当前K线向前偏移offset根K线开始起，之前n根K线的price序列数组中的最低价
+    def highest(price, len, offset=0):  # 计算从当前K线向前偏移offset根K线开始起，之前n根K线的price序列数组中的最高价
         max_ = None
         for index in range(len):
             if not max_:
@@ -21,10 +21,11 @@ def handle(slowlength=20, fastlength=10, lots=1):  # 函数签名的中只支持
     atr = ATR(fastlength)  # 系统函数ATR(n),表示最近n根K线的Average True Range
     print(atr)  # print为输出函数，输出的内容将显示在下方的输出栏中
     if barnum > slowlength:  # barnum表示当前的K线数，从1开始计数，第一根K线对应barnum=1
-        symbol = symbols[0]  # 全局变量symbols是一个列表，含有用户选择的策略中交易的所有品种
-        # 关于行情的全局变量有: open, high, low, close, volume, time, 类型均为序列数组，序列数组的特点是从当前K线开始索引，
-        # 例如close[0],表示最后一根K线的收盘价(也是最后一个tick的价格)
-        position = marketpositions.get(symbol, None)  # 调用marketpositions为保存各品种仓位信息的字典
+        symbol = symbols[0]  # 全局变量symbols是一个列表，表示用户选择的交易品种池
+        # 关于行情的全局变量有: open, high, low, close, volume, time, 类型均为序列数组，序列数组的特点是从当前K线向后开始索引，
+        # 例如close[0],表示最后一根K线的收盘价(也是最后一个tick的价格)，而close[1]表示上一根K线的收盘价
+        position = marketpositions.get(symbol, None)
+        # marketpositions为保存各品种仓位信息的字典，key为交易品种的代码，value为表示对应的仓位的Position对象，详见文档
         # position = marketposition # 对于单品种策略而言，此行语句可以代替以上两行语句
         # buy, sell, short, cover,为交易指令函数，分别为对应开多单，平多单，开空单，平空单，函数签名详情请见文档
         if position == 0:  # 若当前无持仓

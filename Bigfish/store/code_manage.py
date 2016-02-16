@@ -7,6 +7,7 @@ from Bigfish.store import UserDirectory
 import os
 import sqlite3
 import shutil
+import codecs
 
 
 def save_code(user, code):
@@ -26,7 +27,7 @@ def save_code(user, code):
     if not strategy_exists(user, code.name):
         __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
 
-    file = open(current_path, 'w+')  # 打开一个文件的句柄
+    file = codecs.open(current_path, mode='w+', encoding="utf8")  # 打开一个文件的句柄
     file.write(code.content)  # 写入代码(策略)内容
     file.flush()
     file.close()
@@ -35,7 +36,8 @@ def save_code(user, code):
 def __get_store_db__(home):
     db_path = os.path.join(home, ".store.db")
     if not os.path.exists(db_path):
-        open(db_path, "w+")
+        # open(db_path, "w+")
+        codecs.open(db_path, mode='w+', encoding="utf8")
         with sqlite3.connect(db_path) as conn:
             conn.execute("create table code_info (id integer primary key autoincrement, name varchar(30) unique)")
             conn.commit()
@@ -108,7 +110,8 @@ def get_func(user, code_name):
     func_path = os.path.join(udir.get_func_dir(), code_name + ".py")
 
     if os.path.exists(func_path):
-        file = open(func_path, 'r')
+        # file = open(func_path, 'r')
+        file = codecs.open(func_path, mode='r', encoding="utf8")
         code = Code(code_name, code_type=2, content=file.read())
         file.close()
         return code
@@ -126,7 +129,8 @@ def get_strategy(user, code_name):
     strategy_path = os.path.join(udir.get_strategy_dir(), code_name + ".py")
 
     if os.path.exists(strategy_path):
-        file = open(strategy_path, 'r')
+        # file = open(strategy_path, 'r')
+        file = codecs.open(strategy_path, mode='r', encoding="utf8")
         code = Code(code_name, code_type=1, content=file.read())
         file.close()
         return code
@@ -142,7 +146,8 @@ def get_sys_func(code_name):
     sys_func_path = os.path.join(get_sys_func_dir(), code_name + ".py")
 
     if os.path.exists(sys_func_path):
-        file = open(sys_func_path, 'r')
+        # file = open(sys_func_path, 'r')
+        file = codecs.open(sys_func_path, mode='r', encoding="utf8")
         code = Code(code_name, code_type=2, content=file.read())
         file.close()
         return code

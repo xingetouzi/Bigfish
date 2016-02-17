@@ -161,7 +161,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
         self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
         self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
-        self.__positions_raw = self.__positions_raw.dropna()  # XXX 去掉初始时的零仓位
+        self.__positions_raw = self.__positions_raw[self.__positions_raw['time_update'].notnull()]
+        # XXX 去掉初始时的零仓位,因为仓位信息中其他的一些None值也算na所以不能直接用dropna
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
         quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol']].last()
         # TODO 计算交叉盘报价货币的汇率

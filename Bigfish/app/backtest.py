@@ -201,7 +201,7 @@ if __name__ == '__main__':
     import time
 
     start_time = time.time()
-    with codecs.open('../test/testcode1.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode2.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',

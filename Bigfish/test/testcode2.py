@@ -1,36 +1,32 @@
-# -*- coding: utf-8 -*-
+# -*- coding:utf-8 -*-
 base = 100000
-symbols = ['EURUSD']
-start = '2015-01-01'
-end = '2015-12-01'
-timeframe = 'M30'
 
-def handle(slowlength=20, fastlength=10, lots=100):
-	def max(price,len):
-		max = 0
-		for index in range(len):
-			if price[index+1]>max:
-				max = price[index+1]
-		return(max)
-	def min(price,len):
-		min = 99999999
-		for index in range(len):
-			if price[index+1]<min:
-				min = price[index+1]
-		return(min)
+def init():
+    pass
 
-	print('%s:(h:%s,l:%s,ATR:%s)' % (barnum, high[0], low[0], ATR()))
-	if barnum > slowlength:
-		symbol = symbols[0]
-		position = marketposition.get(symbol,None)
-		if position == 0:
-			if close[0]>=max(high,slowlength):
-				buy(symbol,lots)
-			if close[0]<=min(low,slowlength):
-				short(symbol,lots)
-		elif marketposition[symbol] > 0:
-			if close[0]<=min(low,fastlength):
-				sell(symbol,lots)
-		elif marketposition[symbol] < 0:
-			if close[0]>=max(high,fastlength):
-				cover(symbol,lots)
+def handle(slowlength=20, fastlength=10, lots=1):
+    def highest(price, len, offset=0):
+        max_ = 0
+        for index in range(len):
+            max_ = max(price[index + offset], max_)
+        return max_
+    atr = ATR(fastlength)
+    export(a)
+    a[0] = ATR(1)
+    print('atr(1):%s' % a[0])
+    print('atr(2):%s' % (ATR(1) if barnum== 1 else (a[0]+a[1])/2))
+    print('atr(2):%s' % ATR(2))
+    if barnum > slowlength:
+        symbol = symbols[0]
+        position = marketpositions.get(symbol, None)
+        if position == 0:
+            if close[0] >= highest(high, slowlength, 1) + atr:
+                buy(symbol, lots)
+            if close[0] <= lowest(slowlength, 1) - atr:
+                short(symbol, lots)
+        elif position > 0:
+            if close[0] <= lowest(fastlength, offset=1) - atr:
+                sell(symbol, lots)
+        elif position < 0:
+            if close[0] >= highest(high, fastlength, 1) + atr:
+                cover(symbol, lots)

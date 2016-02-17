@@ -60,7 +60,6 @@ class DataframeTranslator(LigerUITranslator):
                 {'(%s)' % currency: ['平仓收益'],
                  '(手)': ['成交手数', '现有仓位', ]}
         )
-        print(self._units)
 
     def set_precision(self, n):
         assert isinstance(n, int) and n >= 0

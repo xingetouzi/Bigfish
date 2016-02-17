@@ -114,7 +114,7 @@ class StrategyPerformance(Performance):
         super(StrategyPerformance, self).__init__(manager)
 
     def get_info_on_home_page(self):
-        return {key.split('(')[0]: value for key, value in self._manager.strategy_summary['_'].to_dict().items()}
+        return {key.split('(')[0]: value for key, value in self._manager.strategy_summary['_'].fillna(0).to_dict().items()}
 
 
 # -----------------------------------------------------------------------------------------------------------------------

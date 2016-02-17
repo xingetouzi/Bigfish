@@ -45,9 +45,14 @@ class StrategyEngine(object):
         self.__max_len_info = {}  # key:(symbol,timeframe),value:maxlen
         self.start_time = None
         self.end_time = None
+        self.__current_time = None  # 目前数据运行到的事件，用于计算回测进度
 
     start_time = property(partial(get_attr, attr='start_time'), partial(set_attr, attr='start_time'), None)
     end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
+
+    # ----------------------------------------------------------------------
+    def get_current_time(self):
+        return self.__current_time
 
     # ----------------------------------------------------------------------
     def get_symbols(self):
@@ -106,6 +111,7 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def initialize(self):
         # TODO 数据结构还需修改
+        self.__current_time = None
         self.__data.clear()
         self.__deals.clear()
         self.__positions.clear()
@@ -146,6 +152,7 @@ class StrategyEngine(object):
         bar = event.content['data']
         symbol = bar.symbol
         time_frame = bar.time_frame
+        self.__current_time = bar.close_time if not self.__current_time else max(self.__current_time, bar.close_time)
         for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
             self.__data[time_frame][field][symbol].appendleft(getattr(bar, field))
         for order in self.__orders_todo:

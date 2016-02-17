@@ -4,17 +4,18 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
+import codecs
 from functools import partial
 
-from Bigfish.core import DataGenerator, StrategyEngine, Strategy
-from Bigfish.models.performance import StrategyPerformanceManagerOffline
-from Bigfish.utils.quote import Bar
-from Bigfish.utils.common import get_datetime
-import Bigfish.data.forex_data as fx
-import tushare as ts
 import numpy as np
 import pandas as pd
-import codecs
+import tushare as ts
+
+import Bigfish.data.forex_data as fx
+from Bigfish.core import DataGenerator, StrategyEngine, Strategy
+from Bigfish.models.performance import StrategyPerformanceManagerOffline
+from Bigfish.models.quote import Bar
+from Bigfish.utils.common import get_datetime
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -70,6 +71,16 @@ class Backtesting:
     @property
     def is_finished(self):
         return self.__is_alive
+
+    @property
+    def progress(self):
+        et = get_datetime(self.__setting['end_time']).timestamp()
+        st = get_datetime(self.__setting['start_time']).timestamp()
+        ct = self.__strategy_engine.get_current_time()
+        if ct:
+            return min((ct - st) / (et - st) * 100, 100)
+        else:
+            return 0
 
     def start(self, paras=None, refresh=True):
         self.__is_alive = True
@@ -201,11 +212,12 @@ if __name__ == '__main__':
     import time
 
     start_time = time.time()
-    with codecs.open('../test/testcode1.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode2.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMongoDB)
+    print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()
     user_dir = UserDirectory(user)
@@ -231,9 +243,10 @@ if __name__ == '__main__':
     print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
     print('output:\n%s' % backtest.get_output())
     print(time.time() - start_time)
-    paras = {
-        'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
-                   'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
-    optimize = backtest.optimize(paras, None, None)
-    print('optimize\n%s' % optimize)
-    print(time.time() - start_time)
+    print(backtest.progress)
+    # paras = {
+    #     'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
+    #                'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
+    # optimize = backtest.optimize(paras, None, None)
+    # print('optimize\n%s' % optimize)
+    # print(time.time() - start_time)

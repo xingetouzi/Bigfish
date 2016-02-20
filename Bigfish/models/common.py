@@ -39,9 +39,13 @@ class HasID:
         cls.__AUTO_INC_NEXT = num
 
 
-class Deque(deque):
-    pass
-    # 让deque支持切片操作
+class Deque(deque, HasID):
+    def __init__(self, *args, **kwargs):
+        super(Deque, self).__init__(*args, **kwargs)
+        self.__id = self.next_auto_inc()
+
+    def __hash__(self):
+        return self.__id
 
 
 class SeriesList(UserList):

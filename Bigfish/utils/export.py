@@ -6,7 +6,7 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 
-from Bigfish.models.common import deque
+from Bigfish.models.common import Deque as deque
 from functools import wraps, partial
 from weakref import WeakKeyDictionary
 

@@ -16,7 +16,7 @@ from Bigfish.event.engine import EventEngine
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
 from Bigfish.utils.common import set_attr, get_attr
-from Bigfish.models.common import deque
+from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import time_frame_to_seconds
 from Bigfish.event.handle import SymbolsListener
 
@@ -119,6 +119,7 @@ class StrategyEngine(object):
         # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
         Deal.set_auto_inc(0)
         Position.set_auto_inc(0)
+        deque.set_auto_inc(0)
         for (symbol, time_frame), maxlen in self.__max_len_info.items():
             if time_frame not in self.__data:
                 self.__data[time_frame] = defaultdict(dict)

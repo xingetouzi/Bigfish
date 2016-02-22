@@ -5,7 +5,7 @@ import pymysql
 
 tf_peroids = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
 
-conn=pymysql.connect(host='115.29.54.208', user='xinger', passwd='ShZh_forex_4', db='forex', charset='utf8')
+conn=pymysql.connect(host='115.29.54.208', user='xinger', passwd='ShZh_forex_4', db='forex', charset='utf8', autoReconnect=True)
 
 def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None):
     """

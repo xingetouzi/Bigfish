@@ -231,7 +231,7 @@ if __name__ == '__main__':
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
-                           data_generator=DataGeneratorMongoDB)
+                           data_generator=DataGeneratorMysql)
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()

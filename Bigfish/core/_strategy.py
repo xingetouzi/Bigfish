@@ -208,7 +208,9 @@ class Strategy(HasID):
                                                additional_instructions
                     # 信号与函数中相比多出的就是交易指令
                     signal_to_inject_loop[key] = ["BarNum = get_current_bar()",
-                                                  "MarketPosition=MarketPositions[Symbol].type"]
+                                                  "Pos = MarketPositions[Symbol]",
+                                                  "MarketPosition = Pos.type",
+                                                  "CurrentContracts= Pos.volume"]
                     function_to_inject_loop[key] = signal_to_inject_loop[key]
                 else:
                     # TODO自定义事件处理

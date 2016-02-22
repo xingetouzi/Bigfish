@@ -306,7 +306,7 @@ class StrategyEngine(object):
                 self.__orders_todo[order.get_id()] = order
             return order.get_id()
         else:
-            return 0
+            return -1
 
     # ----------------------------------------------------------------------
     def cancel_order(self, order_id):
@@ -379,10 +379,10 @@ class StrategyEngine(object):
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
         if volume == 0 or not direction:  # direction 对应多空头，1为多头，-1为空头
-            return 0
+            return -1
         position = self.__current_positions.get(symbol, None)
         if not position or position.type != direction:
-            return 0
+            return -1
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
         order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
@@ -424,7 +424,7 @@ class StrategyEngine(object):
             # TODO 这里应该要支持事务性的下单操作
             self.send_order(order)
         if volume == 0:
-            return
+            return -1
         order = Order(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         order.time_setup = int(time_)

@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 import tushare as ts
 
-import Bigfish.data.forex_data as fx
+import Bigfish.data.forex_data as fx_mongo
+import Bigfish.data.mysql_forex_data as fx_mysql
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.models.quote import Bar
@@ -47,14 +48,21 @@ class DataGeneratorTushare(DataGenerator):
 
 class DataGeneratorMongoDB(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = fx.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
-                                  get_datetime(end_time).timestamp())
+        data = fx_mongo.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
+                                        get_datetime(end_time).timestamp())
+        return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+
+
+class DataGeneratorMysql(DataGenerator):
+    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+        data = fx_mysql.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
+                                        get_datetime(end_time).timestamp())
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
-                 data_generator=DataGeneratorMongoDB):
+                 data_generator=DataGeneratorMysql):
         self.__setting = {'symbols': symbols, 'time_frame': time_frame, 'start_time': start_time, 'end_time': end_time}
         self.__strategy_engine = StrategyEngine(is_backtest=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
@@ -211,10 +219,12 @@ if __name__ == '__main__':
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
 
+
     def get_first_n_lines(string, n):
         lines = string.splitlines()
         n = min(n, len(lines))
         return '\n'.join(lines[:n])
+
 
     start_time = time.time()
     with codecs.open('../test/testcode5.py', 'r', 'utf-8') as f:

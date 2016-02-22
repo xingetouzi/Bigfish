@@ -1,3 +1,4 @@
+pymysql
 pymongo
 redis
 Cython==0.23.4

@@ -31,10 +31,12 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     bar_list = []
     for row in cursor:
         # bar_list.append(row)
-        bar_list.append({"open": row["open"], "close": row["close"], "low": row["low"], "high": row["high"], "ctime": row["ctime"], "volume": row["volume"]})
+        bar_list.append({"open": row["open"], "close": row["close"], "low": row["low"], "high": row["high"],
+                         "ctime": row["ctime"], "volume": row["volume"]})
     return bar_list
 
 
+@DeprecationWarning
 def get_number_bars(symbol, time_frame, number=720):
     """
     获取最新number(默认为720)数量的 Bar 列表
@@ -55,6 +57,7 @@ def get_number_bars(symbol, time_frame, number=720):
     return bar_list
 
 
+@DeprecationWarning
 def get_latest_bar(symbol, time_frame, utf=False):
     """
     根据品种和时间尺度,获取最新的 Bar
@@ -78,6 +81,7 @@ def get_latest_bar(symbol, time_frame, utf=False):
 def __check_tf__(time_frame):
     if not (time_frame in tf_peroids.keys()):
         raise ValueError("Not supported time_frame: %s" % time_frame)
+
 
 if __name__ == '__main__':
     bar_array = get_period_bars("EURUSD", "M30", "2015-12-01", "2016-01-08", "%Y-%m-%d")

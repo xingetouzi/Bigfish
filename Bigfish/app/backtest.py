@@ -211,8 +211,13 @@ if __name__ == '__main__':
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
 
+    def get_first_n_lines(string, n):
+        lines = string.splitlines()
+        n = min(n, len(lines))
+        return '\n'.join(lines[:n])
+
     start_time = time.time()
-    with codecs.open('../test/testcode4.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode5.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
@@ -241,7 +246,8 @@ if __name__ == '__main__':
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
-    print('output:\n%s' % backtest.get_output())
+    print(time.time() - start_time)
+    print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
     print(time.time() - start_time)
     print(backtest.progress)
     # paras = {

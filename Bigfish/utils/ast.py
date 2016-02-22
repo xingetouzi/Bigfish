@@ -47,9 +47,11 @@ class SystemFunctionsDetector(FunctionsDetector):
 
     def visit_Name(self, node):
         name = node.id
-        if name in self._funcs and isinstance(node.ctx, ast.Load) and name not in self._funcs_in_use:
+        if name in self._funcs and isinstance(node.ctx, ast.Load):
             if self._handler is not None:
-                self._funcs_in_use[name] = self._handler
+                if name not in self._funcs_in_use:
+                    self._funcs_in_use[name] = set()
+                self._funcs_in_use[name].add(self._handler)
             else:
                 raise RuntimeError('系统函数只能在handler中调用')
             with open(os.path.join(self._sys_func_dir, name + '.py'), 'r') as f:
@@ -61,9 +63,10 @@ class SystemFunctionsDetector(FunctionsDetector):
 class LocalsInjector(ast.NodeVisitor):
     """向函数中注入局部变量，参考ast.NodeVisitor"""
 
-    def __init__(self, to_inject={}, is_signal=True):
+    def __init__(self, to_inject_init={}, to_inject_loop={}, is_signal=True):
         self.__depth = 0
-        self.__to_inject = to_inject
+        self.__to_inject_init = to_inject_init
+        self.__to_inject_loop = to_inject_loop
         self.__is_signal = True
 
     def visit(self, node):
@@ -75,18 +78,20 @@ class LocalsInjector(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node):
         self.generic_visit(node)
-        if (self.__depth == 2) and (node.name in self.__to_inject):
+        if (self.__depth == 2) and (node.name in self.__to_inject_init):
             # 注入变量
-            code = '\n'.join(self.__to_inject[node.name])
+            code_init = '\n'.join(self.__to_inject_init[node.name])
             location_patcher = LocationPatcher(node)
-            code_ast = location_patcher.visit(ast.parse(code))
-            barnum_ast = location_patcher.visit(ast.parse('barnum = get_current_bar()'))
+            code_init_ast = location_patcher.visit(ast.parse(code_init))
+            code_loop = '\n'.join(self.__to_inject_loop[node.name])  # 每个信号或函数注入的语句可能都相同
+            code_loop_ast = location_patcher.visit(ast.parse(code_loop))
+            barnum_ast = location_patcher.visit(ast.parse('BarNum = get_current_bar()'))
 
             while_node = ast.copy_location(ast.While(
-                    body=barnum_ast.body + node.body,
+                    body=barnum_ast.body + code_loop_ast.body + node.body,
                     test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
             self.return_to_yield(while_node)
-            node.body = code_ast.body + [while_node]
+            node.body = code_init_ast.body + [while_node]
             # 改变函数签名
             node.args.kwonlyargs.append(location_patcher.visit(ast.arg(arg='series_id', annotation=None)))
             node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
@@ -130,7 +135,7 @@ class SeriesExporter(ast.NodeTransformer):
         node = self.generic_visit(node)
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and (value.func.id == 'export') and isinstance(value.func.ctx,
+            if isinstance(value.func, ast.Name) and (value.func.id == 'Export') and isinstance(value.func.ctx,
                                                                                                ast.Load):
                 if value.keywords:
                     # TODO 自定义错误
@@ -146,7 +151,7 @@ class SeriesExporter(ast.NodeTransformer):
                         patcher.visit(ast.keyword(arg='series_id', value=ast.Name(id='series_id', ctx=ast.Load()))))
                 value.keywords.append(patcher.visit(ast.keyword(arg='export_id', value=ast.Num(n=self.__export_id))))
                 value.keywords.append(
-                        patcher.visit(ast.keyword(arg='barnum', value=ast.Name(id='barnum', ctx=ast.Load()))))
+                        patcher.visit(ast.keyword(arg='barnum', value=ast.Name(id='BarNum', ctx=ast.Load()))))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
                 new_node.targets.append(ast.copy_location(

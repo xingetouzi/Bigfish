@@ -5,6 +5,7 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 import pandas as pd
+import time
 from functools import partial
 
 
@@ -52,7 +53,9 @@ class DataGenerator:
     def start(self):
         self.__is_alive = True
         if self.__data_events is None:
+            st = time.time()
             self.__initialize()
+            print('拉取数据完毕，耗时<%s>s' % (time.time() - st))
         # 回放数据
         for data_event in self.__data_events:
             self.__engine.put_event(data_event)

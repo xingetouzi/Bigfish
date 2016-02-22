@@ -4,5 +4,5 @@ def init():
     pass
 
 def handle():
-    Sum=summation(10,close)
+    Sum=summation(10, Close)
     print(Sum)

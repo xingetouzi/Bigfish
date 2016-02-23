@@ -24,6 +24,10 @@ def set_parameters(paras):
 class Strategy(HasID):
     ATTR_MAP = dict(TimeFrame="time_frame", Base="capital_base", Symbols="symbols", StartTime="start_time",
                     EndTime="end_time", MaxLen="max_length")
+    API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover']
+    API_VARIABLES = ['O', 'Open', 'Opens', 'H', 'High', 'Highs', 'L', 'Low', 'Lows', 'C', 'Close', 'Closes',
+                     'Time', 'Times', 'T', 'Volume', 'Volumes', 'V', 'Symbols', 'Symbol', 'BarNum', 'MarketPosition',
+                     'Positions', 'Pos', 'CurrentContracts']
 
     # ----------------------------------------------------------------------
     def __init__(self, engine, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None):
@@ -54,7 +58,7 @@ class Strategy(HasID):
                               Sell=partial(self.engine.close_position, strategy=self.__id, direction=1),
                               SellShort=partial(self.engine.open_position, strategy=self.__id, direction=-1),
                               BuyToCover=partial(self.engine.close_position, strategy=self.__id, direction=-1),
-                              MarketPositions=self.engine.get_current_positions(),
+                              Positions=self.engine.get_current_positions(),
                               CurrentContracts=self.engine.get_current_contracts(), Data=self.engine.get_data(),
                               Context=self.__context, Export=partial(export, strategy=self),
                               Put=self.put_context, Get=self.get_context, print=self.__printer.print,
@@ -200,15 +204,15 @@ class Strategy(HasID):
                     temp.append("{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key))
                     temp.append("Symbol = Symbols[0]")
                     function_to_inject_init[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
-                                                 additional_instructions
+                                                   additional_instructions
                     temp.extend(["{0} = functools.partial(__globals['{0}'],listener={1})".format(
                             field, self.listeners[key].get_id())
                                  for field in ["Sell", "Buy", "SellShort", "BuyToCover"]])
                     signal_to_inject_init[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
-                                               additional_instructions
+                                                 additional_instructions
                     # 信号与函数中相比多出的就是交易指令
                     signal_to_inject_loop[key] = ["BarNum = get_current_bar()",
-                                                  "Pos = MarketPositions[Symbol]",
+                                                  "Pos = Positions[Symbol]",
                                                   "MarketPosition = Pos.type",
                                                   "CurrentContracts= Pos.volume"]
                     function_to_inject_loop[key] = signal_to_inject_loop[key]

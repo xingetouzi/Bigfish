@@ -1,9 +1,9 @@
 # -*- coding:utf-8 -*-
 
-def highest(length, offset, price=None):
-    max_ = 0
-    if price is None:
-        price = high
-    for i in range(length):
-        max_ = max(price[i+offset], max_)
+def highest(length, offset=0, price=None):
+    if price == None:
+        price = High
+    max_ = price[0]
+    for i in range(min(length, BarNum)):
+        max_ = max(price[i + offset], max_)
     return max_

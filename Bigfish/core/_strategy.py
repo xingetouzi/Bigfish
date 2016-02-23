@@ -24,7 +24,7 @@ def set_parameters(paras):
 class Strategy(HasID):
     ATTR_MAP = dict(TimeFrame="time_frame", Base="capital_base", Symbols="symbols", StartTime="start_time",
                     EndTime="end_time", MaxLen="max_length")
-    API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover']
+    API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover', 'Export']
     API_VARIABLES = ['O', 'Open', 'Opens', 'H', 'High', 'Highs', 'L', 'Low', 'Lows', 'C', 'Close', 'Closes',
                      'Time', 'Times', 'T', 'Volume', 'Volumes', 'V', 'Symbols', 'Symbol', 'BarNum', 'MarketPosition',
                      'Positions', 'Pos', 'CurrentContracts']

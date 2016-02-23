@@ -1,10 +1,11 @@
 # -*- coding:utf-8 -*-
 from collections import deque
 from Bigfish.models.common import Deque as Dq
-
+import codecs
 
 class g:
     pass
+
 
 
 if __name__ == '__main__':
@@ -17,3 +18,10 @@ if __name__ == '__main__':
     print(hash(y))
     print(hash(z))
     print(d[(3, (4, y))])
+    try:
+        f = codecs.open("testcode1.py", "r", "utf-8")
+        print(1/0)
+    except:
+        f.close()
+    finally:
+        f.close()

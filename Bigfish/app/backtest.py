@@ -40,7 +40,7 @@ def _get_bar_from_dict(symbol, time_frame, data):
 class DataGeneratorTushare(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
         if time_frame == 'D1':
-            data = ts.get_hist_data(symbol, start_time, end_time)
+            data = self.with_time_cost_count(ts.get_hist_data)(symbol, start_time, end_time)
             return data.apply(partial(_get_bar_from_dataframe, symbol, time_frame), axis=1).tolist()
         else:
             raise ValueError
@@ -48,15 +48,17 @@ class DataGeneratorTushare(DataGenerator):
 
 class DataGeneratorMongoDB(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = fx_mongo.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
-                                        get_datetime(end_time).timestamp())
+        data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
+                                                                   get_datetime(start_time).timestamp(),
+                                                                   get_datetime(end_time).timestamp())
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
 class DataGeneratorMysql(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = fx_mysql.get_period_bars(symbol, time_frame, get_datetime(start_time).timestamp(),
-                                        get_datetime(end_time).timestamp())
+        data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
+                                                                   get_datetime(start_time).timestamp(),
+                                                                   get_datetime(end_time).timestamp())
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
@@ -227,10 +229,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode5.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode6.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
+    backtest = Backtesting(user, 'test', code, ['GBPUSD'], 'M30', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMysql)
     print(backtest.progress)
     backtest.start()

@@ -8,7 +8,7 @@ def handle():
     print('BarNum<%s>:' % BarNum)
     print('Symbols:\n%s' % Symbols)
     print('Symbol:\n%s' % Symbol)
-    print('MarketPositions:\n%s' % MarketPositions)
+    print('Positions:\n%s' % Positions)
     print('Pos:\n%s' % Pos)
     print('MarketPosition:\n%s' % MarketPosition)
     print('CurrentContracts\n%s' % CurrentContracts)

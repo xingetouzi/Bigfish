@@ -6,8 +6,12 @@ import pymysql
 tf_peroids = {"M1": 60, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
 
 
-conn = pymysql.connect(host='115.29.54.208', user='xinger', passwd='ShZh_forex_4', db='forex', charset='utf8')
+def get_connection():
+    return pymysql.connect(host='115.29.54.208', user='xinger', passwd='ShZh_forex_4', db='forex', charset='utf8')
 
+
+conn = get_connection()
+reconnect_times = 3
 
 def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None):
     """
@@ -20,11 +24,19 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     :return 包含所有 Bar 的列表
     """
     conn.ping(True)
+    need_reconnect = False
     __check_tf__(time_frame)
     if pattern:
         start_time = time.mktime(time.strptime(start_time, pattern))
         end_time = time.mktime(time.strptime(end_time, pattern))
-    cur = conn.cursor(pymysql.cursors.DictCursor)
+    for i in range(reconnect_times):
+        try:
+            cur = conn.cursor(pymysql.cursors.DictCursor)
+            break
+        except:
+            need_reconnect = True
+        if need_reconnect:
+            conn.ping(True)
     query_params = " where ctime > '%s'" % (start_time,)
     if end_time:
         query_params += " and ctime < '%s'" % (end_time,)

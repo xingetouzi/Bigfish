@@ -8,3 +8,4 @@ kernprof.py
 *.c
 *.so
 /site_packages
+/test/

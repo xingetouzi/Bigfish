@@ -56,7 +56,7 @@ class DataGeneratorMongoDB(DataGenerator):
 
 class DataGeneratorMysql(DataGenerator):
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
+        data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
                                                                    get_datetime(start_time).timestamp(),
                                                                    get_datetime(end_time).timestamp())
         return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))

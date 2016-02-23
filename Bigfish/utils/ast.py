@@ -6,6 +6,8 @@ Created on Wed Nov  4 11:58:21 2015
 """
 import ast
 import os
+import codecs
+
 from Bigfish.store.directory import UserDirectory
 
 
@@ -54,7 +56,7 @@ class SystemFunctionsDetector(FunctionsDetector):
                 self._funcs_in_use[name].add(self._handler)
             else:
                 raise RuntimeError('系统函数只能在handler中调用')
-            with open(os.path.join(self._sys_func_dir, name + '.py'), 'r') as f:
+            with codecs.open(os.path.join(self._sys_func_dir, name + '.py'), 'r', "utf-8") as f:
                 self.visit(ast.parse(f.read()))
                 f.close()
         self.generic_visit(node)

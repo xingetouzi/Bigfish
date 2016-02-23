@@ -5,6 +5,7 @@ import os
 import ast
 import inspect
 from functools import partial
+import codecs
 
 # 自定义模块
 from Bigfish.utils.log import FilePrinter
@@ -233,7 +234,7 @@ class Strategy(HasID):
         for func, signals in funcs_in_use.items():
             for signal in signals:
                 fullname = os.path.join(sys_func_dir, func + ".py")
-                with open(fullname) as f:
+                with codecs.open(fullname, "r", "utf-8") as f:
                     func_ast = ast.parse(f.read())
                     f.close()
                 function_injector = LocalsInjector({func: function_to_inject_init[signal]},

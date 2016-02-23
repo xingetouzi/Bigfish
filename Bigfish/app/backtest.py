@@ -232,7 +232,7 @@ if __name__ == '__main__':
     with codecs.open('../test/testcode6.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['GBPUSD'], 'M30', '2015-01-01', '2016-01-01',
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M1', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMysql)
     print(backtest.progress)
     backtest.start()

@@ -153,6 +153,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__precision = 4
         self.__cache = {}  # 用于存放将要在函数中复用的变量
         self.__units = {}  # 用于存储计算中需要用到的单位信息
+        self.__get_rate_of_return_raw
+        self.__quotes_raw = None  # 计算完毕折后就可以释放资源了
 
     # @profile
     @property

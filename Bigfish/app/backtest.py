@@ -93,15 +93,23 @@ class Backtesting:
             return 0
 
     def start(self, paras=None, refresh=True):
+        """
+
+        :param paras:
+        :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
+        """
         self.__is_alive = True
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self._initialize()
         self.__strategy_engine.start()
         self.__data_generator.start()
-        self.__strategy_engine.wait()
         if refresh:
-            self.__performance_manager = self.__get_performance_manager()
+            self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
+            self.__data_generator.stop()
+            return self.__performance_manager
+        else:
+            return self.__strategy_engine.wait(self.__get_performance_manager)
 
     def stop(self):
         self.__is_alive = False
@@ -186,15 +194,15 @@ class Backtesting:
                 break
             set_paras(i, **stack[i])
             if i == n - 1:
-                self.start(parameters, refresh=False)
+                performance_manager = self.start(parameters, refresh=False)
                 head = pd.Series(head, index=head_index)
-                performance_manager = self.__get_performance_manager()
                 optimize_info = performance_manager.get_performance().optimize_info.copy()
                 target = optimize_info[goal]
                 del optimize_info[goal]
                 result.append(pd.concat([head, pd.Series([target], index=[goal]), optimize_info]))
             else:
                 i += 1
+        self.__data_generator.stop()  # 释放数据资源
         result = pd.DataFrame(result).sort_values(goal, ascending=False)
         result.index.name = '_'
         return result.iloc[:num]
@@ -232,7 +240,7 @@ if __name__ == '__main__':
     with codecs.open('../test/testcode6.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M1', '2015-01-01', '2016-01-01',
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
                            data_generator=DataGeneratorMysql)
     print(backtest.progress)
     backtest.start()

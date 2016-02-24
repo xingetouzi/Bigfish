@@ -110,16 +110,8 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def initialize(self):
-        # TODO 数据结构还需修改
+
         self.__current_time = None
-        self.__data.clear()
-        self.__deals.clear()
-        self.__positions.clear()
-        self.__current_positions.clear()
-        # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
-        Deal.set_auto_inc(0)
-        Position.set_auto_inc(0)
-        deque.set_auto_inc(0)
         for (symbol, time_frame), maxlen in self.__max_len_info.items():
             if time_frame not in self.__data:
                 self.__data[time_frame] = defaultdict(dict)
@@ -131,6 +123,18 @@ class StrategyEngine(object):
                 position = Position(symbol)
                 self.__current_positions[symbol] = position
                 self.__positions[position.get_id()] = position
+
+    # ----------------------------------------------------------------------
+    def _recycle(self):
+        # TODO 数据结构还需修改
+        self.__data.clear()
+        self.__deals.clear()
+        self.__positions.clear()
+        self.__current_positions.clear()
+        # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
+        Deal.set_auto_inc(0)
+        Position.set_auto_inc(0)
+        deque.set_auto_inc(0)
 
     # ----------------------------------------------------------------------
     def add_file(self, file):
@@ -356,11 +360,16 @@ class StrategyEngine(object):
         self.__event_engine.stop()
         for strategy in self.__strategys.values():
             strategy.stop()
+        self._recycle()  # 释放资源
 
-    def wait(self):
-        """等待所有事件处理完毕"""
+    def wait(self, call_back=None, *args, **kwargs):
+        """等待所有事件处理完毕
+        :param call_back: 运行完成时的回调函数
+        """
         self.__event_engine.wait()
+        result = call_back(*args, **kwargs)
         self.stop()
+        return result
 
     # TODO 对限价单的支持
     # ----------------------------------------------------------------------

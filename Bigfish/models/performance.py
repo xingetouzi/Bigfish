@@ -156,6 +156,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     # @profile
     @property
+    @cache_calculator
     def __get_rate_of_return_raw(self):
         interval = self.__period // self.__num
         time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval

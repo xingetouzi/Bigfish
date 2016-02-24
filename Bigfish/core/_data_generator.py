@@ -19,10 +19,11 @@ class DataGenerator:
 
     def __init__(self, engine):
         self.__engine = engine
-        self.__data_events = None
-        self.__get_data = None
+        self.__data_events = []
         self.__dataframe = None
+        self.__get_data = None
         self.__is_alive = False
+        self.__has_data = False
         self.__time_cost = 0
 
     # TODO 多态
@@ -40,6 +41,7 @@ class DataGenerator:
             result = func(*args, **kwargs)
             self.__time_cost += time.time() - st
             return result
+
         return wrapper
 
     def __insert_data(self, symbol, time_frame):
@@ -54,7 +56,6 @@ class DataGenerator:
 
     def __initialize(self):
         self.__time_cost = 0
-        self.__data_events = []
         self.__get_data = partial(self._get_data, start_time=self.__engine.start_time, end_time=self.__engine.end_time)
         for symbol, time_frame in self.__engine.get_symbol_timeframe():
             self.__insert_data(symbol, time_frame)
@@ -63,8 +64,9 @@ class DataGenerator:
 
     def start(self):
         self.__is_alive = True
-        if self.__data_events is None:
+        if not self.__has_data:
             self.__initialize()
+            self.__has_data = True
             print('拉取数据完毕，耗时<%s>s' % self.__time_cost)
         # 回放数据
         for data_event in self.__data_events:
@@ -73,4 +75,13 @@ class DataGenerator:
                 break
 
     def stop(self):
+        self._recycle()
         self.__is_alive = False
+
+    def _recycle(self):
+        """
+        释放内存资源
+        """
+        self.__data_events.clear()
+        self.__dataframe = None
+        self.__has_data = False

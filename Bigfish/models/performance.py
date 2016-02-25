@@ -61,11 +61,11 @@ def cache_calculator(func):
 
 
 class Performance:
-    _manager = None  # 避免循环引用
+    _manager = None
     _dict = {}
 
     def __init__(self, manager=None):
-        self._manager = proxy(manager)
+        self._manager = proxy(manager)  # 避免循环引用
 
     def __getattr__(self, item):
         if item in self._dict:

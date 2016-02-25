@@ -3,6 +3,6 @@ base = 100000
 def init():
     pass
 
-def handle():
-    print(highest(10))
-    print(lowest(10))
+def handle(length = 10):
+    print(highest(length))
+    print(lowest(length))

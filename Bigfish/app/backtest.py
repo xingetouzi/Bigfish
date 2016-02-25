@@ -9,14 +9,16 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
-import tushare as ts
 
-import Bigfish.data.forex_data as fx_mongo
-import Bigfish.data.mysql_forex_data as fx_mysql
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.models.quote import Bar
 from Bigfish.utils.common import get_datetime
+from Bigfish.utils.memory_profiler import profile
+from Bigfish.config import *
+
+if MEMORY_DEBUG:
+    import gc
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -37,34 +39,53 @@ def _get_bar_from_dict(symbol, time_frame, data):
     return bar
 
 
-class DataGeneratorTushare(DataGenerator):
-    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        if time_frame == 'D1':
-            data = self.with_time_cost_count(ts.get_hist_data)(symbol, start_time, end_time)
-            return data.apply(partial(_get_bar_from_dataframe, symbol, time_frame), axis=1).tolist()
-        else:
-            raise ValueError
+if DATABASE == 'tushare':
+    import tushare as ts
 
 
-class DataGeneratorMongoDB(DataGenerator):
-    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
-                                                                   get_datetime(start_time).timestamp(),
-                                                                   get_datetime(end_time).timestamp())
-        return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+    class DataGeneratorTushare(DataGenerator):
+        def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+            if time_frame == 'D1':
+                data = self.with_time_cost_count(ts.get_hist_data)(symbol, start_time, end_time)
+                return data.apply(partial(_get_bar_from_dataframe, symbol, time_frame), axis=1).tolist()
+            else:
+                raise ValueError
 
 
-class DataGeneratorMysql(DataGenerator):
-    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
-                                                                   get_datetime(start_time).timestamp(),
-                                                                   get_datetime(end_time).timestamp())
-        return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+    data_generator = DataGeneratorTushare
+elif DATABASE == 'mongodb':
+    import Bigfish.data.forex_data as fx_mongo
+
+
+    class DataGeneratorMongoDB(DataGenerator):
+
+        def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+            data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
+                                                                       get_datetime(start_time).timestamp(),
+                                                                       get_datetime(end_time).timestamp())
+            return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+
+
+    data_generator = DataGeneratorMongoDB
+elif DATABASE == 'mysql':
+    import Bigfish.data.mysql_forex_data as fx_mysql
+
+
+    class DataGeneratorMysql(DataGenerator):
+        @profile
+        def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+            data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
+                                                                       get_datetime(start_time).timestamp(),
+                                                                       get_datetime(end_time).timestamp())
+            return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+
+
+    data_generator = DataGeneratorMysql
 
 
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
-                 data_generator=DataGeneratorMysql):
+                 data_generator=data_generator):
         self.__setting = {'symbols': symbols, 'time_frame': time_frame, 'start_time': start_time, 'end_time': end_time}
         self.__strategy_engine = StrategyEngine(is_backtest=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
@@ -92,6 +113,7 @@ class Backtesting:
         else:
             return 0
 
+    @profile
     def start(self, paras=None, refresh=True):
         """
 
@@ -107,6 +129,8 @@ class Backtesting:
         if refresh:
             self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
+            if MEMORY_DEBUG:
+                print('gb:\n%s' % gc.garbage)  # 写日志，计算垃圾占用的内存等
             return self.__performance_manager
         else:
             return self.__strategy_engine.wait(self.__get_performance_manager)

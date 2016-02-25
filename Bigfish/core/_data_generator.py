@@ -6,7 +6,9 @@ Created on Wed Nov 25 20:41:04 2015
 """
 import pandas as pd
 import time
+import gc
 from functools import partial, wraps
+from Bigfish.utils.memory_profiler import profile
 
 
 class DataGenerator:
@@ -21,6 +23,7 @@ class DataGenerator:
         self.__engine = engine
         self.__data_events = []
         self.__dataframe = None
+        self.__data_raw = []
         self.__get_data = None
         self.__is_alive = False
         self.__has_data = False
@@ -44,16 +47,20 @@ class DataGenerator:
 
         return wrapper
 
+    @profile
     def __insert_data(self, symbol, time_frame):
         bars = self.__get_data(symbol, time_frame)
         if bars:
+            self.__data_raw.append(list(map(lambda x: x.to_dict(), bars)))
             if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
+                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
             else:
-                temp = pd.DataFrame(list(map(lambda x: x.to_dict(), bars)), columns=bars[0].get_fields())
+                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
                 self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
+        bars.clear()
 
+    @profile
     def __initialize(self):
         self.__time_cost = 0
         self.__get_data = partial(self._get_data, start_time=self.__engine.start_time, end_time=self.__engine.end_time)
@@ -62,6 +69,7 @@ class DataGenerator:
         self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
         self.__dataframe.sort_values('close_time', inplace=True)
 
+    @profile
     def start(self):
         self.__is_alive = True
         if not self.__has_data:
@@ -78,10 +86,13 @@ class DataGenerator:
         self._recycle()
         self.__is_alive = False
 
+    @profile
     def _recycle(self):
         """
         释放内存资源
         """
         self.__data_events.clear()
+        del self.__dataframe
         self.__dataframe = None
+        self.__data_raw.clear()
         self.__has_data = False

@@ -4,9 +4,9 @@ Created on Fri Nov 27 22:42:54 2015
 
 @author: BurdenBear
 """
-__all__ = ["AccountManager", "DataGenerator", "Strategy", "StrategyEngine"]
+__all__ = ["AccountManager", "DataGenerator", "Strategy", "StrategyEngine", "AsyncDataGenerator"]
 from ._account_manager import AccountManager
-from ._data_generator import DataGenerator
+from ._data_generator import DataGenerator, AsyncDataGenerator
 from ._strategy import Strategy
 from ._strategy_engine import StrategyEngine
 

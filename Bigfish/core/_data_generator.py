@@ -6,9 +6,11 @@ Created on Wed Nov 25 20:41:04 2015
 """
 import pandas as pd
 import time
-import gc
 from functools import partial, wraps
 from Bigfish.utils.memory_profiler import profile
+from Bigfish.config import MEMORY_DEBUG
+if MEMORY_DEBUG:
+    import gc
 
 
 class DataGenerator:
@@ -23,7 +25,6 @@ class DataGenerator:
         self.__engine = engine
         self.__data_events = []
         self.__dataframe = None
-        self.__data_raw = []
         self.__get_data = None
         self.__is_alive = False
         self.__has_data = False
@@ -51,11 +52,11 @@ class DataGenerator:
     def __insert_data(self, symbol, time_frame):
         bars = self.__get_data(symbol, time_frame)
         if bars:
-            self.__data_raw.append(list(map(lambda x: x.to_dict(), bars)))
+            dict_ = (list(map(lambda x: x.to_dict(), bars)))
             if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+                self.__dataframe = pd.DataFrame(dict_, columns=bars[0].get_fields())
             else:
-                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+                temp = pd.DataFrame(dict_, columns=bars[0].get_fields())
                 self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
         bars.clear()
@@ -70,7 +71,7 @@ class DataGenerator:
         self.__dataframe.sort_values('close_time', inplace=True)
 
     @profile
-    def start(self):
+    def start(self, **options):
         self.__is_alive = True
         if not self.__has_data:
             self.__initialize()
@@ -94,5 +95,60 @@ class DataGenerator:
         self.__data_events.clear()
         del self.__dataframe
         self.__dataframe = None
-        self.__data_raw.clear()
         self.__has_data = False
+
+
+class AsyncDataGenerator:
+    """fetch data from somewhere and put dataEvent into eventEngine
+        数据生成器,分块异步读取数据
+    Attr:
+        __engine:the eventEngine where data event putted into
+        __dataframe:data in pandas's dataframe format
+    """
+
+    def __init__(self, engine):
+        self.__engine = engine
+        self.__dataframe = None
+        self.__get_data = None
+        self.__is_alive = False
+        self.__time_cost = 0
+
+    def get_dataframe(self):
+        return self.__dataframe
+
+    @staticmethod
+    def get_bars(self, data):
+        return data
+
+    def receive_data(self, data):
+        bars = self.get_bars(data)
+        if bars:
+            if self.__dataframe is None:
+                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+            else:
+                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+                self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
+            # 回放数据
+            for bar in bars:
+                self.__engine.put_event(bar.to_event())
+                if not self.__is_alive:  # 判断用户是否取消
+                    break
+
+    def subscribe_data(self, **options):
+        """根据数据源的不同选择不同的实现"""
+        raise NotImplementedError
+
+    def start(self, **options):
+        self.__is_alive = True
+        self.subscribe_data(**options)
+
+    def stop(self):
+        self.__is_alive = False
+        self._recycle()
+
+    def _recycle(self):
+        """
+        释放内存资源
+        """
+        if self.__is_alive:
+            self.__dataframe = None

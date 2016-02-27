@@ -68,25 +68,30 @@ elif DATABASE == 'mongodb':
 
     data_generator = DataGeneratorMongoDB
 elif DATABASE == 'mysql':
-    import Bigfish.data.mysql_forex_data as fx_mysql
+    if ASYNC:
+        from Bigfish.data.twisted_server import TwistAsyncDataGenerator
+        data_generator = TwistAsyncDataGenerator
+    else:
+        import Bigfish.data.mysql_forex_data as fx_mysql
 
 
-    class DataGeneratorMysql(DataGenerator):
-        @profile
-        def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-            data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
-                                                                       get_datetime(start_time).timestamp(),
-                                                                       get_datetime(end_time).timestamp())
-            return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+        class DataGeneratorMysql(DataGenerator):
+            @profile
+            def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
+                data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
+                                                                           get_datetime(start_time).timestamp(),
+                                                                           get_datetime(end_time).timestamp())
+                return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
 
 
-    data_generator = DataGeneratorMysql
+        data_generator = DataGeneratorMysql
 
 
 class Backtesting:
     def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
                  data_generator=data_generator):
-        self.__setting = {'symbols': symbols, 'time_frame': time_frame, 'start_time': start_time, 'end_time': end_time}
+        self.__setting = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
+                          'start_time': start_time, 'end_time': end_time}
         self.__strategy_engine = StrategyEngine(is_backtest=True)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
@@ -125,7 +130,7 @@ class Backtesting:
             self.__strategy.set_parameters(paras)
         self._initialize()
         self.__strategy_engine.start()
-        self.__data_generator.start()
+        self.__data_generator.start(**self.__setting)
         if refresh:
             self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
@@ -264,8 +269,7 @@ if __name__ == '__main__':
     with codecs.open('../test/testcode6.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01',
-                           data_generator=DataGeneratorMysql)
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01')
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()

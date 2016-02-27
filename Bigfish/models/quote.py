@@ -7,6 +7,29 @@ Created on Thu Nov 26 10:06:21 2015
 from Bigfish.event.event import EVENT_BAR_SYMBOL, Event
 from Bigfish.models.common import DictLike
 from Bigfish.utils.common import _TIME_FRAME_PERIOD
+import pandas as pd
+
+
+class BarFactory:
+    @classmethod
+    def to_dict(cls, bar):
+        temp = super(Bar, bar).to_dict()
+        temp['close_time'] = bar.close_time
+        return temp
+
+    @classmethod
+    def to_event(cls, bar):
+        event = Event(EVENT_BAR_SYMBOL[bar.symbol][bar.time_frame], {'data': bar})
+        return event
+
+    @classmethod
+    def get_fields(cls):
+        """
+        :return: field names in print order use for create dataframe
+        """
+        temp = Bar.get_fields()
+        temp[-1:-1] = ["close_time"]
+        return temp
 
 
 class Bar(DictLike):
@@ -87,6 +110,7 @@ class Tick:
 if __name__ == '__main__':
     c = Bar('1')
     print(c.to_dict())
+    print(BarFactory.to_dict(c))
     index = range(100)
     a = map(lambda x: Bar(x).to_dict(), index)
-    # (pd.DataFrame(list(a), columns=Bar.get_fields()))
+    print(pd.DataFrame(list(a), columns=BarFactory.get_fields()))

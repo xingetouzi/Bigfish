@@ -3,7 +3,7 @@
 # 系统模块
 from queue import Queue, Empty
 from functools import wraps, partial
-from threading import Thread
+from threading import Thread, Event as ThreadEvent
 import sys
 
 # 自定义模块
@@ -58,6 +58,7 @@ class EventEngine:
         # 事件引擎开关
         self.__active = False
         self.__finished = False
+        self.__is_empty = ThreadEvent()
         self.__thread = None
         self.__exc_type = None
         self.__exc_value = None
@@ -75,19 +76,21 @@ class EventEngine:
     # ----------------------------------------------------------------------
     def __run(self):
         """引擎运行"""
-        while self.__active == True:
+        while self.__active:
             try:
                 event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
                 self.__process(event)
             except Empty:
                 if self.__finished:
                     self.__active = False
+                self.__is_empty.set()
             except Exception:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 self.__active = False
         for file in self.__file_opened:
             if not file.closed:
                 file.close()
+        self.__is_empty.set()  # 被强制stop时，也要调用is_empty事件的set方法
 
     # ----------------------------------------------------------------------
     def __process(self, event):
@@ -115,7 +118,7 @@ class EventEngine:
         self.__active = True
         self.__finished = False
         # 启动事件处理线程
-        self.__thread = Thread(target=self.__run)
+        self.__thread = Thread(target=self.__run, name='event_engine')
         self.__thread.start()
         # 启动计时器，计时器事件间隔默认设定为1秒
         # self.__timer.start(1000)
@@ -124,7 +127,7 @@ class EventEngine:
     def stop(self):
         """停止引擎"""
         # 将引擎设为停止
-        if self.__active == True:
+        if self.__active:
             self.__active = False
             self.__thread.join()  # 等待事件处理线程退出
         if self.__thread:
@@ -133,13 +136,16 @@ class EventEngine:
     # -----------------------------------------------------------------------
     def wait(self):
         """等待队列中所有事件被处理完成"""
-        if self.__active == True:
-            self.__finished = True
-            self.__thread.join()
+        self.__is_empty.clear()
+        self.__is_empty.wait()
+        if self.__active:
             self.throw_error()
             self.stop()
         else:
             self.throw_error()
+
+    def set_finished(self):
+        self.__finished = True
 
     # ----------------------------------------------------------------------
     def register(self, type_, handler):

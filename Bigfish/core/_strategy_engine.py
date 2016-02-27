@@ -362,14 +362,20 @@ class StrategyEngine(object):
             strategy.stop()
         self._recycle()  # 释放资源
 
-    def wait(self, call_back=None, *args, **kwargs):
+    def wait(self, call_back=None, finished=True, *args, **kwargs):
         """等待所有事件处理完毕
         :param call_back: 运行完成时的回调函数
+        :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
         """
         self.__event_engine.wait()
         result = call_back(*args, **kwargs)
-        self.stop()
+        if finished:
+            self._set_finished()
+            self.stop()
         return result
+
+    def _set_finished(self):  # 标记即不会再有新数据到来
+        self.__event_engine.set_finished()
 
     # TODO 对限价单的支持
     # ----------------------------------------------------------------------

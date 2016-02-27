@@ -1,3 +1,4 @@
+twisted
 memory_profiler
 pymysql
 pymongo

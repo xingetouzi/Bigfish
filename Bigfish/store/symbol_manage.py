@@ -5,7 +5,7 @@ from Bigfish.models import Symbol
 import os
 
 
-DATABASE_NAME = "Bigfish/strategy.db"
+DATABASE_NAME = "BigfishCode/strategy.db"  # 这里也是硬编码，应该写入配置文件中
 SYMBOL_LIST = {"EUR/USD": "欧元/美元",
                "XAU/USD": "黄金/美元",
                "GBP/USD": "英镑/美元",

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 
-BASE_DIR_NAME = "Bigfish_Code"
+BASE_DIR_NAME = "BigfishCode"
 
 
 class UserDirectory(object):

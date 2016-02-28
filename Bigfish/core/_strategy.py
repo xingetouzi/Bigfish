@@ -175,7 +175,7 @@ class Strategy(HasID):
                     self.handlers['init'] = value
                     # TODO init中可以设定全局变量，所以要以"global foo"的方式进行注入，监听的事件不同所以要改写SymbolsListener
                     continue
-                paras = inspect.signature(value).parameters.copy()
+                paras = inspect.signature(value).parameters.copy()  # 获取handler函数的参数列表
                 is_handle = get_parameter_default(paras, "IsHandle", lambda x: isinstance(x, bool), True)
                 if not is_handle:
                     continue

@@ -21,6 +21,9 @@ def save_code(user, code):
     code_name = code.name + ".py"
     current_path = os.path.join(home, code_name)
 
+    if not code.name:
+        raise ValueError("code.name is empty")
+
     # if not os.path.exists(current_path):  # 如果是第一次创建,则记录相关信息
     #     __execute_sql__(home, "insert into code_info (name) values (?)", code.name)
 
@@ -39,7 +42,7 @@ def __get_store_db__(home):
         # open(db_path, "w+")
         codecs.open(db_path, mode='w+', encoding="utf8")
         with sqlite3.connect(db_path) as conn:
-            conn.execute("create table code_info (id integer primary key autoincrement, name varchar(30) unique)")
+            conn.execute("create table code_info (id integer primary key autoincrement, name varchar(30) unique not null)")
             conn.commit()
     return db_path
 

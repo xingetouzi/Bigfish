@@ -13,6 +13,7 @@ def get_connection():
 conn = get_connection()
 reconnect_times = 3
 
+
 def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None):
     """
     获取从start_time至end_time这段时间内的所有 Bar
@@ -24,7 +25,7 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
     :return 包含所有 Bar 的列表
     """
     conn.ping(True)
-    need_reconnect = False
+    # need_reconnect = False
     __check_tf__(time_frame)
     if pattern:
         start_time = time.mktime(time.strptime(start_time, pattern))
@@ -47,6 +48,7 @@ def get_period_bars(symbol, time_frame, start_time, end_time=None, pattern=None)
         # bar_list.append(row)
         bar_list.append({"open": row["open"], "close": row["close"], "low": row["low"], "high": row["high"],
                          "ctime": row["ctime"], "volume": row["volume"]})
+    cur.close();
     return bar_list
 
 

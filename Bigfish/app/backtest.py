@@ -164,7 +164,9 @@ class Backtesting:
         return self.__strategy.get_output()
 
     def get_setting(self):
-        return self.__setting
+        setting = self.__setting.copy()
+        setting.pop('user')
+        return setting
 
     @staticmethod
     def get_optimize_goals():

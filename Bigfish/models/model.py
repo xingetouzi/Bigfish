@@ -7,6 +7,9 @@ class User(object):
         self.user_id = user_id
         self.username = username
 
+    def __repr__(self):
+        return {'user_id': self.user_id, 'username': self.username}.__repr__()
+
 
 class Code(object):
     def __init__(self, name, code_type=1, content=None):

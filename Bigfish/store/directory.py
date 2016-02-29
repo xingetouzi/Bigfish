@@ -52,6 +52,7 @@ class UserDirectory(object):
         temp_dir_name = "temp"
         return self.__get_dir__(self.get_home(), temp_dir_name)
 
+    @DeprecationWarning
     def get_strategy_dir(self):
         """
         得到用户创建策略的存放目录
@@ -93,6 +94,7 @@ class UserDirectory(object):
         return list(map(lambda x: x.replace('.py', ''),
                         set(os.listdir(UserDirectory.get_sys_func_dir())) - {'__init__.py', '__pycache__'}))
 
+    @DeprecationWarning
     def strategy_exists(self, strategy_name):
         """
         判断用户策略是否存在

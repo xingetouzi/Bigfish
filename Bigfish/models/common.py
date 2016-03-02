@@ -19,6 +19,29 @@ class DictLike:
         return getattr(self, key)
 
 
+class FactoryWithID:
+    _class = None
+
+    def __init__(self):
+        self.__id = 0
+
+    def next_id(self):
+        self.__id += 1
+        return self.__id
+
+    def get_id(self):
+        return self.__id
+
+    def set_id(self, num):
+        self.__id = num
+
+    def reset_id(self):
+        self.__id = 0
+
+    def __call__(self, *args, **kwargs):
+        return self._class(*args, **kwargs, id=self.next_id())
+
+
 class HasID:
     """有自增长ID对象的通用方法"""
     __slots__ = []

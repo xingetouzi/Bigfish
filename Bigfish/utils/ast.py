@@ -9,6 +9,7 @@ import os
 import codecs
 
 from Bigfish.store.directory import UserDirectory
+from Bigfish.config import MODULES_IMPORT
 
 
 class LocationPatcher(ast.NodeTransformer):
@@ -188,4 +189,76 @@ class SeriesExporter(ast.NodeTransformer):
                     setattr(node, field, new_node_tuple)
                 else:
                     setattr(node, field, new_node)
+        return node
+
+
+class ImportInspector(ast.NodeVisitor):
+    __MODULES_IMPORT = MODULES_IMPORT
+
+    @staticmethod
+    def raise_error(name):
+        raise ImportError('<%s>模块不在Bigfish平台可导入模块列表中' % name)
+
+    def visit_Import(self, node):
+        for children in node.names:
+            if children.name not in self.__MODULES_IMPORT:
+                self.raise_error(children.name)
+
+    def visit_ImportFrom(self, node):
+        if node.module not in self.__MODULES_IMPORT:
+            self.raise_error(node.module)
+
+
+class InitTransformer(ast.NodeVisitor):
+    def __init__(self):
+        self.__depth = 0
+        self.__in_init = False
+
+    def visit(self, node):
+        self.__depth += 1
+        in_init_ = self.__in_init
+        method = 'visit_' + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        visitor(node)
+        self.__depth -= 1
+        self.__in_init = in_init_
+
+    def visit_Yield(self, node):
+        self.generic_visit(node)
+        if self.__in_init:
+            raise SyntaxError("'yield'不应出现在init函数中")
+
+    @staticmethod
+    def trans(node):
+        result = ast.parse('return locals()').body[0]
+        if node:
+            LocationPatcher(node).visit(result)
+        return result
+
+    def visit_FunctionDef(self, node):
+        if self.__depth == 2 and node.name == 'init':
+            self.__in_init = True
+            ReturnTransformer(target=self.trans, add=True).trans(node)
+        self.generic_visit(node)
+
+
+class ReturnTransformer(ast.NodeTransformer):
+    def __init__(self, target=None, add=True):
+        """
+        Return节点修改器，将一个含有body属性的节点的AST子树中所有的Return节点修改为Target的返回值
+        如果没有发现Return节点，且add为True，则在body中加入Target的返回值
+        """
+        self.__target = target
+        self.__add = add
+        self.__has_return = False
+
+    def visit_Return(self, node):
+        self.__has_return = True
+        return LocationPatcher(node).visit(self.__target(node))
+
+    def trans(self, node):
+        self.__has_return = False
+        node = self.visit(node)
+        if not self.__has_return:
+            node.body.append(LocationPatcher(node.body[-1]).visit(self.__target(None)))
         return node

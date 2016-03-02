@@ -23,7 +23,7 @@ class SlaverThreadError(RuntimeError):
         self.exc_traceback = exc_traceback
 
     def get_exc(self):
-        return (self.exc_type, self.exc_value, self.exc_traceback)
+        return tuple(self.exc_type, self.exc_value, self.exc_traceback)
 
 
 def is_user_file(string, limit=r'\A\[.+\]\Z') -> bool:

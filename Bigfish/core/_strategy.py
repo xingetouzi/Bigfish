@@ -12,7 +12,7 @@ from Bigfish.utils.log import FilePrinter
 from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SymbolsListener
-from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector
+from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector, InitTransformer
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
 
@@ -138,6 +138,10 @@ class Strategy(HasID):
         def upper_first_letter(string):
             return string[0].upper() + string[1:]
 
+        # get the system functions in use
+        ast_ = ast.parse(code)
+        import_inspector = ImportInspector()
+        import_inspector.visit(ast_)  # 模块导入检查
         signal_locals_ = {}
         function_locals = {}
         signal_globals_ = {}  # 可动态管理的全策略命名空间
@@ -154,8 +158,6 @@ class Strategy(HasID):
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
         check_time_frame(self.time_frame)
-        # get the system functions in use
-        ast_ = ast.parse(code)
         sys_func_detector = SystemFunctionsDetector()
         sys_func_detector.visit(ast_)
         sys_func_dir = self.user_dir.get_sys_func_dir()
@@ -241,6 +243,7 @@ class Strategy(HasID):
                                                    {func: function_to_inject_loop[signal]})
                 function_injector.visit(func_ast)
                 func_ast = series_exporter.visit(func_ast)
+                import_inspector.visit(func_ast)  # 检查模块导入
                 # TODO 多个handle时需要对每个handle调用的系统函数建立独立的系统函数
                 exec(compile(func_ast, "[SysFunctions:%s]" % func, mode="exec"), function_globals_, function_locals)
                 self.system_functions['%s.%s' % (signal, func)] = SeriesFunction(function_locals[func], signal)
@@ -250,12 +253,14 @@ class Strategy(HasID):
         signal_injector = LocalsInjector(signal_to_inject_init, signal_to_inject_loop)
         signal_injector.visit(ast_)
         ast_ = series_exporter.visit(ast_)
+        InitTransformer().visit(ast_)
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
             self.listeners[key].set_generator(signal_locals_[key])
         print("<%s>信号添加成功" % self.name)
         if 'init' in self.handlers:
-            self.handlers['init']()
+            self.handlers['init'] = signal_locals_['init']
+            print(self.handlers['init']())
         return True
 
     # ----------------------------------------------------------------------

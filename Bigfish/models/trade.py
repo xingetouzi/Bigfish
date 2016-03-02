@@ -5,7 +5,7 @@ Created on Fri Nov 27 09:59:13 2015
 @author: BurdenBear
 """
 
-from Bigfish.models.common import DictLike, HasID
+from Bigfish.models.common import DictLike, FactoryWithID
 
 """所有的数据结构都继承HasID，通过ID来访问，以便于以后在数据库中存储"""
 
@@ -15,17 +15,17 @@ POSITION_TYPE_NONE = 0
 POSITION_TYPE_SELL = -1
 
 
-class Position(HasID, DictLike):
+class Position(DictLike):
     """仓位对象"""
 
-    __slots__ = ["symbol", "deal", "__id", "prev_id", "next_id", "time_open", "time_open_msc", "time_update",
+    __slots__ = ["symbol", "deal", "id", "prev_id", "next_id", "time_open", "time_open_msc", "time_update",
                  "time_update_msc",
                  "type", "volume", "price_open", "price_current", "price_profit", "strategy", "handle"]
 
-    def __init__(self, symbol=None, strategy=None, handle=None):
+    def __init__(self,  symbol=None, strategy=None, handle=None, id=None):
         self.symbol = symbol
         self.deal = None
-        self.__id = self.next_auto_inc()
+        self.id = id
         self.prev_id = None
         self.next_id = None
         self.time_open = None
@@ -59,7 +59,11 @@ class Position(HasID, DictLike):
         return self.type.__ge__(x)
 
     def get_id(self):
-        return self.__id
+        return self.id
+
+
+class PositionFactory(FactoryWithID):
+    _class = Position
 
 
 # ENUM_ORDER_STATE
@@ -96,18 +100,18 @@ ORDER_LIFE_SPECIFIED = 2  # Good till expired order
 ORDER_LIFE_SPECIFIED_DAY = 3  # The order will be effective till 23:59:59 of the specified day. If this time is outside a trading session, the order expires in the nearest trading time.
 
 
-class Order(HasID, DictLike):
+class Order(DictLike):
     """订单对象"""
-    __slots__ = ["symbol", "__id", "deal", "time_setup", "time_expiration", "time_done",
+    __slots__ = ["symbol", "id", "deal", "time_setup", "time_expiration", "time_done",
                  "time_setup_msc", "time_expiration_msc", "time_done_msc",
                  "type", "state", "type_filling", "type_life", "volume_initial",
                  "volume_current", "price_open", "price_stop_limit", "stop_loss",
                  "take_profit", "strategy", "handle"]
 
-    def __init__(self, symbol=None, type_=None, strategy=None, handle=None):
+    def __init__(self,  symbol=None, type_=None, strategy=None, handle=None, id=None):
         self.symbol = symbol
         self.deal = None
-        self.__id = self.next_auto_inc()
+        self.id = id
         self.time_setup = None
         self.time_expiration = None
         self.time_done = None
@@ -128,7 +132,11 @@ class Order(HasID, DictLike):
         self.handle = handle
 
     def get_id(self):
-        return self.__id
+        return self.id
+
+
+class OrderFactory(FactoryWithID):
+    _class = Order
 
 
 # ENUM_DEAL_TYPE
@@ -140,14 +148,14 @@ DEAL_ENTRY_OUT = 0  # Entry out
 DEAL_ENTRY_INOUT = -1  # Reverse
 
 
-class Deal(HasID, DictLike):
+class Deal(DictLike):
     """成交对象"""
-    __slots__ = ["symbol", "__id", "order", "position", "time", "time_msc", "type", "entry",
+    __slots__ = ["symbol", "id", "order", "position", "time", "time_msc", "type", "entry",
                  "volume", "price", "commission", "profit", "strategy", "handle"]
 
-    def __init__(self, symbol=None, strategy=None, handle=None):
+    def __init__(self, symbol=None, strategy=None, handle=None, id=None):
         self.symbol = symbol
-        self.__id = self.next_auto_inc()
+        self.id = id
         self.order = None
         self.position = None
         self.time = None
@@ -161,5 +169,9 @@ class Deal(HasID, DictLike):
         self.strategy = strategy
         self.handle = handle
 
-    def get_id(self):
-        return self.__id
+    def get_id(self):  # 向下兼容
+        return self.id
+
+
+class DealFactory(FactoryWithID):
+    _class = Deal

@@ -33,6 +33,9 @@ class StrategyEngine(object):
         self.__event_engine = EventEngine()  # 事件处理引擎
         self.__account_manager = AccountManager()  # 账户管理
         self.__is_backtest = is_backtest  # 是否为回测
+        self.__position_factory = PositionFactory()
+        self.__order_factory = OrderFactory()
+        self.__deal_factory = DealFactory()
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
@@ -120,7 +123,7 @@ class StrategyEngine(object):
             for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
                 self.__data[time_frame][field][symbol] = deque(maxlen=maxlen)
             if symbol not in self.__current_positions:
-                position = Position(symbol)
+                position = self.__position_factory(symbol)
                 self.__current_positions[symbol] = position
                 self.__positions[position.get_id()] = position
 
@@ -132,9 +135,9 @@ class StrategyEngine(object):
         self.__positions.clear()
         self.__current_positions.clear()
         # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
-        Deal.set_auto_inc(0)
-        Position.set_auto_inc(0)
-        deque.set_auto_inc(0)
+        self.__position_factory.reset_id()
+        self.__deal_factory.reset_id()
+        self.__order_factory.reset_id()
 
     # ----------------------------------------------------------------------
     def add_file(self, file):
@@ -192,10 +195,11 @@ class StrategyEngine(object):
             else:
                 return -1
 
-        if deal.volume == 0:    return
+        if deal.volume == 0:
+            return
         symbol = self.__symbol_pool[deal.symbol]
         position_prev = self.__current_positions[deal.symbol]
-        position_now = Position(deal.symbol, deal.strategy, deal.handle)
+        position_now = self.__position_factory(deal.symbol, deal.strategy, deal.handle)
         position_now.prev_id = position_prev.get_id()
         position_prev.next_id = position_now.get_id()
         position = position_prev.type
@@ -271,7 +275,7 @@ class StrategyEngine(object):
             order.time_done = int(time_)
             order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
             order.volume_current = order.volume_initial
-            deal = Deal(order.symbol, order.strategy, order.handle)
+            deal = self.__deal_factory(order.symbol, order.strategy, order.handle)
             deal.volume = order.volume_current
             deal.time = order.time_done
             deal.time_msc = order.time_done_msc
@@ -399,7 +403,7 @@ class StrategyEngine(object):
         if not position or position.type != direction:
             return -1
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
-        order = Order(symbol, order_type, strategy, listener)
+        order = self.__order_factory(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         if self.__is_backtest:
             time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
@@ -432,7 +436,7 @@ class StrategyEngine(object):
         position = self.__current_positions.get(symbol, None)
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
         if position and position.type < 0:
-            order = Order(symbol, order_type, strategy, listener)
+            order = self.__order_factory(symbol, order_type, strategy, listener)
             order.volume_initial = position.volume
             order.time_setup = int(time_)
             order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
@@ -440,7 +444,7 @@ class StrategyEngine(object):
             self.send_order(order)
         if volume == 0:
             return -1
-        order = Order(symbol, order_type, strategy, listener)
+        order = self.__order_factory(symbol, order_type, strategy, listener)
         order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))

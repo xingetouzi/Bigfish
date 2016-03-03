@@ -12,7 +12,7 @@ from Bigfish.utils.log import FilePrinter
 from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SymbolsListener
-from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector,\
+from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector, \
     InitTransformer, wrap_with_module
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
@@ -253,11 +253,11 @@ class Strategy(HasID):
                 with codecs.open(fullname, "r", "utf-8") as f:
                     func_ast = ast.parse(f.read())
                     f.close()
+                import_inspector.visit(func_ast)  # 检查模块导入
                 function_injector = LocalsInjector({func: function_to_inject_init[signal]},
                                                    {func: function_to_inject_loop[signal]})
                 function_injector.visit(func_ast)
                 func_ast = series_exporter.visit(func_ast)
-                import_inspector.visit(func_ast)  # 检查模块导入
                 # TODO 多个handle时需要对每个handle调用的系统函数建立独立的系统函数
                 exec(compile(func_ast, "[SysFunctions:%s]" % func, mode="exec"), function_globals_, function_locals)
                 self.system_functions['%s.%s' % (signal, func)] = SeriesFunction(function_locals[func], signal)

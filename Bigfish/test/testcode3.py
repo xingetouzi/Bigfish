@@ -1,5 +1,4 @@
 # -*- coding:utf-8 -*-
-base = 100000
 
 
 def init():
@@ -15,17 +14,15 @@ def handle(slowlength=20, fastlength=10, lots=1):
 
     atr = ATR(fastlength)
     # print('%s:%s' % (barnum, atr))
-    if barnum > slowlength:
-        symbol = symbols[0]
-        position = marketposition.get(symbol, None)
-        if position == 0:
-            if close[0] >= highest(high, slowlength, 1) + atr:
-                buy(symbol, lots)
-            if close[0] <= lowest(slowlength, 1) - atr:
-                short(symbol, lots)
-        elif position > 0:
-            if close[0] <= lowest(fastlength, offset=1) - atr:
-                sell(symbol, lots)
-        elif position < 0:
-            if close[0] >= highest(high, fastlength, 1) + atr:
-                cover(symbol, lots)
+    if BarNum > slowlength:
+        if MarketPosition == 0:
+            if Close[0] >= highest(High, slowlength, 1) + atr:
+                Buy(Symbol, lots)
+            if Close[0] <= lowest(slowlength, 1) - atr:
+                SellShort(Symbol, lots)
+        elif MarketPosition > 0:
+            if Close[0] <= lowest(fastlength, offset=1) - atr:
+                Sell(Symbol, lots)
+        elif MarketPosition < 0:
+            if Close[0] >= highest(High, fastlength, 1) + atr:
+                BuyToCover(Symbol, lots)

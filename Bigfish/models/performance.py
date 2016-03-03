@@ -114,7 +114,8 @@ class StrategyPerformance(Performance):
         super(StrategyPerformance, self).__init__(manager)
 
     def get_info_on_home_page(self):
-        return {key.split('(')[0]: value for key, value in self._manager.strategy_summary['_'].fillna(0).to_dict().items()}
+        return {key.split('(')[0]: value for key, value in
+                self._manager.strategy_summary['_'].fillna(0).to_dict().items()}
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -231,7 +232,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)),
+                    {'rate': x['rate'].apply(partial(_get_percent_from_log)),
                      'trade_days': x['trade_days']}))(
                     self.__rate_of_return['D']
             )
@@ -287,6 +288,15 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def strategy_summary(self):
+        def nan2num(num, default=0):
+            """
+            处理计算结果为nan的情况
+            :param num: 计算结果
+            :param default: 默认值
+            :return: 如果为nan则返回默认值否则返回原值
+            """
+            return default if np.isnan(num) else num
+
         self.__update_units(
                 {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
                  '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
@@ -305,15 +315,16 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
         max_losing = trade_summary['total'][with_units('最大亏损')]
         result = pd.DataFrame({
-            '净利': net_profit,
-            '盈利': winning,
-            '亏损': losing,
-            '账户资金收益率': rate_of_return * 100,
-            '年化收益率': annual_rate_of_return,
+            '净利': nan2num(net_profit),
+            '盈利': nan2num(winning),
+            '亏损': nan2num(losing),
+            '账户资金收益率': nan2num(rate_of_return * 100),
+            '年化收益率': nan2num(annual_rate_of_return),
             '最大回撤': self.max_drawdown.total if not self.is_negative else 100,
             '策略最大潜在亏损': max_potential_losing * 100,
-            '平仓交易最大亏损': max_losing,
-            '最大潜在亏损收益比': rate_of_return / -max_potential_losing if abs(max_potential_losing) > FLOAT_ERR else np.nan
+            '平仓交易最大亏损': nan2num(max_losing),
+            '最大潜在亏损收益比': nan2num(rate_of_return) / -max_potential_losing if abs(
+                max_potential_losing) > FLOAT_ERR else np.nan
         }, index=['_']).T.reindex(names).rename(lambda x: self.__with_units(x))
         result.index.name = 'index'
         return result
@@ -522,9 +533,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def sharpe_ratio(self):
-        expected = self._roll_exp(self.__rate_of_return_percent['M'])
+        expected = self.ar
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
-        std = _deal_float_error(self.volatility, fill=np.nan)
+        std = _deal_float_error(self.volatility, fill=np.nan) * (self.__annual_factor ** 0.5)  # 年化标准差
+        std.total = self.volatility.total * (self.__annual_factor ** 0.5)
         result = expected / std
         result.total = expected.total / std.total
         return result

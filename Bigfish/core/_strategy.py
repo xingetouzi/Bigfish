@@ -12,7 +12,8 @@ from Bigfish.utils.log import FilePrinter
 from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SymbolsListener
-from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector, InitTransformer
+from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector,\
+    InitTransformer, wrap_with_module
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
 
@@ -171,11 +172,24 @@ class Strategy(HasID):
         code_lines = ["import functools", "__globals = globals()"]
         code_lines.extend(["{0} = __globals['{0}']".format(key) for key in self.__locals_.keys()
                            if key not in ["Sell", "Buy", "SellShort", "BuyToCover"]])
+        # init中可以设定全局变量，所以要以"global foo"的方式进行注入。
+        if inspect.isfunction(signal_locals_.get('init', None)):
+            init_transformer = InitTransformer()
+            init_transformer.visit(ast_)
+            # XXX 必须要一个module node作为根节点。
+            exec(compile(wrap_with_module(init_transformer.init_node), "[Strategy:%s]" % self.name, mode="exec"),
+                 signal_globals_, signal_locals_)
+            self.handlers['init'] = signal_locals_['init']
+            # 执行init并记录locals，之后注入信号
+            init_globals = self.handlers['init']()
+            signal_globals_.update(init_globals)
+            init_to_inject_init = ["{0} = __globals['{0}']".format(key) for key in init_globals.keys()]
+        else:
+            init_to_inject_init = []
+
         for key, value in signal_locals_.items():
             if inspect.isfunction(value):
                 if key == "init":
-                    self.handlers['init'] = value
-                    # TODO init中可以设定全局变量，所以要以"global foo"的方式进行注入，监听的事件不同所以要改写SymbolsListener
                     continue
                 paras = inspect.signature(value).parameters.copy()  # 获取handler函数的参数列表
                 is_handle = get_parameter_default(paras, "IsHandle", lambda x: isinstance(x, bool), True)
@@ -211,8 +225,8 @@ class Strategy(HasID):
                     temp.extend(["{0} = functools.partial(__globals['{0}'],listener={1})".format(
                             field, self.listeners[key].get_id())
                                  for field in ["Sell", "Buy", "SellShort", "BuyToCover"]])
-                    signal_to_inject_init[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
-                                                 additional_instructions
+                    signal_to_inject_init[key] = code_lines + temp + init_to_inject_init + \
+                                                 ["del(functools)", "del(__globals)"] + additional_instructions
                     # 信号与函数中相比多出的就是交易指令
                     signal_to_inject_loop[key] = ["BarNum = get_current_bar()",
                                                   "Pos = Positions[Symbol]",
@@ -253,14 +267,10 @@ class Strategy(HasID):
         signal_injector = LocalsInjector(signal_to_inject_init, signal_to_inject_loop)
         signal_injector.visit(ast_)
         ast_ = series_exporter.visit(ast_)
-        InitTransformer().visit(ast_)
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
             self.listeners[key].set_generator(signal_locals_[key])
         print("<%s>信号添加成功" % self.name)
-        if 'init' in self.handlers:
-            self.handlers['init'] = signal_locals_['init']
-            print(self.handlers['init']())
         return True
 
     # ----------------------------------------------------------------------

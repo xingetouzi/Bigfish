@@ -100,6 +100,7 @@ class LocalsInjector(ast.NodeVisitor):
             node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
             # print(ast.dump(node))
 
+    # TODO 未对所有return进行修改
     @staticmethod
     def return_to_yield(node):
         has_return = False
@@ -213,6 +214,7 @@ class InitTransformer(ast.NodeVisitor):
     def __init__(self):
         self.__depth = 0
         self.__in_init = False
+        self.init_node = None
 
     def visit(self, node):
         self.__depth += 1
@@ -238,7 +240,7 @@ class InitTransformer(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         if self.__depth == 2 and node.name == 'init':
             self.__in_init = True
-            ReturnTransformer(target=self.trans, add=True).trans(node)
+            self.init_node = ReturnTransformer(target=self.trans, add=True).trans(node)
         self.generic_visit(node)
 
 
@@ -262,3 +264,12 @@ class ReturnTransformer(ast.NodeTransformer):
         if not self.__has_return:
             node.body.append(LocationPatcher(node.body[-1]).visit(self.__target(None)))
         return node
+
+
+def wrap_with_module(nodes):
+    try:
+        return ast.Module(body=list(nodes))
+    except TypeError:
+        return ast.Module(body=[nodes])
+    except Exception as e:
+        raise e

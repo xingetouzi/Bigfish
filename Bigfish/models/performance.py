@@ -13,6 +13,7 @@ from pandas.tseries.offsets import MonthBegin
 import tushare
 from Bigfish.models.trade import *
 from Bigfish.utils.pandas_util import rolling_apply_2d
+from Bigfish.utils.memory_profiler import profile as m_profile
 
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 pd.set_option('display.precision', 6)
@@ -53,6 +54,8 @@ def cache_calculator(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         nonlocal cache
+        if func.__name__ == 'trade_summary':
+            print(cache.keyrefs())
         if self not in cache:
             cache[self] = func(self, *args, **kwargs)
         return cache[self]
@@ -324,13 +327,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '策略最大潜在亏损': max_potential_losing * 100,
             '平仓交易最大亏损': nan2num(max_losing),
             '最大潜在亏损收益比': nan2num(rate_of_return) / -max_potential_losing if abs(
-                max_potential_losing) > FLOAT_ERR else np.nan
+                    max_potential_losing) > FLOAT_ERR else np.nan
         }, index=['_']).T.reindex(names).rename(lambda x: self.__with_units(x))
         result.index.name = 'index'
         return result
 
     @property
     @cache_calculator
+    @m_profile
     def trade_info(self):
         positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
         deals = self.__deals_raw[
@@ -359,6 +363,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
+    @m_profile
     def trade_summary(self):
         self.__update_units(
                 {'(%s)' % self.__currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
@@ -400,6 +405,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result['最大亏损'] = list(map(lambda x: x.min(), profits))
         result = result.T.rename(lambda x: self.__with_units(x))
         result.index.name = 'index'
+        trade.clear()
+        trade_grouped.clear()
         return result
 
     @property

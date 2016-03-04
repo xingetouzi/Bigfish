@@ -2,11 +2,28 @@
 from collections import deque
 from Bigfish.models.common import Deque as Dq
 import codecs
+from weakref import ref, WeakKeyDictionary
+import sys
+
 
 class g:
     pass
 
 
+def weakref_test():
+    print('weakref test begin')
+    cache = WeakKeyDictionary()
+    a = g()
+    print(sys.getrefcount(a))
+    print(sys.getrefcount(a))
+    b = ref(a)
+    cache[a] = 1
+    print(cache.keyrefs())
+    print(sys.getrefcount(a))
+    del a
+    print(cache.keyrefs())
+    print(sys.getrefcount(b()))
+    print (cache[b()])
 
 if __name__ == '__main__':
     x = g()
@@ -18,10 +35,4 @@ if __name__ == '__main__':
     print(hash(y))
     print(hash(z))
     print(d[(3, (4, y))])
-    try:
-        f = codecs.open("testcode1.py", "r", "utf-8")
-        print(1/0)
-    except:
-        f.close()
-    finally:
-        f.close()
+    weakref_test()

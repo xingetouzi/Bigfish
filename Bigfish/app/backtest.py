@@ -19,6 +19,7 @@ from Bigfish.config import *
 
 if MEMORY_DEBUG:
     import gc
+    import sys
 
 
 def _get_bar_from_dataframe(symbol, time_frame, data):
@@ -70,6 +71,7 @@ elif DATABASE == 'mongodb':
 elif DATABASE == 'mysql':
     if ASYNC:
         from Bigfish.data.twisted_server import TwistAsyncDataGenerator
+
         data_generator = TwistAsyncDataGenerator
     else:
         import Bigfish.data.mysql_forex_data as fx_mysql
@@ -135,7 +137,14 @@ class Backtesting:
             self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
             if MEMORY_DEBUG:
-                print('gb:\n%s' % gc.garbage)  # 写日志，计算垃圾占用的内存等
+                print('gb:\n%s' % sys.getsizeof(gc.garbage))  # 写日志，计算垃圾占用的内存等
+                gb_log = {}
+                for gb in gc.garbage:
+                    type_ = type(gb)
+                    if type_ not in gb_log:
+                        gb_log[type_] = 0
+                    gb_log[type_] += sys.getsizeof(gb)
+                print(gb_log)
             return self.__performance_manager
         else:
             return self.__strategy_engine.wait(self.__get_performance_manager)
@@ -234,9 +243,11 @@ class Backtesting:
             else:
                 i += 1
         self.__data_generator.stop()  # 释放数据资源
-        result = pd.DataFrame(result).sort_values(goal, ascending=False)
-        result.index.name = '_'
-        return result.iloc[:num]
+        output = pd.DataFrame(result).sort_values(goal, ascending=False)
+        result.clear()  # 释放资源
+        output.index.name = '_'
+        output = output.iloc[:num]
+        return output
 
     def _genetic_optimize(self, ranges, goal):
         pass
@@ -268,10 +279,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode3.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode7.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-12-01', '2016-01-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-12-01', '2016-01-01')
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()

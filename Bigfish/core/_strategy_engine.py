@@ -131,6 +131,9 @@ class StrategyEngine(object):
     def _recycle(self):
         # TODO 数据结构还需修改
         self.__data.clear()
+        self.__orders_done.clear()
+        self.__orders_todo.clear()
+        self.__orders_todo_index.clear()
         self.__deals.clear()
         self.__positions.clear()
         self.__current_positions.clear()

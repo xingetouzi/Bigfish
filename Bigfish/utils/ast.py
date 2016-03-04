@@ -202,12 +202,16 @@ class ImportInspector(ast.NodeVisitor):
 
     def visit_Import(self, node):
         for children in node.names:
-            if children.name not in self.__MODULES_IMPORT:
-                self.raise_error(children.name)
+            name = children.name.split('.')[0]
+            if name not in self.__MODULES_IMPORT:
+                self.raise_error(name)
 
     def visit_ImportFrom(self, node):
-        if node.module not in self.__MODULES_IMPORT:
-            self.raise_error(node.module)
+        if node.level:
+            raise SystemError("不支持相对导入")
+        name = node.module.split('.')[0]
+        if name not in self.__MODULES_IMPORT:
+            self.raise_error(name)
 
 
 class InitTransformer(ast.NodeVisitor):

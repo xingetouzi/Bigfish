@@ -6,6 +6,7 @@ Created on Wed Nov 25 20:41:04 2015
 """
 import codecs
 from functools import partial
+import gc
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,6 @@ from Bigfish.utils.memory_profiler import profile
 from Bigfish.config import *
 
 if MEMORY_DEBUG:
-    import gc
     import sys
 
 
@@ -130,6 +130,7 @@ class Backtesting:
         :param paras:
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
+        gc.collect()
         self.__is_alive = True
         if paras is not None:
             self.__strategy.set_parameters(paras)

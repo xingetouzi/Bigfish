@@ -6,8 +6,8 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 import time
-from functools import partial
 from collections import defaultdict
+from functools import partial
 
 # 自定义模块
 from Bigfish.core import AccountManager
@@ -168,7 +168,7 @@ class StrategyEngine(object):
         for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
             self.__data[time_frame][field][symbol].appendleft(getattr(bar, field))
         for order in self.__orders_todo:
-            if bar.symbol == bar.symbol:
+            if order.symbol == bar.symbol:
                 result = self.__send_order_to_broker(order)
                 self.__orders_done[order.get_id()] = order
                 self.__update_position(*result[0])
@@ -314,6 +314,7 @@ class StrategyEngine(object):
                 result = self.__send_order_to_broker(order)
                 self.__orders_done[order.get_id()] = order
                 self.__update_position(*result[0])
+                result[0].clear()  # 去掉对deal的引用
             else:
                 self.__orders_todo[order.get_id()] = order
             return order.get_id()

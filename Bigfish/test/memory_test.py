@@ -19,12 +19,12 @@ def test(detail):
 
     #gc.set_debug(gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_SAVEALL)
     start_time = time.time()
-    with codecs.open('../test/testcode6.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode7.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M30', '2015-01-01', '2016-01-01')
     print(backtest.progress)
-    for _ in range(6):
+    for _ in range(4):
         backtest.start()
         print(backtest.get_performance().trade_summary)
     if detail:
@@ -54,7 +54,7 @@ def test(detail):
         # print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
         print(time.time() - start_time)
         print(backtest.progress)
-    paras = {'handle': {'times': {'start': 7, 'end': 10, 'step': 1}}}
+    paras = {'handle': {'times': {'start': 10, 'end': 10, 'step': 1}}}
     optimize = backtest.optimize(paras, None, None)
     print('optimize\n%s' % optimize)
     print(time.time() - start_time)

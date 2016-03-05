@@ -23,7 +23,22 @@ def weakref_test():
     del a
     print(cache.keyrefs())
     print(sys.getrefcount(b()))
-    print (cache[b()])
+    print(cache[b()])
+
+
+def gc_test():
+    print('gc_test begin')
+
+    def f():
+        return [g()]
+
+    l = f()
+    r = ref(l[0])
+    print(sys.getrefcount(r()))
+    l.clear()
+    print(r())
+    print(sys.getrefcount(r()))
+
 
 if __name__ == '__main__':
     x = g()
@@ -35,4 +50,5 @@ if __name__ == '__main__':
     print(hash(y))
     print(hash(z))
     print(d[(3, (4, y))])
+    gc_test()
     weakref_test()

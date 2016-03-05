@@ -17,12 +17,15 @@ class AccountManager:
         self.__name = name
         self.__currency = currency
         self.__leverage = leverage
+        self.__capital_net = self.__capital_base
+        self.__capital_cash = self.__capital_base
+        self.__records = []
         self.initialize()
 
     def initialize(self):
         self.__capital_net = self.__capital_base
         self.__capital_cash = self.__capital_base
-        self.__records = []
+        self.__records.clear()
 
     def set_capital_base(self, capital_base):
         if isinstance(capital_base, int) and capital_base > 0:

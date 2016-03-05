@@ -64,7 +64,9 @@ elif DATABASE == 'mongodb':
             data = self.with_time_cost_count(fx_mongo.get_period_bars)(symbol, time_frame,
                                                                        get_datetime(start_time).timestamp(),
                                                                        get_datetime(end_time).timestamp())
-            return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+            result = list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+            data.clear()
+            return result
 
 
     data_generator = DataGeneratorMongoDB
@@ -83,8 +85,9 @@ elif DATABASE == 'mysql':
                 data = self.with_time_cost_count(fx_mysql.get_period_bars)(symbol, time_frame,
                                                                            get_datetime(start_time).timestamp(),
                                                                            get_datetime(end_time).timestamp())
-                return list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
-
+                result = list(map(partial(_get_bar_from_dict, symbol, time_frame), data))
+                data.clear()
+                return result
 
         data_generator = DataGeneratorMysql
 

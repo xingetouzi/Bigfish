@@ -90,6 +90,7 @@ class EventEngine:
         for file in self.__file_opened:
             if not file.closed:
                 file.close()
+        self.__file_opened.clear()
         self.__is_empty.set()  # 被强制stop时，也要调用is_empty事件的set方法
 
     # ----------------------------------------------------------------------

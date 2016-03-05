@@ -141,6 +141,7 @@ class StrategyEngine(object):
         self.__position_factory.reset_id()
         self.__deal_factory.reset_id()
         self.__order_factory.reset_id()
+        self.__account_manager.initialize()
 
     # ----------------------------------------------------------------------
     def add_file(self, file):
@@ -326,7 +327,7 @@ class StrategyEngine(object):
         :param order_id: 所要取消的订单ID，为0时为取消所有订单
         """
         if order_id == 0:
-            self.__orders_todo = {}
+            self.__orders_todo.clear()
         else:
             if order_id in self.__orders_todo:
                 del (self.__orders_todo[order_id])

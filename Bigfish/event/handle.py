@@ -24,8 +24,8 @@ class SymbolsListener(HasID):
         self.__engine = engine
         self.__handler = None
         self.__generator = None
-        self.__gene_istance = None
-        self.__SymbolsListeners[self.__id] = self
+        self.__gene_instance = None
+        self.__class__.__SymbolsListeners[self.__id] = self
         self.__bar_num = 0  # 暂时使用在LocalsInjector中改写的方式
 
     @classmethod
@@ -70,7 +70,7 @@ class SymbolsListener(HasID):
         self.__bar_num = 0
         self.__handler = self.__handle()
         if self.__generator:
-            self.__gene_istance = self.__generator(**self.__parameters)
+            self.__gene_instance = self.__generator(**self.__parameters)
             for symbol in self.__symbols_enum.keys():
                 self.__engine.register_event(EVENT_BAR_SYMBOL[symbol][self.__time_frame], self.__handler.send)
             self.__handler.send(None)  # start it
@@ -79,7 +79,7 @@ class SymbolsListener(HasID):
         if self.__generator:
             for symbol in self.__symbols_enum.keys():
                 self.__engine.unregister_event(EVENT_BAR_SYMBOL[symbol][self.__time_frame], self.__handler.send)
-            self.__gene_istance.close()
+            self.__gene_instance.close()
             self.__handler.close()  # stop it
 
     def __handle(self):
@@ -91,5 +91,5 @@ class SymbolsListener(HasID):
             bits_now |= 1 << self.__symbols_enum[bar.symbol]
             if bits_now == bits_ready:
                 self.__bar_num += 1
-                self.__gene_istance.__next__()
+                self.__gene_instance.__next__()
                 bits_now = 0

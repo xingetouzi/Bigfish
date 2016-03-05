@@ -45,7 +45,7 @@ class Event:
         else:
             event_type = _EventType(name)
             cls.__types[event_type.get_id()] = event_type
-            return (event_type)
+            return event_type
 
     # ----------------------------------------------------------------------
     def __init__(self, type_=None, content={}):

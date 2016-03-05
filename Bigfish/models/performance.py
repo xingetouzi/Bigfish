@@ -359,6 +359,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         trade['trade_type'] = trade['trade_number'].apply(lambda x: temp[x])
         trade['profit'] = trade['profit'].fillna(0)
         trade.index.name = 'deal_number'
+        del positions
+        del deals
+        del temp
         return trade
 
     @property

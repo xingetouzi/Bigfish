@@ -61,6 +61,7 @@ class UserDirectory(object):
         strategy_dir_name = "library"
         return self.__get_dir__(self.get_home(), strategy_dir_name)
 
+    @DeprecationWarning
     def get_func_dir(self):
         """
         获取用户编写的函数存放目录
@@ -84,11 +85,12 @@ class UserDirectory(object):
         return os.listdir(self.get_strategy_dir())
 
 
+    @DeprecationWarning
     @staticmethod
     def get_sys_func_dir():
         return os.path.join(os.path.dirname(__file__), '..', '..', 'bigfish_functions')
 
-
+    @DeprecationWarning
     @staticmethod
     def get_sys_func_list():
         return list(map(lambda x: x.replace('.py', ''),
@@ -102,6 +104,7 @@ class UserDirectory(object):
         """
         return os.path.exists(os.path.join(self.get_strategy_dir(), strategy_name))
 
+    @DeprecationWarning
     def func_exists(self, func_name):
         """
         判断用户函数文件是否存在

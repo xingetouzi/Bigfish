@@ -26,3 +26,7 @@ class Code(object):
         self.code_type = code_type
 
 
+    def __repr__(self):
+        return "[name=%s, content=%s]" % (self.name, self.content)
+
+

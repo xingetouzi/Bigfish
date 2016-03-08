@@ -5,7 +5,7 @@
 """
 __all__ = ["MEMORY_DEBUG", "DATABASE", "ASYNC", "MODULES_IMPORT", "SYMBOL_LIST", "CROSS_TRADE", "SYMBOL_LIST"]
 
-MEMORY_DEBUG = True  # 是否开启内存检测模式
+MEMORY_DEBUG = False  # 是否开启内存检测模式
 DATABASE = "mysql"  # 数据库
 ASYNC = False  # 数据拉取方式
 MODULES_IMPORT = ["time", "datetime"]  # 允许在策略代码中导入的模块列表

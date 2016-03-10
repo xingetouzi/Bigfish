@@ -8,7 +8,7 @@ import ast
 import os
 import codecs
 
-from Bigfish.store.directory import UserDirectory
+from Bigfish.store.code_manage import get_sys_func_list, get_sys_func_dir
 from Bigfish.config import MODULES_IMPORT
 
 
@@ -45,8 +45,8 @@ class FunctionsDetector(ast.NodeVisitor):
 
 class SystemFunctionsDetector(FunctionsDetector):
     def __init__(self):
-        super(SystemFunctionsDetector, self).__init__(UserDirectory.get_sys_func_list())
-        self._sys_func_dir = UserDirectory.get_sys_func_dir()
+        super(SystemFunctionsDetector, self).__init__(get_sys_func_list())
+        self._sys_func_dir = get_sys_func_dir()
 
     def visit_Name(self, node):
         name = node.id

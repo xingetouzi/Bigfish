@@ -84,13 +84,10 @@ class UserDirectory(object):
         """
         return os.listdir(self.get_strategy_dir())
 
-
-    @DeprecationWarning
     @staticmethod
     def get_sys_func_dir():
         return os.path.join(os.path.dirname(__file__), '..', '..', 'bigfish_functions')
 
-    @DeprecationWarning
     @staticmethod
     def get_sys_func_list():
         return list(map(lambda x: x.replace('.py', ''),

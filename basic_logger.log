@@ -1,0 +1,2 @@
+DEBUG:root:Run user_id=test1, symbol=USDCHF, timeFrame=M1 spend time 9.180992, endtime=1457486766.714443
+DEBUG:root:Run user_id=test0, symbol=EURUSD, timeFrame=M30 spend time 6.482183, endtime=1457486861.195396

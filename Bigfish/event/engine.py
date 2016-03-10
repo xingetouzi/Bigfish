@@ -5,10 +5,10 @@ from queue import Queue, Empty
 from functools import wraps, partial
 from threading import Thread, Event as ThreadEvent
 import sys
-
 # 自定义模块
 from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event
 from Bigfish.utils.error import SlaverThreadError
+from Bigfish.config import THROW_ERROR
 
 
 ########################################################################
@@ -84,8 +84,11 @@ class EventEngine:
                 if self.__finished:
                     self.__active = False
                 self.__is_empty.set()
-            except Exception:
-                self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
+            except Exception as e:
+                if THROW_ERROR:
+                    raise e
+                else:
+                    self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 self.__active = False
         for file in self.__file_opened:
             if not file.closed:
@@ -97,16 +100,16 @@ class EventEngine:
     def __process(self, event):
         """处理事件"""
         # 检查是否存在对该事件进行监听的处理函数
-        if event.type_ in self.__handlers:
+        if event.type in self.__handlers:
             # 若存在，则按顺序将事件传递给处理函数执行
-            for handler in self.__handlers[event.type_]:
+            for handler in self.__handlers[event.type]:
                 handler(event)
 
     # ----------------------------------------------------------------------
     def __onTimer(self):
         """向事件队列中存入计时器事件"""
         # 创建计时器事件
-        event = Event(type_=EVENT_TIMER)
+        event = Event(type=EVENT_TIMER)
 
         # 向队列中存入计时器事件
         self.put(event)
@@ -149,25 +152,25 @@ class EventEngine:
         self.__finished = True
 
     # ----------------------------------------------------------------------
-    def register(self, type_, handler):
+    def register(self, type, handler):
         """注册事件处理函数监听"""
         # 尝试获取该事件类型对应的处理函数列表，若无则创建
         try:
-            handlerList = self.__handlers[type_]
+            handlerList = self.__handlers[type]
         except KeyError:
             handlerList = []
-            self.__handlers[type_] = handlerList
+            self.__handlers[type] = handlerList
         # 监听函数的优先级通过注册先后来实现
         # 若要注册的处理器不在该事件的处理器列表中，则注册该事件
         if handler not in handlerList:
             handlerList.append(handler)
 
     # ----------------------------------------------------------------------
-    def unregister(self, type_, handler):
+    def unregister(self, type, handler):
         """注销事件处理函数监听"""
         # 尝试获取该事件类型对应的处理函数列表，若无则忽略该次注销请求
         try:
-            handlerList = self.__handlers[type_]
+            handlerList = self.__handlers[type]
 
             # 如果该函数存在于列表中，则移除
             if handler in handlerList:
@@ -175,7 +178,7 @@ class EventEngine:
 
             # 如果函数列表为空，则从引擎中移除该事件类型
             if not handlerList:
-                del self.__handlers[type_]
+                del self.__handlers[type]
         except KeyError:
             pass
 

@@ -6,6 +6,7 @@
 __all__ = ["MEMORY_DEBUG", "DATABASE", "ASYNC", "MODULES_IMPORT", "SYMBOL_LIST", "CROSS_TRADE", "SYMBOL_LIST"]
 
 MEMORY_DEBUG = False  # 是否开启内存检测模式
+THROW_ERROR = True  # 是否正常抛出异常，True为正常抛出，False以日志的方式将异常记录下来
 DATABASE = "mysql"  # 数据库
 ASYNC = False  # 数据拉取方式
 MODULES_IMPORT = ["time", "datetime"]  # 允许在策略代码中导入的模块列表

@@ -11,7 +11,7 @@ import codecs
 from Bigfish.utils.log import FilePrinter
 from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
-from Bigfish.event.handle import SymbolsListener
+from Bigfish.event.handle import SignalFactory
 from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector, \
     InitTransformer, wrap_with_module
 from Bigfish.utils.common import check_time_frame
@@ -28,8 +28,8 @@ class Strategy(HasID):
                     EndTime="end_time", MaxLen="max_length")
     API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover', 'Export']
     API_VARIABLES = ['O', 'Open', 'Opens', 'H', 'High', 'Highs', 'L', 'Low', 'Lows', 'C', 'Close', 'Closes',
-                     'Time', 'Times', 'T', 'Volume', 'Volumes', 'V', 'Symbols', 'Symbol', 'BarNum', 'MarketPosition',
-                     'Positions', 'Pos', 'CurrentContracts']
+                     'Datetime', 'Datetimes', 'D', 'Timestamp', 'Timestamps', 'T', 'Volume', 'Volumes', 'V', 'Symbols',
+                     'Symbol', 'BarNum', 'MarketPosition', 'Positions', 'Pos', 'CurrentContracts']
 
     # ----------------------------------------------------------------------
     def __init__(self, engine, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None):
@@ -47,7 +47,8 @@ class Strategy(HasID):
         self.max_length = 0
         self.capital_base = 100000
         self.handlers = {}
-        self.listeners = {}
+        self.signal_factory = SignalFactory()
+        self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
         self.__printer = FilePrinter(user, name, self.engine)
@@ -64,7 +65,7 @@ class Strategy(HasID):
                               CurrentContracts=self.engine.get_current_contracts(), Data=self.engine.get_data(),
                               Context=self.__context, Export=partial(export, strategy=self),
                               Put=self.put_context, Get=self.get_context, print=self.__printer.print,
-                              listeners=self.listeners, system_functions=self.system_functions,
+                              signals=self.signals, system_functions=self.system_functions,
                               )
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)
@@ -78,12 +79,12 @@ class Strategy(HasID):
 
     # ----------------------------------------------------------------------
     def get_parameters(self):
-        return {key: value.get_parameters() for key, value in self.listeners.items()}
+        return {key: value.get_parameters() for key, value in self.signals.items()}
 
     # ----------------------------------------------------------------------
     def set_parameters(self, parameters):
         for handle, paras in parameters.items():
-            self.listeners[handle].set_parameters(**paras)
+            self.signals[handle].set_parameters(**paras)
 
     # ----------------------------------------------------------------------
     def get_id(self):
@@ -149,7 +150,7 @@ class Strategy(HasID):
         function_globals_ = {}  # 可动态管理的系统函数命名空间
         # 获取并检查一些全局变量的设定
         exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
-        get_global_attrs(signal_locals_)
+        get_global_attrs(signal_locals_)  # 弃用，暂时保留以便向下兼容
         set_global_attrs(signal_globals_)
         set_global_attrs(function_globals_)
         signal_globals_.update(signal_locals_)
@@ -198,32 +199,34 @@ class Strategy(HasID):
                 custom = get_parameter_default(paras, "Custom", lambda x: isinstance(x, bool), False)
                 if not custom:
                     # TODO加入真正的验证方法
-                    symbols = get_parameter_default(paras, "Symbols", lambda x: True, self.symbols)
+                    # 转化为tuple是为了去掉重复，而且symbols要那来当做字典的键
+                    symbols = tuple(get_parameter_default(paras, "Symbols", lambda x: True, self.symbols))
                     time_frame = get_parameter_default(paras, "TimeFrame", check_time_frame, self.time_frame)
                     max_length = get_parameter_default(paras, "MaxLen", lambda x: isinstance(x, int) and (x > 0),
                                                        self.max_length)
-                    self.engine.add_symbols(symbols, time_frame, max_length)
-                    self.listeners[key] = SymbolsListener(self.engine, symbols, time_frame)
+                    self.engine.add_cache_info(symbols, time_frame, max_length)
+                    self.signals[key] = self.signal_factory.new(self.engine, symbols, time_frame)
 
                     additional_instructions = ["{0} = system_functions['%s.%s'%('{1}','{0}')]".format(f, key)
                                                for f, s in funcs_in_use.items() if key in s] + ['del(system_functions)']
                     temp = []
                     # TODO 加入opens等，这里字典的嵌套结构
+                    quotes = ["open", "high", "low", "close", "datetime", "timestamp", "volume"]
                     temp.extend(["{0} = __globals['Data']['{1}']['{3}']['{2}']"
                                 .format(upper_first_letter(field), time_frame, symbols[0], field)
-                                 for field in ["open", "high", "low", "close", "time", "volume"]])
+                                 for field in quotes])
                     temp.extend(["{0} = __globals['Data']['{1}']['{3}']['{2}']"
                                 .format(field[0].upper(), time_frame, symbols[0], field)
-                                 for field in ["open", "high", "low", "close", "time", "volume"]])
+                                 for field in quotes])
                     temp.extend(["{0}s = __globals['Data']['{1}']['{2}']"
                                 .format(upper_first_letter(field), time_frame, field)
-                                 for field in ["open", "high", "low", "close", "time", "volume"]])
-                    temp.append("{0} = __globals['listeners']['{1}'].{0}".format('get_current_bar', key))
+                                 for field in quotes])
+                    temp.append("{0} = __globals['signals']['{1}'].{0}".format('get_current_bar', key))
                     temp.append("Symbol = Symbols[0]")
                     function_to_inject_init[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
                                                    additional_instructions
-                    temp.extend(["{0} = functools.partial(__globals['{0}'],listener={1})".format(
-                            field, self.listeners[key].get_id())
+                    temp.extend(["{0} = functools.partial(__globals['{0}'],signal='{1}')".format(
+                        field, key)
                                  for field in ["Sell", "Buy", "SellShort", "BuyToCover"]])
                     signal_to_inject_init[key] = code_lines + temp + init_to_inject_init + \
                                                  ["del(functools)", "del(__globals)"] + additional_instructions
@@ -244,7 +247,7 @@ class Strategy(HasID):
                         raise ValueError('参数%s未指定初始值' % para_name)
                     elif not isinstance(default, (int, float)):
                         raise ValueError('参数%s的值必须为整数或浮点数' % para_name)
-                    self.listeners[key].add_parameters(para_name, default)
+                    self.signals[key].add_parameters(para_name, default)
         series_exporter = SeriesExporter()  # deal with the export syntax
         # export the system functions in use
         for func, signals in funcs_in_use.items():
@@ -269,7 +272,7 @@ class Strategy(HasID):
         ast_ = series_exporter.visit(ast_)
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
-            self.listeners[key].set_generator(signal_locals_[key])
+            self.signals[key].set_generator(signal_locals_[key])
         print("<%s>信号添加成功" % self.name)
         return True
 
@@ -282,7 +285,7 @@ class Strategy(HasID):
         """
         self.trading = True
         self.initialize()
-        for listener in self.listeners.values():
+        for listener in self.signals.values():
             listener.start()
         for function in self.system_functions.values():
             function.start()
@@ -296,7 +299,7 @@ class Strategy(HasID):
         同上
         """
         self.trading = False
-        for listener in self.listeners.values():
+        for listener in self.signals.values():
             listener.stop()
         for function in self.system_functions.values():
             function.stop()

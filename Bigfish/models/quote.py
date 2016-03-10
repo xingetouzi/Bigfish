@@ -4,9 +4,10 @@ Created on Thu Nov 26 10:06:21 2015
 
 @author: BurdenBear
 """
-from Bigfish.event.event import EVENT_BAR_SYMBOL, Event
+from Bigfish.event.event import EVENT_SYMBOL_BAR_RAW, Event
 from Bigfish.models.common import DictLike
-from Bigfish.utils.common import _TIME_FRAME_PERIOD
+from Bigfish.utils.common import tf2s
+from datetime import datetime
 import pandas as pd
 
 
@@ -14,12 +15,13 @@ class BarFactory:
     @classmethod
     def to_dict(cls, bar):
         temp = super(Bar, bar).to_dict()
+        temp['datetime'] = bar.datetime
         temp['close_time'] = bar.close_time
         return temp
 
     @classmethod
     def to_event(cls, bar):
-        event = Event(EVENT_BAR_SYMBOL[bar.symbol][bar.time_frame], {'data': bar})
+        event = Event(EVENT_SYMBOL_BAR_RAW[bar.symbol][bar.time_frame], data=bar)
         return event
 
     @classmethod
@@ -28,14 +30,15 @@ class BarFactory:
         :return: field names in print order use for create dataframe
         """
         temp = Bar.get_fields()
-        temp[-1:-1] = ["close_time"]
+        temp[-1:-1] = ["datetime", "close_time"]
         return temp
 
 
 class Bar(DictLike):
     """K线数据对象（开高低收成交量时间）"""
-    __slots__ = ["symbol", "open", "high", "low", "close", "volume", "time", "time_frame"]
-    close_time = property(lambda self: self.time + _TIME_FRAME_PERIOD.get(self.time_frame, 0))
+    __slots__ = ["symbol", "open", "high", "low", "close", "volume", "timestamp", "time_frame"]
+    datetime = property(lambda self: datetime.fromtimestamp(self.timestamp))
+    close_time = property(lambda self: self.timestamp + tf2s(self.time_frame))
 
     def __init__(self, symbol):
         self.symbol = symbol
@@ -45,15 +48,16 @@ class Bar(DictLike):
         self.low = 0
         self.close = 0
         self.volume = 0
-        self.time = 0
+        self.timestamp = 0
 
     def to_dict(self):
         temp = super(Bar, self).to_dict()
+        temp['datetime'] = self.datetime
         temp['close_time'] = self.close_time
         return temp
 
     def to_event(self):
-        event = Event(EVENT_BAR_SYMBOL[self.symbol][self.time_frame], {'data': self})
+        event = Event(EVENT_SYMBOL_BAR_RAW[self.symbol][self.time_frame], data=self)
         return event
 
     @classmethod
@@ -62,7 +66,7 @@ class Bar(DictLike):
         :return: field names in print order use for create dataframe
         """
         temp = super().get_fields()
-        temp[-1:-1] = ["close_time"]
+        temp[-1:-1] = ["datetime", "close_time"]
         return temp
 
 

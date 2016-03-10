@@ -35,7 +35,12 @@ _TIME_FRAME = {item: n for n, item in
 _TIME_FRAME_PERIOD = {'W1': 604800, 'D1': 86400, 'H1': 3600, 'M30': 1800, 'M15': 900, 'M10': 600, 'M5': 300, 'M1': 60}
 
 
-def time_frame_to_seconds(time_frame):
+def tf2s(time_frame):
+    """
+    turn time frame to seconds
+    :param time_frame: time_frame
+    :return seconds
+    """
     return _TIME_FRAME_PERIOD[time_frame]
 
 

@@ -20,12 +20,13 @@ from Bigfish.store.symbol_manage import get_all_symbols
 
 ########################################################################
 class _EventType(HasID):
-    __slots__ = ["__id", "name", "verbose_name"]  # 事件类型的ID,名称，含义解释
+    __slots__ = ["__id", "name", "verbose_name", "priority"]  # 事件类型的ID,名称，含义解释
 
-    def __init__(self, name, verbose_name=''):
+    def __init__(self, name, verbose_name='', priority=0):
         self.__id = self.next_auto_inc()
         self.name = name
         self.verbose_name = verbose_name
+        self.priority = priority  # 事件优先级，优先级高的先执行
 
     def get_id(self):
         return self.__id
@@ -37,39 +38,85 @@ class Event:
     __types = {}
 
     @classmethod
-    def _create_event_type(cls, name):
+    def create_event_type(cls, name, priority=0):
         # TODO check name
         if name in [type_.name for type_ in cls.__types.values()]:
             # TODO 自定义错误
             raise (ValueError("重复的事件定义"))
         else:
-            event_type = _EventType(name)
+            event_type = _EventType(name, priority=priority)
             cls.__types[event_type.get_id()] = event_type
             return event_type
 
     # ----------------------------------------------------------------------
-    def __init__(self, type_=None, content={}):
+    def __init__(self, type=None, **content):
         """Constructor"""
-        self.type_ = type_  # 事件类型
+        self.type = type  # 事件类型
+        self.priority = self.__types[type].priority  # 事件的优先级
         self.content = content  # 保存具体的事件数据
 
 
-EVENT_ASYNC = Event._create_event_type('Async').get_id()  # 用于实现异步
-EVENT_TIMER = Event._create_event_type('Timer').get_id()  # 计时器事件，每隔1秒发送一次
-EVENT_LOG = Event._create_event_type('Log').get_id()  # 日志事件，通常使用某个监听函数直接显示
-EVENT_TDLOGIN = Event._create_event_type('TdLogin').get_id()  # 交易服务器登录成功事件
-EVENT_TICK = Event._create_event_type('Tick').get_id()  # 行情推送事件
+EVENT_ASYNC = Event.create_event_type('Async').get_id()  # 用于实现异步
+EVENT_TIMER = Event.create_event_type('Timer').get_id()  # 计时器事件，每隔1秒发送一次
+EVENT_LOG = Event.create_event_type('Log').get_id()  # 日志事件，通常使用某个监听函数直接显示
+EVENT_TDLOGIN = Event.create_event_type('TdLogin').get_id()  # 交易服务器登录成功事件
+EVENT_TICK = Event.create_event_type('Tick').get_id()  # 行情推送事件
 SYMBOLS = list(map(lambda x: x.en_name, get_all_symbols()))
-EVENT_BAR = Event._create_event_type('Bar').get_id()  # 特定交易物的数据事件
-EVENT_BAR_SYMBOL = {symbol: {time_frame: Event._create_event_type('Deal.%s.%s' %
-                                                                  (symbol, time_frame)).get_id() for time_frame in
-                             _TIME_FRAME} for symbol in SYMBOLS}
+EVENT_BAR = Event.create_event_type('Bar').get_id()  # 特定交易物的数据事件
+# 特定品种原始数据更新事件,content:{'data': bar}为行情数据对象。
+EVENT_SYMBOL_BAR_RAW = {
+    symbol: {time_frame: Event.create_event_type('BarRaw.%s.%s' % (symbol, time_frame)).get_id() for time_frame in
+             _TIME_FRAME} for symbol in SYMBOLS}
+# 特定品种数据更新事件,这个事件看似与之前的数据重合，但是通过数据中继站，可以对BarUpdate事件产生的频率进行控制,content:{'data':bar,'completed':True or False}
+EVENT_SYMBOL_BAR_UPDATE = {
+    symbol: {time_frame: Event.create_event_type('BarUpdate.%s.%s' % (symbol, time_frame), priority=1).get_id() for
+             time_frame in _TIME_FRAME} for symbol in SYMBOLS}
+# 特定品种上一根K线完结事件，这个事件主要用来实现在下一个Bar的open时进行对上一根Bar的所有下单进行处理。
+EVENT_SYMBOL_BAR_COMPLETED = {
+    symbol: {time_frame: Event.create_event_type('BarCompleted.%s.%s' % (symbol, time_frame), priority=2).get_id() for
+             time_frame in _TIME_FRAME} for symbol in SYMBOLS}
 EVENT_DEAL = 'Deal'  # 成交推送事件
-EVENT_DEAL_SYMBOL = {symbol: Event._create_event_type('Deal.%s' % symbol).get_id()
+EVENT_DEAL_SYMBOL = {symbol: Event.create_event_type('Deal.%s' % symbol).get_id()
                      for symbol in SYMBOLS}  # 特定交易物的成交事件
 EVENT_ORDER = 'Order'  # 报单推送事件
-EVENT_ORDER_SYMBOL = {symbol: Event._create_event_type('Order.%s' % symbol).get_id()
+EVENT_ORDER_SYMBOL = {symbol: Event.create_event_type('Order.%s' % symbol).get_id()
                       for symbol in SYMBOLS}  # 特定报单号的报单事件
 EVENT_POSITION = 'Position'  # 持仓查询回报事件
-EVENT_POSITION_SYMBOL = {symbol: Event._create_event_type('Position.%s' % symbol).get_id()
+EVENT_POSITION_SYMBOL = {symbol: Event.create_event_type('Position.%s' % symbol).get_id()
                          for symbol in SYMBOLS}  # 特定交易物持仓查询回报事件
+
+
+class EventsPacker:
+    def __init__(self, engine, events, out=None, type='all'):
+        self.engine = engine  # StrategyEngine对象
+        self.events_in = tuple(events)  # 需要打包全部的events
+        self.events_enum = {k: n for n, k in enumerate(self.events_in)}
+        self.type = type
+        self.events_out = out
+        self.bits = 0
+        self.complete = (1 << len(self.events_in)) - 1
+        self._running = False
+        for event in self.events_in:
+            self.engine.register_event(event, self.on_event)
+
+    def start(self):
+        self.bits = 0
+        self._running = True
+
+    def stop(self):
+        self._running = False
+
+    def out(self):
+        if self.events_out:
+            self.engine.put_event(Event(type=self.events_out))
+
+    def on_event(self, event):
+        if not self._running:
+            return
+        if self.type == 'any':
+            self.out()
+        elif self.type == 'all':
+            self.bits |= (1 << self.events_enum[event.type])
+            if self.bits == self.complete:
+                self.out()
+                self.bits = 0

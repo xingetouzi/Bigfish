@@ -27,7 +27,7 @@ def _get_bar_from_dataframe(symbol, time_frame, data):
     bar.time_frame = time_frame
     for field in ['open', 'high', 'low', 'close', 'volume']:
         setattr(bar, field, data[field])
-    bar.time = get_datetime(data.name).timestamp()
+    bar.timestamp = get_datetime(data.name).timestamp()
     return bar
 
 
@@ -36,7 +36,7 @@ def _get_bar_from_dict(symbol, time_frame, data):
     bar.time_frame = time_frame
     for field in ['open', 'high', 'low', 'close', 'volume']:
         setattr(bar, field, data[field])
-    bar.time = data['ctime']
+    bar.timestamp = data['ctime']
     return bar
 
 
@@ -286,7 +286,7 @@ if __name__ == '__main__':
     with codecs.open('../test/testcode7.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-12-01', '2016-01-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2016-01-01')
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()

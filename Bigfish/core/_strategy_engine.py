@@ -15,10 +15,10 @@ from Bigfish.event.event import *
 from Bigfish.event.engine import EventEngine
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
-from Bigfish.utils.common import set_attr, get_attr
+from Bigfish.utils.common import set_attr, get_attr, tf2s
 from Bigfish.models.common import Deque as deque
-from Bigfish.utils.common import time_frame_to_seconds
-from Bigfish.event.handle import SymbolsListener
+from Bigfish.utils.common import tf2s
+from Bigfish.event.handle import Signal
 
 
 # %% 策略引擎语句块
@@ -44,18 +44,21 @@ class StrategyEngine(object):
         self.__positions = {}  # Key:id, value:position with responding id
         self.__current_positions = {}  # key：symbol，value：current position
         self.__strategys = {}  # 保存策略对象的字典,key为策略名称,value为策略对象
-        self.__data = {}  # 统一的数据视图
+        self.__data_cache = DataCache(self)  # 数据中继站
         self.__max_len_info = {}  # key:(symbol,timeframe),value:maxlen
         self.start_time = None
         self.end_time = None
-        self.__current_time = None  # 目前数据运行到的事件，用于计算回测进度
 
+    def get_data(self):
+        return self.__data_cache.data
+
+    data = property(get_data)
     start_time = property(partial(get_attr, attr='start_time'), partial(set_attr, attr='start_time'), None)
     end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
 
     # ----------------------------------------------------------------------
     def get_current_time(self):
-        return self.__current_time
+        return self.__data_cache.current_time
 
     # ----------------------------------------------------------------------
     def get_symbols(self):
@@ -63,7 +66,7 @@ class StrategyEngine(object):
 
     # ----------------------------------------------------------------------
     def get_symbol_timeframe(self):
-        return self.__max_len_info.keys()
+        return self.__data_cache.get_cache_info().keys()
 
     # ----------------------------------------------------------------------
     def get_current_contracts(self):
@@ -84,10 +87,6 @@ class StrategyEngine(object):
         return self.__positions
 
     # ----------------------------------------------------------------------
-    def get_data(self):
-        return self.__data
-
-    # ----------------------------------------------------------------------
     def get_profit_records(self):
         """获取平仓收益记录"""
         return self.__account_manager.get_profit_records()
@@ -101,27 +100,15 @@ class StrategyEngine(object):
         self.__account_manager.set_capital_base(base)
 
     # ----------------------------------------------------------------------
-    def add_symbols(self, symbols, time_frame, max_length=0):
-        for symbol in symbols:
-            if (symbol, time_frame) not in self.__max_len_info:
-                self.__max_len_info[(symbol, time_frame)] = max_length
-            else:
-                self.__max_len_info[(symbol, time_frame)] = max(max_length, self.__max_len_info[(symbol, time_frame)])
-            self.register_event(EVENT_BAR_SYMBOL[symbol][time_frame], self.update_bar_data)
-            # TODO 从全局的品种池中查询
-            self.__symbol_pool[symbol] = Forex(symbol, symbol)
+    def add_cache_info(self, symbols, time_frame, maxlen=0):
+        self.__data_cache.add_cache_info({(symbol, time_frame): maxlen for symbol in symbols})
+        # TODO 从全局的品种池中查询
+        self.__symbol_pool.update(
+            {symbol: Forex(symbol, symbol) for symbol in symbols if symbol not in self.__symbol_pool})
 
     # ----------------------------------------------------------------------
     def initialize(self):
-
-        self.__current_time = None
-        for (symbol, time_frame), maxlen in self.__max_len_info.items():
-            if time_frame not in self.__data:
-                self.__data[time_frame] = defaultdict(dict)
-            if maxlen == 0:
-                maxlen = self.CACHE_MAXLEN
-            for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-                self.__data[time_frame][field][symbol] = deque(maxlen=maxlen)
+        for symbol, _ in self.__symbol_pool.items():
             if symbol not in self.__current_positions:
                 position = self.__position_factory(symbol)
                 self.__current_positions[symbol] = position
@@ -130,7 +117,6 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def _recycle(self):
         # TODO 数据结构还需修改
-        self.__data.clear()
         self.__orders_done.clear()
         self.__orders_todo.clear()
         self.__orders_todo_index.clear()
@@ -138,9 +124,9 @@ class StrategyEngine(object):
         self.__positions.clear()
         self.__current_positions.clear()
         # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
-        self.__position_factory.reset_id()
-        self.__deal_factory.reset_id()
-        self.__order_factory.reset_id()
+        self.__position_factory.reset()
+        self.__deal_factory.reset()
+        self.__order_factory.reset()
         self.__account_manager.initialize()
 
     # ----------------------------------------------------------------------
@@ -152,42 +138,6 @@ class StrategyEngine(object):
         """添加已创建的策略实例"""
         self.__strategys[strategy.get_id()] = strategy
         strategy.engine = self
-        # ----------------------------------------------------------------------
-
-    def update_market_data(self, event):
-        """行情更新"""
-        # TODO行情数据
-        pass
-
-    # ----------------------------------------------------------------------
-    def update_bar_data(self, event):
-        bar = event.content['data']
-        symbol = bar.symbol
-        time_frame = bar.time_frame
-        self.__current_time = bar.close_time if not self.__current_time else max(self.__current_time, bar.close_time)
-        for field in ['open', 'high', 'low', 'close', 'time', 'volume']:
-            self.__data[time_frame][field][symbol].appendleft(getattr(bar, field))
-        for order in self.__orders_todo:
-            if order.symbol == bar.symbol:
-                result = self.__send_order_to_broker(order)
-                self.__orders_done[order.get_id()] = order
-                self.__update_position(*result[0])
-
-    # ----------------------------------------------------------------------
-    def __process_order(self, tick):
-        """处理停止单"""
-        pass
-
-    # ----------------------------------------------------------------------
-    def update_order(self, event):
-        """报单更新"""
-        # TODO 成交更新
-
-    # ----------------------------------------------------------------------
-    def update_trade(self, event):
-        """成交更新"""
-        # TODO 成交更新
-        pass
 
     # ----------------------------------------------------------------------
     def __update_position(self, deal):
@@ -203,7 +153,7 @@ class StrategyEngine(object):
             return
         symbol = self.__symbol_pool[deal.symbol]
         position_prev = self.__current_positions[deal.symbol]
-        position_now = self.__position_factory(deal.symbol, deal.strategy, deal.handle)
+        position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
         position_prev.next_id = position_now.get_id()
         position = position_prev.type
@@ -274,17 +224,17 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
         if self.__is_backtest:
-            time_frame = SymbolsListener.get_by_id(order.handle).get_time_frame()
-            time_ = self.__data[time_frame]["time"][order.symbol][0] + time_frame_to_seconds(time_frame)
+            time_frame = self.__strategys[order.strategy].signals[order.signal].get_time_frame()
+            time_ = self.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
             order.time_done = int(time_)
             order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
             order.volume_current = order.volume_initial
-            deal = self.__deal_factory(order.symbol, order.strategy, order.handle)
+            deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
             deal.volume = order.volume_current
             deal.time = order.time_done
             deal.time_msc = order.time_done_msc
             deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.__data[time_frame]["close"][order.symbol][0]
+            deal.price = self.data[time_frame]["close"][order.symbol][0]
             # TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
@@ -352,21 +302,24 @@ class StrategyEngine(object):
     # ----------------------------------------------------------------------
     def writeLog(self, log):
         """写日志"""
-        event = Event(type_=EVENT_LOG)
+        event = Event(type=EVENT_LOG)
         event.content['log'] = log
         self.__event_engine.put(event)
 
     # ----------------------------------------------------------------------
     def start(self):
         """启动所有策略"""
-        self.__event_engine.start()
         for strategy in self.__strategys.values():
             strategy.start()
-            # ----------------------------------------------------------------------
+        self.__data_cache.start()
+        self.__event_engine.start()
+
+    # ----------------------------------------------------------------------
 
     def stop(self):
         """停止所有策略"""
         self.__event_engine.stop()
+        self.__data_cache.stop()
         for strategy in self.__strategys.values():
             strategy.stop()
         self._recycle()  # 释放资源
@@ -388,7 +341,7 @@ class StrategyEngine(object):
 
     # TODO 对限价单的支持
     # ----------------------------------------------------------------------
-    def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None,
+    def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                        direction=0):
         """
         平仓下单指令
@@ -398,7 +351,7 @@ class StrategyEngine(object):
         :param stop: 是否为止损单
         :param limit: 是否为止盈单
         :param strategy: 发出下单指令的策略
-        :param listener: 发出下单指令的信号
+        :param signal: 发出下单指令的信号
         :param direction: 下单指令的方向(多头或者空头)
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
@@ -408,10 +361,11 @@ class StrategyEngine(object):
         if not position or position.type != direction:
             return -1
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
-        order = self.__order_factory(symbol, order_type, strategy, listener)
+        order = self.__order_factory(symbol, order_type, strategy, signal)
         order.volume_initial = volume
         if self.__is_backtest:
-            time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
+            time_frame = self.__strategys[strategy].signals[signal].time_frame
+            time_ = self.data[time_frame]['timestamp'][symbol][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -419,7 +373,7 @@ class StrategyEngine(object):
         return self.send_order(order)
 
     # ----------------------------------------------------------------------
-    def open_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, listener=None,
+    def open_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                       direction=0):
         """
         开仓下单指令
@@ -429,19 +383,20 @@ class StrategyEngine(object):
         :param stop: 是否为止损单
         :param limit: 是否为止盈单
         :param strategy: 发出下单指令的策略
-        :param listener: 发出下单指令的信号
+        :param signal: 发出下单指令的信号
         :param direction: 下单指令的方向(多头或者空头)
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
 
         if self.__is_backtest:
-            time_ = self.__data[SymbolsListener.get_by_id(listener).get_time_frame()]['time'][symbol][0]
+            time_frame = self.__strategys[strategy].signals[signal].time_frame
+            time_ = self.data[time_frame]['timestamp'][symbol][0]
         else:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
         if position and position.type < 0:
-            order = self.__order_factory(symbol, order_type, strategy, listener)
+            order = self.__order_factory(symbol, order_type, strategy, signal)
             order.volume_initial = position.volume
             order.time_setup = int(time_)
             order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
@@ -449,8 +404,81 @@ class StrategyEngine(object):
             self.send_order(order)
         if volume == 0:
             return -1
-        order = self.__order_factory(symbol, order_type, strategy, listener)
+        order = self.__order_factory(symbol, order_type, strategy, signal)
         order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
         return self.send_order(order)
+
+
+class DataCache:
+    """数据缓存器"""
+    CACHE_MAXLEN = 1000  # 默认的缓存长度
+
+    @classmethod
+    def set_default_maxlen(cls, maxlen):
+        cls.CACHE_MAXLEN = maxlen
+
+    def __init__(self, engine):
+        self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
+        self._engine = engine
+        self._running = False
+        self._data = {}
+        self.current_time = None  # 目前数据运行到的事件，用于计算回测进度
+
+    def get_data(self):
+        return self._data
+
+    data = property(get_data)
+
+    def add_cache_info(self, info):
+        for key, value in info.items():
+            self._cache_info[key] = max(self._cache_info[key], value)
+
+    def get_cache_info(self):
+        return self._cache_info.copy()
+
+    def init(self):
+        for key, maxlen in self._cache_info.items():
+            symbol, timeframe = key
+            if timeframe not in self._data:
+                self._data[timeframe] = defaultdict(dict)
+            if maxlen == 0:
+                maxlen = self.CACHE_MAXLEN
+            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+                self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
+            self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
+
+    def start(self):
+        self.init()
+        self._running = True
+
+    def stop(self):
+        self._running = False
+        self._data.clear()
+
+    def on_tick(self, event):
+        if self._running:
+            pass
+
+    def on_bar(self, event):
+        if self._running:
+            bar = event.content['data']
+            symbol = bar.symbol
+            time_frame = bar.time_frame
+            self.current_time = bar.close_time if not self.current_time else max(self.current_time, bar.close_time)
+            last_time = self._data[time_frame]['timestamp'][symbol][0] \
+                if self._data[time_frame]['timestamp'][symbol] else 0
+            if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
+                for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+                    self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
+                self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
+            else:
+                for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+                    self._data[time_frame][field][symbol][0] = getattr(bar, field)
+                self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
+
+class TradeManager:
+    """负责保存交易信息，管理订单相关事件"""
+    pass

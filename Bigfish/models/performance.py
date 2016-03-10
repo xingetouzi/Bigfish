@@ -338,12 +338,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     def trade_info(self):
         positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
         deals = self.__deals_raw[
-            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'handle']]
+            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'signal']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
         if trade.empty:  # 依旧丑陋的补丁
             trade = pd.DataFrame(columns=['symbol', 'type_d', 'price_current', 'volume_d', 'position', 'time',
-                                          'type_p', 'price', 'volume_p', 'profit', 'entry', 'strategy', 'handle',
+                                          'type_p', 'price', 'volume_p', 'profit', 'entry', 'strategy', 'signal',
                                           'trade_number', 'trade_type'])
             trade.index.name = 'deal_number'
             return trade

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 
 # 系统模块
-from queue import Queue, Empty
+from queue import Empty, PriorityQueue as Queue
 from functools import wraps, partial
 from threading import Thread, Event as ThreadEvent
 import sys
+import time
 # 自定义模块
 from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event
 from Bigfish.utils.error import SlaverThreadError
@@ -54,6 +55,7 @@ class EventEngine:
         """初始化事件引擎"""
         # 事件队列
         self.__queue = Queue()
+        self.__count = 0  # 计数器，用于辅助实现优先级队列
         self.__file_opened = []
         # 事件引擎开关
         self.__active = False
@@ -78,7 +80,7 @@ class EventEngine:
         """引擎运行"""
         while self.__active:
             try:
-                event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
+                *_, event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
                 self.__process(event)
             except Empty:
                 if self.__finished:
@@ -190,7 +192,8 @@ class EventEngine:
     # ----------------------------------------------------------------------
     def put(self, event):
         """向事件队列中存入事件"""
-        self.__queue.put(event)
+        self.__count += 1
+        self.__queue.put((-event.priority, self.__count, event))
 
     # ----------------------------------------------------------------------
     def throw_error(self):

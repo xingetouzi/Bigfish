@@ -6,12 +6,55 @@ Created on Fri Nov 27 22:42:54 2015
 """
 from collections import OrderedDict
 
-from Bigfish.event.event import EventsPacker, EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLETED, Event
+from Bigfish.event.event import EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLETED, Event
 from Bigfish.models.common import FactoryWithList
 
 
+class EventsPacker:
+    def __init__(self, engine, events, out=None, type='all'):
+        self.engine = engine  # StrategyEngine对象
+        self.events_in = tuple(events)  # 需要打包全部的events
+        self._events_enum = {k: n for n, k in enumerate(self.events_in)}
+        self.type = type
+        self.events_out = out
+        self._bits = 0
+        self._complete = (1 << len(self.events_in)) - 1
+        self._running = False
+        self.register()
+
+    def start(self):
+        self._bits = 0
+        self._running = True
+
+    def stop(self):
+        self._running = False
+
+    def out(self):
+        if self.events_out:
+            self.engine.put_event(Event(type=self.events_out))
+
+    def register(self):
+        for event in self.events_in:
+            self.engine.register_event(event, self._on_event)
+
+    def unregister(self):
+        for event in self.events_in:
+            self.engine.unregister_event(event, self._on_event)
+
+    def _on_event(self, event):
+        if not self._running:
+            return
+        if self.type == 'any':
+            self.out()
+        elif self.type == 'all':
+            self._bits |= (1 << self._events_enum[event.type])
+            if self._bits == self._complete:
+                self.out()
+                self._bits = 0
+
+
 class SymbolBarUpdateEventsPacker(EventsPacker):
-    def __init__(self, engine, symbols, time_frame, out, type='all'):
+    def __init__(self, engine, symbols, time_frame, out=None, type='all'):
         events = [EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame] for symbol in symbols]
         super(SymbolBarUpdateEventsPacker, self).__init__(engine, events, out, type)
 
@@ -23,7 +66,6 @@ class SymbolBarCompletedEventsPacker(EventsPacker):
 
 
 class Signal:
-
     def __init__(self, engine, symbols, time_frame, id=None):
         """
         信号对象，每一个信号即为策略代码中不以init为名的任意最外层函数，订阅某些品种的行情数据，运行于特定时间框架下。

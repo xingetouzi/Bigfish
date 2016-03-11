@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-from operator import itemgetter
-
 from Bigfish.models.common import HasID
-from Bigfish.models import Symbol
-from Bigfish.utils.common import _TIME_FRAME
 from Bigfish.store.symbol_manage import get_all_symbols
+from Bigfish.utils.common import _TIME_FRAME
 
 '''
 本文件仅用于存放对于事件类型常量的定义。
@@ -84,39 +81,3 @@ EVENT_ORDER_SYMBOL = {symbol: Event.create_event_type('Order.%s' % symbol).get_i
 EVENT_POSITION = 'Position'  # 持仓查询回报事件
 EVENT_POSITION_SYMBOL = {symbol: Event.create_event_type('Position.%s' % symbol).get_id()
                          for symbol in SYMBOLS}  # 特定交易物持仓查询回报事件
-
-
-class EventsPacker:
-    def __init__(self, engine, events, out=None, type='all'):
-        self.engine = engine  # StrategyEngine对象
-        self.events_in = tuple(events)  # 需要打包全部的events
-        self.events_enum = {k: n for n, k in enumerate(self.events_in)}
-        self.type = type
-        self.events_out = out
-        self.bits = 0
-        self.complete = (1 << len(self.events_in)) - 1
-        self._running = False
-        for event in self.events_in:
-            self.engine.register_event(event, self.on_event)
-
-    def start(self):
-        self.bits = 0
-        self._running = True
-
-    def stop(self):
-        self._running = False
-
-    def out(self):
-        if self.events_out:
-            self.engine.put_event(Event(type=self.events_out))
-
-    def on_event(self, event):
-        if not self._running:
-            return
-        if self.type == 'any':
-            self.out()
-        elif self.type == 'all':
-            self.bits |= (1 << self.events_enum[event.type])
-            if self.bits == self.complete:
-                self.out()
-                self.bits = 0

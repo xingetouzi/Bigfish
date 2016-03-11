@@ -315,6 +315,7 @@ if __name__ == '__main__':
     print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
     print(time.time() - start_time)
     print(backtest.progress)
+    print(performance.trade_details)
     # paras = {
     #     'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
     #                'fastlength': {'start': 10, 'end': 10, 'step': 1}}}

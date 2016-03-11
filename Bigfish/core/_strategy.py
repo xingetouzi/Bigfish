@@ -6,6 +6,7 @@ import ast
 import inspect
 from functools import partial
 import codecs
+from weakref import proxy
 
 # 自定义模块
 from Bigfish.utils.log import FilePrinter
@@ -16,11 +17,6 @@ from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDet
     InitTransformer, wrap_with_module
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
-
-
-########################################################################
-def set_parameters(paras):
-    pass
 
 
 class Strategy(HasID):
@@ -39,7 +35,7 @@ class Strategy(HasID):
         self.user_dir = UserDirectory(user)
         self.name = name
         self.code = code
-        self.engine = engine
+        self.engine = proxy(engine)
         self.time_frame = time_frame
         self.symbols = symbols
         self.start_time = start_time
@@ -61,8 +57,7 @@ class Strategy(HasID):
                               Sell=partial(self.engine.close_position, strategy=self.__id, direction=1),
                               SellShort=partial(self.engine.open_position, strategy=self.__id, direction=-1),
                               BuyToCover=partial(self.engine.close_position, strategy=self.__id, direction=-1),
-                              Positions=self.engine.get_current_positions(),
-                              CurrentContracts=self.engine.get_current_contracts(), Data=self.engine.get_data(),
+                              Positions=self.engine.current_positions, Data=self.engine.data,
                               Context=self.__context, Export=partial(export, strategy=self),
                               Put=self.put_context, Get=self.get_context, print=self.__printer.print,
                               signals=self.signals, system_functions=self.system_functions,

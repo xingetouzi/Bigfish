@@ -7,7 +7,8 @@ Created on Wed Nov 25 21:09:47 2015
 """
 import time
 from collections import defaultdict
-from functools import partial
+from functools import wraps
+from weakref import proxy
 
 # 自定义模块
 from Bigfish.core import AccountManager
@@ -15,7 +16,6 @@ from Bigfish.event.event import *
 from Bigfish.event.engine import EventEngine
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
-from Bigfish.utils.common import set_attr, get_attr, tf2s
 from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
 from Bigfish.event.handle import Signal
@@ -32,101 +32,72 @@ class StrategyEngine(object):
         """Constructor"""
         self.__event_engine = EventEngine()  # 事件处理引擎
         self.__account_manager = AccountManager()  # 账户管理
-        self.__is_backtest = is_backtest  # 是否为回测
-        self.__position_factory = PositionFactory()
-        self.__order_factory = OrderFactory()
-        self.__deal_factory = DealFactory()
-        self.__orders_done = {}  # 保存所有已处理报单数据的字典
-        self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
-        self.__orders_todo_index = {}  # 同上 key:symbol
-        self.__symbol_pool = {}  # 保存交易物
-        self.__deals = {}  # 保存所有成交数据的字典
-        self.__positions = {}  # Key:id, value:position with responding id
-        self.__current_positions = {}  # key：symbol，value：current position
-        self.__strategys = {}  # 保存策略对象的字典,key为策略名称,value为策略对象
+        self.__trade_manager = TradeManager(self, is_backtest)  # 交易管理器
         self.__data_cache = DataCache(self)  # 数据中继站
-        self.__max_len_info = {}  # key:(symbol,timeframe),value:maxlen
-        self.start_time = None
-        self.end_time = None
+        self.__strategys = {}
+        self.update_deal = self.__account_manager.update_deal
 
     def get_data(self):
         return self.__data_cache.data
 
-    data = property(get_data)
-    start_time = property(partial(get_attr, attr='start_time'), partial(set_attr, attr='start_time'), None)
-    end_time = property(partial(get_attr, attr='end_time'), partial(set_attr, attr='end_time'), None)
+    def get_symbol_pool(self):
+        return self.__data_cache.symbol_pool
 
-    # ----------------------------------------------------------------------
+    def get_current_positions(self):
+        return self.__trade_manager.current_positions
+
     def get_current_time(self):
         return self.__data_cache.current_time
 
-    # ----------------------------------------------------------------------
-    def get_symbols(self):
-        return self.__symbol_pool
-
-    # ----------------------------------------------------------------------
-    def get_symbol_timeframe(self):
-        return self.__data_cache.get_cache_info().keys()
-
-    # ----------------------------------------------------------------------
-    def get_current_contracts(self):
-        # TODO 现在持仓手数
-        return self.__current_positions
-
-    # ----------------------------------------------------------------------
-    def get_current_positions(self):
-        # TODO 读取每个品种的有效Position
-        return self.__current_positions
-
-    # ----------------------------------------------------------------------
-    def get_deals(self):
-        return self.__deals
-
-    # ----------------------------------------------------------------------
     def get_positions(self):
-        return self.__positions
+        return self.__trade_manager.positions
 
-    # ----------------------------------------------------------------------
+    def get_deals(self):
+        return self.__trade_manager.deals
+
+    def get_strategys(self):
+        return self.__strategys
+
     def get_profit_records(self):
         """获取平仓收益记录"""
         return self.__account_manager.get_profit_records()
 
-    # ----------------------------------------------------------------------
-    def get_traceback(self):
-        pass
+    def get_symbol_timeframe(self):
+        return self.__data_cache.get_cache_info().keys()
 
-    # ----------------------------------------------------------------------
+    # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
+    # property:
+    current_time = property(get_current_time)
+    symbol_pool = property(get_symbol_pool)
+    data = property(get_data)
+    current_positions = property(get_current_positions)
+    positions = property(get_positions)
+    deal = property(get_deals)
+    strategys = property(get_strategys)
+    profit_records = property(get_profit_records)
+    symbol_timeframe = property(get_symbol_timeframe)
+
+    def update_deal(self, deal):
+        self.__account_manager.update_deal(deal)
+
+    def open_position(self, *args, **kwargs):
+        self.__trade_manager.open_position(*args, **kwargs)
+
+    def close_position(self, *args, **kwargs):
+        self.__trade_manager.close_position(*args, **kwargs)
+
     def set_capital_base(self, base):
         self.__account_manager.set_capital_base(base)
 
     # ----------------------------------------------------------------------
-    def add_cache_info(self, symbols, time_frame, maxlen=0):
-        self.__data_cache.add_cache_info({(symbol, time_frame): maxlen for symbol in symbols})
+    def add_cache_info(self, *args, **kwargs):
+        self.__data_cache.add_cache_info(*args, **kwargs)
         # TODO 从全局的品种池中查询
-        self.__symbol_pool.update(
-            {symbol: Forex(symbol, symbol) for symbol in symbols if symbol not in self.__symbol_pool})
-
-    # ----------------------------------------------------------------------
-    def initialize(self):
-        for symbol, _ in self.__symbol_pool.items():
-            if symbol not in self.__current_positions:
-                position = self.__position_factory(symbol)
-                self.__current_positions[symbol] = position
-                self.__positions[position.get_id()] = position
 
     # ----------------------------------------------------------------------
     def _recycle(self):
-        # TODO 数据结构还需修改
-        self.__orders_done.clear()
-        self.__orders_todo.clear()
-        self.__orders_todo_index.clear()
-        self.__deals.clear()
-        self.__positions.clear()
-        self.__current_positions.clear()
-        # TODO 这里的auto_inc是模块级别的，需要修改成对象级别的。
-        self.__position_factory.reset()
-        self.__deal_factory.reset()
-        self.__order_factory.reset()
+        self.__data_cache.stop()
+        self.__trade_manager.recycle()
         self.__account_manager.initialize()
 
     # ----------------------------------------------------------------------
@@ -138,150 +109,6 @@ class StrategyEngine(object):
         """添加已创建的策略实例"""
         self.__strategys[strategy.get_id()] = strategy
         strategy.engine = self
-
-    # ----------------------------------------------------------------------
-    def __update_position(self, deal):
-        def sign(num):
-            if abs(num) <= 10 ** -7:
-                return 0
-            elif num > 0:
-                return 1
-            else:
-                return -1
-
-        if deal.volume == 0:
-            return
-        symbol = self.__symbol_pool[deal.symbol]
-        position_prev = self.__current_positions[deal.symbol]
-        position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
-        position_now.prev_id = position_prev.get_id()
-        position_prev.next_id = position_now.get_id()
-        position = position_prev.type
-        # XXX常量定义改变这里的映射函数也可能改变
-        if deal.type * position >= 0:
-            deal.entry = DEAL_ENTRY_IN
-            if position == 0:  # open position
-                position_now.price_open = deal.price
-                position_now.time_open = deal.time
-                position_now.time_open_msc = deal.time_msc
-            else:  # overweight position
-                position_now.time_open = position_prev.time_open
-                position_now.time_open_msc = position_prev.time_open_msc
-            position_now.volume = deal.volume + position_prev.volume
-            position_now.type = deal.type
-            position_now.price_current = (position_prev.price_current * position_prev.volume
-                                          + deal.price * deal.volume) / position_now.volume
-        else:
-            if deal.symbol.endswith('USD'):  # 间接报价
-                base_price = 1
-            elif deal.symbol.startswith('USD'):  # 直接报价
-                base_price = 1 / deal.price
-            else:  # TODO 处理交叉盘的情况
-                base_price = 1
-            contracts = position_prev.volume - deal.volume
-            position_now.volume = abs(contracts)
-            position_now.type = position * sign(contracts)
-            if (position_now.type == position) | (position_now.type == 0):
-                # close or underweight position
-                deal.entry = DEAL_ENTRY_OUT
-                deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
-                                               base_price=base_price)
-                if position_now.type == 0:  # 防止浮点数精度可能引起的问题
-                    position_now.price_current = 0
-                    position_now.volume = 0
-                else:
-                    position_now.price_current = position_prev.price_current
-                position_now.time_open = position_prev.time_open
-                position_now.time_open_msc = position_prev.time_open_msc
-                # XXX 反向开仓将被拆为两单
-                """
-            elif position_now.type != position:  # reverse position
-                    deal.entry = DEAL_ENTRY_INOUT
-                deal.profit = (deal.price - position_prev.price_current) * position * position_prev.volume
-                position_now.price_current = deal.price
-                position_now.time_open = deal.time
-                position_now.time_open_msc = deal.time_msc
-                position_now.price_open = position_now.price_current
-                """
-        position_now.time_update = deal.time
-        position_now.time_update_msc = deal.time_msc
-        deal.position = position_now.get_id()
-        position_now.deal = deal.get_id()
-        self.__current_positions[deal.symbol] = position_now
-        self.__positions[position_now.get_id()] = position_now
-        self.__deals[deal.get_id()] = deal
-        if deal.profit != 0:
-            self.__account_manager.update_deal(deal)
-
-    # ----------------------------------------------------------------------
-    @staticmethod
-    def check_order(order):
-        if not isinstance(order, Order):
-            return False
-        # TODO更多关于订单合法性的检查
-        return True
-
-    # ----------------------------------------------------------------------
-    def __send_order_to_broker(self, order):
-        if self.__is_backtest:
-            time_frame = self.__strategys[order.strategy].signals[order.signal].get_time_frame()
-            time_ = self.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
-            order.time_done = int(time_)
-            order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
-            order.volume_current = order.volume_initial
-            deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
-            deal.volume = order.volume_current
-            deal.time = order.time_done
-            deal.time_msc = order.time_done_msc
-            deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.data[time_frame]["close"][order.symbol][0]
-            # TODO加入手续费等
-            order.deal = deal.get_id()
-            deal.order = order.get_id()
-            return [deal], {}
-            # TODO 市价单成交
-        else:
-            pass
-            # TODO 实盘交易
-
-    # ----------------------------------------------------------------------
-    def send_order(self, order):
-        """
-        发单（仅允许限价单）
-        symbol：合约代码
-        direction：方向，DIRECTION_BUY/DIRECTION_SELL
-        offset：开平，OFFSET_OPEN/OFFSET_CLOSE
-        price：下单价格
-        volume：下单手数
-        strategy：策略对象 
-        """
-        # TODO 更多属性的处理
-        if self.check_order(order):
-            if order.type <= 1:  # market order
-                # send_order_to_broker = async_handle(self.__event_engine, self.__update_position)
-                # (self.__send_order_to_broker)
-                # send_order_to_broker(order)
-                result = self.__send_order_to_broker(order)
-                self.__orders_done[order.get_id()] = order
-                self.__update_position(*result[0])
-                result[0].clear()  # 去掉对deal的引用
-            else:
-                self.__orders_todo[order.get_id()] = order
-            return order.get_id()
-        else:
-            return -1
-
-    # ----------------------------------------------------------------------
-    def cancel_order(self, order_id):
-        """
-        撤单
-        :param order_id: 所要取消的订单ID，为0时为取消所有订单
-        """
-        if order_id == 0:
-            self.__orders_todo.clear()
-        else:
-            if order_id in self.__orders_todo:
-                del (self.__orders_todo[order_id])
 
     # ----------------------------------------------------------------------
     def put_event(self, event):
@@ -310,6 +137,7 @@ class StrategyEngine(object):
         for strategy in self.__strategys.values():
             strategy.start()
         self.__data_cache.start()
+        self.__trade_manager.init()
         self.__event_engine.start()
 
     # ----------------------------------------------------------------------
@@ -337,77 +165,6 @@ class StrategyEngine(object):
     def _set_finished(self):  # 标记即不会再有新数据到来
         self.__event_engine.set_finished()
 
-    # TODO 对限价单的支持
-    # ----------------------------------------------------------------------
-    def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
-                       direction=0):
-        """
-        平仓下单指令
-        :param symbol: 品种
-        :param volume: 手数
-        :param price: 限价单价格阈值
-        :param stop: 是否为止损单
-        :param limit: 是否为止盈单
-        :param strategy: 发出下单指令的策略
-        :param signal: 发出下单指令的信号
-        :param direction: 下单指令的方向(多头或者空头)
-        :return: 如果为0，表示下单失败，否则返回所下订单的ID
-        """
-        if volume == 0 or not direction:  # direction 对应多空头，1为多头，-1为空头
-            return -1
-        position = self.__current_positions.get(symbol, None)
-        if not position or position.type != direction:
-            return -1
-        order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
-        order = self.__order_factory(symbol, order_type, strategy, signal)
-        order.volume_initial = volume
-        if self.__is_backtest:
-            time_frame = self.__strategys[strategy].signals[signal].time_frame
-            time_ = self.data[time_frame]['timestamp'][symbol][0]
-        else:
-            time_ = time.time()
-        order.time_setup = int(time_)
-        order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return self.send_order(order)
-
-    # ----------------------------------------------------------------------
-    def open_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
-                      direction=0):
-        """
-        开仓下单指令
-        :param symbol: 品种
-        :param volume: 手数
-        :param price: 限价单价格阈值
-        :param stop: 是否为止损单
-        :param limit: 是否为止盈单
-        :param strategy: 发出下单指令的策略
-        :param signal: 发出下单指令的信号
-        :param direction: 下单指令的方向(多头或者空头)
-        :return: 如果为0，表示下单失败，否则返回所下订单的ID
-        """
-
-        if self.__is_backtest:
-            time_frame = self.__strategys[strategy].signals[signal].get_time_frame()
-            time_ = self.data[time_frame]['timestamp'][symbol][0]
-        else:
-            time_ = time.time()
-        position = self.__current_positions.get(symbol, None)
-        order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
-        if position and position.type < 0:
-            order = self.__order_factory(symbol, order_type, strategy, signal)
-            order.volume_initial = position.volume
-            order.time_setup = int(time_)
-            order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-            # TODO 这里应该要支持事务性的下单操作
-            self.send_order(order)
-        if volume == 0:
-            return -1
-        order = self.__order_factory(symbol, order_type, strategy, signal)
-        order.volume_initial = volume
-        order.time_setup = int(time_)
-        order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
-        return self.send_order(order)
-
 
 class DataCache:
     """数据缓存器"""
@@ -419,19 +176,27 @@ class DataCache:
 
     def __init__(self, engine):
         self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
-        self._engine = engine
+        self._engine = proxy(engine)  # 避免循环引用
         self._running = False
         self._data = {}
+        self._symbol_pool = {}
         self.current_time = None  # 目前数据运行到的事件，用于计算回测进度
 
     def get_data(self):
         return self._data
 
-    data = property(get_data)
+    def get_symbol_pool(self):
+        return self._symbol_pool
 
-    def add_cache_info(self, info):
-        for key, value in info.items():
-            self._cache_info[key] = max(self._cache_info[key], value)
+    data = property(get_data)
+    symbol_pool = property(get_symbol_pool)
+
+    def add_cache_info(self, symbols, time_frame, maxlen=0):
+        for symbol in symbols:
+            key = (symbol, time_frame)
+            self._cache_info[key] = max(self._cache_info[key], maxlen)
+        self._symbol_pool.update(
+            {symbol: Forex(symbol, symbol) for symbol in symbols if symbol not in self._symbol_pool})
 
     def get_cache_info(self):
         return self._cache_info.copy()
@@ -480,14 +245,50 @@ class DataCache:
 class TradeManager:
     """负责保存交易信息，管理订单相关事件"""
 
-    def __init__(self):
+    def __init__(self, engine, is_backtest=True):
+        self.engine = proxy(engine)
+        self.__is_backtest = is_backtest  # 是否为回测
         self.__position_factory = PositionFactory()
         self.__order_factory = OrderFactory()
         self.__deal_factory = DealFactory()
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
-        # ----------------------------------------------------------------------
+        self.__positions = {}  # Key:id, value:position with responding id
+        self.__current_positions = {}  # key：symbol，value：current position
+        self.__deals = {}  # key:id, value:deal with responding id
+
+    def get_current_positions(self):
+        return self.__current_positions
+
+    def get_positions(self):
+        return self.__positions
+
+    def get_deals(self):
+        return self.__deals
+
+    current_positions = property(get_current_positions)
+    positions = property(get_positions)
+    deals = property(get_deals)
+
+    def init(self):
+        for symbol, _ in self.engine.symbol_pool.items():
+            if symbol not in self.__current_positions:
+                position = self.__position_factory(symbol)
+                self.__current_positions[symbol] = position
+                self.__positions[position.get_id()] = position
+
+    def recycle(self):
+        # TODO 数据结构还需修改
+        self.__orders_done.clear()
+        self.__orders_todo.clear()
+        self.__orders_todo_index.clear()
+        self.__deals.clear()
+        self.__positions.clear()
+        self.__current_positions.clear()
+        self.__position_factory.reset()
+        self.__deal_factory.reset()
+        self.__order_factory.reset()
 
     @staticmethod
     def check_order(order):
@@ -499,8 +300,8 @@ class TradeManager:
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
         if self.__is_backtest:
-            time_frame = self.__strategys[order.strategy].signals[order.signal].get_time_frame()
-            time_ = self.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
+            time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
+            time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
             order.time_done = int(time_)
             order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
             order.volume_current = order.volume_initial
@@ -509,7 +310,7 @@ class TradeManager:
             deal.time = order.time_done
             deal.time_msc = order.time_done_msc
             deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.data[time_frame]["close"][order.symbol][0]
+            deal.price = self.engine.data[time_frame]["close"][order.symbol][0]
             # TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
@@ -547,6 +348,17 @@ class TradeManager:
             return -1
             # ----------------------------------------------------------------------
 
+    def cancel_order(self, order_id):
+        """
+        撤单
+        :param order_id: 所要取消的订单ID，为0时为取消所有订单
+        """
+        if order_id == 0:
+            self.__orders_todo.clear()
+        else:
+            if order_id in self.__orders_todo:
+                del (self.__orders_todo[order_id])
+
     def __update_position(self, deal):
         def sign(num):
             if abs(num) <= 10 ** -7:
@@ -558,7 +370,7 @@ class TradeManager:
 
         if deal.volume == 0:
             return
-        symbol = self.__symbol_pool[deal.symbol]
+        symbol = self.engine.symbol_pool[deal.symbol]
         position_prev = self.__current_positions[deal.symbol]
         position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
@@ -618,7 +430,7 @@ class TradeManager:
         self.__positions[position_now.get_id()] = position_now
         self.__deals[deal.get_id()] = deal
         if deal.profit != 0:
-            self.__account_manager.update_deal(deal)
+            self.engine.update_deal(deal)
 
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
@@ -644,8 +456,8 @@ class TradeManager:
         order = self.__order_factory(symbol, order_type, strategy, signal)
         order.volume_initial = volume
         if self.__is_backtest:
-            time_frame = self.__strategys[strategy].signals[signal].time_frame
-            time_ = self.data[time_frame]['timestamp'][symbol][0]
+            time_frame = self.engine.strategys[strategy].signals[signal].time_frame
+            time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
@@ -669,8 +481,8 @@ class TradeManager:
         """
 
         if self.__is_backtest:
-            time_frame = self.__strategys[strategy].signals[signal].get_time_frame()
-            time_ = self.data[time_frame]['timestamp'][symbol][0]
+            time_frame = self.engine.strategys[strategy].signals[signal].get_time_frame()
+            time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
         else:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)

@@ -106,9 +106,6 @@ class Backtesting:
         self.__thread = None
         self.__is_alive = False
 
-    def _initialize(self):
-        self.__strategy_engine.initialize()
-
     @property
     def is_finished(self):
         return self.__is_alive
@@ -117,7 +114,7 @@ class Backtesting:
     def progress(self):
         et = get_datetime(self.__setting['end_time']).timestamp()
         st = get_datetime(self.__setting['start_time']).timestamp()
-        ct = self.__strategy_engine.get_current_time()
+        ct = self.__strategy_engine.current_time
         if ct:
             return min((ct - st) / (et - st) * 100, 100)
         else:
@@ -134,7 +131,6 @@ class Backtesting:
         self.__is_alive = True
         if paras is not None:
             self.__strategy.set_parameters(paras)
-        self._initialize()
         self.__strategy_engine.start()
         self.__data_generator.start(**self.__setting)
         if refresh:
@@ -165,7 +161,7 @@ class Backtesting:
         return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
                                                  self.__strategy_engine.get_deals(),
                                                  self.__strategy_engine.get_positions(),
-                                                 self.__strategy_engine.get_symbols())
+                                                 self.__strategy_engine.symbol_pool)
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()

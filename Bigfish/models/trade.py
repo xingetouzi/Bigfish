@@ -20,9 +20,9 @@ class Position(DictLike):
 
     __slots__ = ["symbol", "deal", "id", "prev_id", "next_id", "time_open", "time_open_msc", "time_update",
                  "time_update_msc",
-                 "type", "volume", "price_open", "price_current", "price_profit", "strategy", "handle"]
+                 "type", "volume", "price_open", "price_current", "price_profit", "strategy", "signal"]
 
-    def __init__(self,  symbol=None, strategy=None, handle=None, id=None):
+    def __init__(self, symbol=None, strategy=None, signal=None, id=None):
         self.symbol = symbol
         self.deal = None
         self.id = id
@@ -38,7 +38,7 @@ class Position(DictLike):
         self.price_current = 0
         self.price_profit = None
         self.strategy = strategy
-        self.handle = handle
+        self.signal = signal
 
     def __ne__(self, x):
         return self.type.__ne__(x)
@@ -106,9 +106,9 @@ class Order(DictLike):
                  "time_setup_msc", "time_expiration_msc", "time_done_msc",
                  "type", "state", "type_filling", "type_life", "volume_initial",
                  "volume_current", "price_open", "price_stop_limit", "stop_loss",
-                 "take_profit", "strategy", "handle"]
+                 "take_profit", "strategy", "signal"]
 
-    def __init__(self,  symbol=None, type_=None, strategy=None, handle=None, id=None):
+    def __init__(self, symbol=None, type_=None, strategy=None, signal=None, id=None):
         self.symbol = symbol
         self.deal = None
         self.id = id
@@ -129,7 +129,7 @@ class Order(DictLike):
         self.stop_loss = 0
         self.take_profit = 0
         self.strategy = strategy
-        self.handle = handle
+        self.signal = signal
 
     def get_id(self):
         return self.id
@@ -151,9 +151,9 @@ DEAL_ENTRY_INOUT = -1  # Reverse
 class Deal(DictLike):
     """成交对象"""
     __slots__ = ["symbol", "id", "order", "position", "time", "time_msc", "type", "entry",
-                 "volume", "price", "commission", "profit", "strategy", "handle"]
+                 "volume", "price", "commission", "profit", "strategy", "signal"]
 
-    def __init__(self, symbol=None, strategy=None, handle=None, id=None):
+    def __init__(self, symbol=None, strategy=None, signal=None, id=None):
         self.symbol = symbol
         self.id = id
         self.order = None
@@ -167,7 +167,7 @@ class Deal(DictLike):
         self.commission = 0
         self.profit = None
         self.strategy = strategy
-        self.handle = handle
+        self.signal = signal
 
     def get_id(self):  # 向下兼容
         return self.id

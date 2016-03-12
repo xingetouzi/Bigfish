@@ -7,9 +7,15 @@ from Bigfish.models import Code, User
 from Bigfish.store.connection import conn
 
 
+MAX_COMPETITION_COUNT = 3
+
+
 def add_competition(user, code):
     if not code.name:
         raise ValueError("code.name is empty.")
+
+    if not check_competition_limit(user):
+        raise KeyError("beyond competition limit.")
 
     __check_user(user)
 
@@ -17,7 +23,7 @@ def add_competition(user, code):
     cur = conn.cursor(pymysql.cursors.DictCursor)
 
     cur.execute("insert into strategy_competition (name, user_id, content) value (%s, %s, %s)",
-                    (code.name, user.user_id, code.content))
+                (code.name, user.user_id, code.content))
 
     conn.commit()
 
@@ -43,11 +49,10 @@ def update_competition_config(user, old_name, new_name):
     if not new_name:
         return
 
-
     conn.ping(True)
     cur = conn.cursor(pymysql.cursors.DictCursor)
 
-    sql = "update strategy_competition set name=%s where name=%s and user_id=%s";
+    sql = "update strategy_competition set name=%s where name=%s and user_id=%s"
     cur.execute(sql, (new_name, old_name, user.user_id))
 
     conn.commit()
@@ -59,7 +64,7 @@ def update_competition_content(user, name, content):
     conn.ping(True)
     cur = conn.cursor(pymysql.cursors.DictCursor)
 
-    sql = "update strategy_competition set content=%s where name=%s and user_id=%s";
+    sql = "update strategy_competition set content=%s where name=%s and user_id=%s"
     cur.execute(sql, (content, name, user.user_id))
 
     conn.commit()
@@ -71,7 +76,7 @@ def remove_competition(user, name):
     conn.ping(True)
     cur = conn.cursor(pymysql.cursors.DictCursor)
 
-    sql = "delete from strategy_competition where name=%s and user_id=%s";
+    sql = "delete from strategy_competition where name=%s and user_id=%s"
     cur.execute(sql, (name, user.user_id))
 
     conn.commit()
@@ -98,11 +103,34 @@ def get_competition(user, code_name):
     """
     conn.ping(True)
     cur = conn.cursor(pymysql.cursors.DictCursor)
-    cur.execute("select name, content from strategy_competition where user_id=%s and name=%s", (user.user_id, code_name))
-    row = cur.fetchone();
+    cur.execute("select name, content from strategy_competition where user_id=%s and name=%s",
+                (user.user_id, code_name))
+    row = cur.fetchone()
     if row:
         return Code(code_name, content=row["content"])
     return None
+
+
+def get_competition_count(user):
+    conn.ping(True)
+    cur = conn.cursor(pymysql.cursors.DictCursor)
+    cur.execute("select count(name) as num from strategy_competition where user_id=%s", (user.user_id,))
+    row = cur.fetchone()
+    return row["num"]
+
+
+def check_competition_limit(user):
+    """
+    检查用户是否还可以添加参赛策略
+    Parameters
+    ----------
+    user: 用户
+
+    Returns 如果还可以添加参赛组合则返回True
+    -------
+
+    """
+    return get_competition_count(user) <= MAX_COMPETITION_COUNT
 
 
 if __name__ == '__main__':
@@ -114,6 +142,7 @@ if __name__ == '__main__':
     update_competition_content(user, "Hello", "Hi Hello,World")
     print(get_competition_list(user))
     print(get_competition(user, "Hello"))
+    print("count=%s" % get_competition_count(user))
 
     update_competition_config(user, "Hello", "World")
     print(get_competition_list(user))

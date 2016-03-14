@@ -194,6 +194,9 @@ class SeriesExporter(ast.NodeTransformer):
 
 
 class ImportInspector(ast.NodeVisitor):
+    """
+    对import进行限制性检查。
+    """
     __MODULES_IMPORT = MODULES_IMPORT
 
     @staticmethod

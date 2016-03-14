@@ -1,0 +1,8 @@
+cvxopt
+dateutil
+hmmlearn
+pkkalman
+pytz
+sklearn
+statsmodels
+talib

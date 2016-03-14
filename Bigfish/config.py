@@ -12,7 +12,7 @@ ASYNC = False  # 数据拉取方式
 MODULES_IMPORT = ["time", "datetime"]  # 允许在策略代码中导入的模块列表
 CROSS_TRADE = False  # 是否开启交叉盘
 SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
-               "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},
+               # "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},
                "GBP/USD": {"en_name": "GBP/USD", "zh_name": "英镑/美元"},
                "USD/JPY": {"en_name": "USD/JPY", "zh_name": "美元/日元"},
                "AUD/USD": {"en_name": "AUD/USD", "zh_name": "澳元/美元"},

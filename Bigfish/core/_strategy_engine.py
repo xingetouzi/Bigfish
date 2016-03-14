@@ -34,8 +34,7 @@ class StrategyEngine(object):
         self.__account_manager = AccountManager()  # 账户管理
         self.__trade_manager = TradeManager(self, is_backtest)  # 交易管理器
         self.__data_cache = DataCache(self)  # 数据中继站
-        self.__strategys = {}
-        self.update_deal = self.__account_manager.update_deal
+        self.__strategys = {}  # 策略管理器
 
     def get_data(self):
         return self.__data_cache.data
@@ -95,12 +94,6 @@ class StrategyEngine(object):
         # TODO 从全局的品种池中查询
 
     # ----------------------------------------------------------------------
-    def _recycle(self):
-        self.__data_cache.stop()
-        self.__trade_manager.recycle()
-        self.__account_manager.initialize()
-
-    # ----------------------------------------------------------------------
     def add_file(self, file):
         self.__event_engine.add_file(file)
 
@@ -149,6 +142,13 @@ class StrategyEngine(object):
         for strategy in self.__strategys.values():
             strategy.stop()
         self._recycle()  # 释放资源
+
+    # ----------------------------------------------------------------------
+
+    def _recycle(self):
+        self.__data_cache.stop()
+        self.__trade_manager.recycle()
+        self.__account_manager.initialize()
 
     def wait(self, call_back=None, finished=True, *args, **kwargs):
         """等待所有事件处理完毕
@@ -219,10 +219,6 @@ class DataCache:
     def stop(self):
         self._running = False
         self._data.clear()
-
-    def on_tick(self, event):
-        if self._running:
-            pass
 
     def on_bar(self, event):
         if self._running:

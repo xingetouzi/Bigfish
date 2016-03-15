@@ -5,18 +5,18 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 import codecs
-from functools import partial
 import gc
+from functools import partial
 
 import numpy as np
 import pandas as pd
 
+from Bigfish.config import *
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.models.quote import Bar
 from Bigfish.utils.common import get_datetime
 from Bigfish.utils.memory_profiler import profile
-from Bigfish.config import *
 
 if MEMORY_DEBUG:
     import sys
@@ -72,7 +72,7 @@ elif DATABASE == 'mongodb':
     data_generator = DataGeneratorMongoDB
 elif DATABASE == 'mysql':
     if ASYNC:
-        from Bigfish.data.twisted_server import TwistAsyncDataGenerator
+        from Bigfish.trial.twisted_server import TwistAsyncDataGenerator
 
         data_generator = TwistAsyncDataGenerator
     else:
@@ -279,10 +279,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode7.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode8.py', 'r', 'utf-8') as f:
         code = f.read()
     user = User('10032')
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2016-01-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()

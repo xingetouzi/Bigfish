@@ -209,7 +209,6 @@ class Strategy(HasID):
                     additional_instructions = ["{0} = system_functions['%s.%s'%('{1}','{0}')]".format(f, key)
                                                for f, s in funcs_in_use.items() if key in s] + ['del(system_functions)']
                     temp = []
-                    # TODO 加入opens等，这里字典的嵌套结构
                     quotes = ["open", "high", "low", "close", "datetime", "timestamp", "volume"]
                     temp.extend(["{0} = __globals['Data']['{1}']['{3}']['{2}']"
                                 .format(upper_first_letter(field), time_frame, symbols[0], field)
@@ -227,6 +226,8 @@ class Strategy(HasID):
                     temp.extend(["{0} = functools.partial(__globals['{0}'],signal='{1}')".format(
                         field, key)
                                  for field in ["Sell", "Buy", "SellShort", "BuyToCover"]])
+                    # TODO 现在是将init中的变量当做局部变量注入每个信号的初始化部分，其实这样并不等同于全局变量的概念，
+                    # 只不过对于单个信号的策略是一样的。
                     signal_to_inject_init[key] = code_lines + temp + init_to_inject_init + \
                                                  ["del(functools)", "del(__globals)"] + additional_instructions
                     # 信号与函数中相比多出的就是交易指令

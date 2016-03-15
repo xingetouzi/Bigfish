@@ -33,16 +33,19 @@ class _EventType(HasID):
 class Event:
     """事件对象"""
     __types = {}
+    __types_by_name = {}
 
     @classmethod
     def create_event_type(cls, name, priority=0):
         # TODO check name
-        if name in [type_.name for type_ in cls.__types.values()]:
+        if name in cls.__types_by_name:
             # TODO 自定义错误
-            raise ValueError("重复的事件定义<%s>" % name)
+            return cls.__types[cls.__types_by_name[name]]
+            # raise ValueError("重复的事件定义<%s>" % name)
         else:
             event_type = _EventType(name, priority=priority)
             cls.__types[event_type.get_id()] = event_type
+            cls.__types_by_name[event_type.name] = event_type.get_id()
             return event_type
 
     # ----------------------------------------------------------------------

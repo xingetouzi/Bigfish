@@ -17,15 +17,16 @@ from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDet
     InitTransformer, wrap_with_module
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
+from Bigfish.store.code_manage import get_sys_func_list
 
 
 class Strategy(HasID):
     ATTR_MAP = dict(TimeFrame="time_frame", Base="capital_base", Symbols="symbols", StartTime="start_time",
                     EndTime="end_time", MaxLen="max_length")
-    API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover', 'Export']
+    API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover', 'Export'] + get_sys_func_list()
     API_VARIABLES = ['O', 'Open', 'Opens', 'H', 'High', 'Highs', 'L', 'Low', 'Lows', 'C', 'Close', 'Closes',
                      'Datetime', 'Datetimes', 'D', 'Timestamp', 'Timestamps', 'T', 'Volume', 'Volumes', 'V', 'Symbols',
-                     'Symbol', 'BarNum', 'MarketPosition', 'Positions', 'Pos', 'CurrentContracts']
+                     'Symbol', 'BarNum', 'MarketPosition', 'Positions', 'Pos', 'CurrentContracts', 'Point']
 
     # ----------------------------------------------------------------------
     def __init__(self, engine, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None):

@@ -266,6 +266,7 @@ class Backtesting:
 
 
 if __name__ == '__main__':
+    from Bigfish.core import Strategy
     from Bigfish.models.model import User
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import DataframeTranslator
@@ -312,6 +313,8 @@ if __name__ == '__main__':
     print(time.time() - start_time)
     print(backtest.progress)
     print(performance.trade_details)
+    print(Strategy.API_FUNCTION)
+    print(Strategy.API_VARIABLES)
     # paras = {
     #     'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
     #                'fastlength': {'start': 10, 'end': 10, 'step': 1}}}

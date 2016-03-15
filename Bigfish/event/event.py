@@ -39,7 +39,7 @@ class Event:
         # TODO check name
         if name in [type_.name for type_ in cls.__types.values()]:
             # TODO 自定义错误
-            raise (ValueError("重复的事件<%s>定义" % name))
+            raise ValueError("重复的事件定义<%s>" % name)
         else:
             event_type = _EventType(name, priority=priority)
             cls.__types[event_type.get_id()] = event_type

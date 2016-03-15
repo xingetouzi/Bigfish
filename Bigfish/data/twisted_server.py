@@ -9,7 +9,9 @@ from threading import Thread
 HOST = '192.168.0.106'
 PORT = 10011
 
-
+"""
+测试用,实际Bigfish并未用到
+"""
 class DataFetcher(Protocol):
     delimiter = b'\r\n'
     _buffer = b''

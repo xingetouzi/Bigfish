@@ -8,7 +8,9 @@ PORT = 10010
 SIZE = 1024
 POOL = ConnectionPool(factory=TcpConnector, backend="thread", timeout=10)
 
-
+"""
+测试用,实际Bigfish并未用到
+"""
 def socket_test():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

@@ -117,8 +117,10 @@ class StrategyPerformance(Performance):
         super(StrategyPerformance, self).__init__(manager)
 
     def get_info_on_home_page(self):
-        return {key.split('(')[0]: value for key, value in
-                self._manager.strategy_summary['_'].fillna(0).to_dict().items()}
+        fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
+        return [(self._manager.with_units(field),
+                 self._manager.strategy_summary['_'].fillna(0).to_dict()[self._manager.with_units(field)])
+                for field in fields]
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -135,7 +137,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     """只需要写根据输入计算输出的逻辑"""
     _column_names = {}
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
-            {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
+        {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
     def __init__(self, quotes, deals, positions, symbols, currency_symbol='$', capital_base=100000, period=86400,
                  num=20):  # 1day = 86400seconds
@@ -174,7 +176,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol']].last()
         # TODO 计算交叉盘报价货币的汇率
         deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
-                self.__deals_raw['time_index']).sum().cumsum()
+            self.__deals_raw['time_index']).sum().cumsum()
         # XXX deals_profit为空，即没有下单的情况，非常丑陋的补丁 @ ^ @
         if deals_profit.empty:
             deals_profit = pd.DataFrame(columns=['profit'])
@@ -188,13 +190,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             .apply(calculator, axis=1).sum(level='time_index').fillna(0)
         # XXX 多品种情况这里还要测试一下正确性
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
-                0).sum(axis=1).apply(
-                lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
+            0).sum(axis=1).apply(
+            lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
         rate_of_return.index = rate_of_return.index.map(pd.datetime.fromtimestamp)
         rate_of_return.name = 'rate'
         return rate_of_return
 
-    def __with_units(self, x):
+    def with_units(self, x):
         return x + self.__units[x]
 
     def __update_units(self, d):
@@ -215,15 +217,15 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         if result['R'].min() <= 0:
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                        *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                                result['R'].resample('D', how='last', label='left') * 0))
+                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                        result['R'].resample('D', how='last', label='left') * 0))
 
         else:
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                        *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                                result['R'].resample('D', how='last', label='left').apply(math.log)
-                        )
+                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                        result['R'].resample('D', how='last', label='left').apply(math.log)
+                    )
                 )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
         result['M'] = result['D'].resample('MS', how='sum').dropna()
@@ -235,9 +237,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(_get_percent_from_log)),
-                     'trade_days': x['trade_days']}))(
-                    self.__rate_of_return['D']
+                {'rate': x['rate'].apply(partial(_get_percent_from_log)),
+                 'trade_days': x['trade_days']}))(
+                self.__rate_of_return['D']
             )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
         result['M'] = result['D'].resample('MS', how='sum').dropna()
@@ -249,12 +251,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame({'rate': x, 'trade_days': np.ones(x.shape)}, index=x.index))(
-                    (lambda x: pd.Series(x['rate'].apply(float).values, index=pd.DatetimeIndex(x['date'])).reindex(
-                            self.__index_daily).fillna(method='ffill').fillna(method='bfill'))(
-                            (lambda x: x[(x['deposit_type'] == '定期存款整存整取(一年)') & (x['rate'] != '--')])(
-                                    tushare.get_deposit_rate()
-                            )
+                (lambda x: pd.Series(x['rate'].apply(float).values, index=pd.DatetimeIndex(x['date'])).reindex(
+                    self.__index_daily).fillna(method='ffill').fillna(method='bfill'))(
+                    (lambda x: x[(x['deposit_type'] == '定期存款整存整取(一年)') & (x['rate'] != '--')])(
+                        tushare.get_deposit_rate()
                     )
+                )
             )
         # TODO 最后一个bfill本应是填入最近的上一个值
         result['W'] = result['D'].resample('W-MON', how='sum')
@@ -268,10 +270,10 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result = {}
         result['D'] = \
             (lambda x, y: pd.DataFrame(
-                    {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)) - y[
-                        'rate'].reindex(x.index),
-                     'trade_days': x['trade_days']}))(
-                    self.__rate_of_return['D'], self.__risk_free_rate['D']
+                {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)) - y[
+                    'rate'].reindex(x.index),
+                 'trade_days': x['trade_days']}))(
+                self.__rate_of_return['D'], self.__risk_free_rate['D']
             )
         result['W'] = result['D'].resample('W-MON', how='sum')
         result['M'] = result['D'].resample('MS', how='sum')
@@ -301,12 +303,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             return default if np.isnan(num) else num
 
         self.__update_units(
-                {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
-                 '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
-                 '': ['最大潜在亏损收益比']}
+            {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
+             '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
+             '': ['最大潜在亏损收益比']}
         )
         names = ['净利', '盈利', '亏损', '账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', '平仓交易最大亏损', '最大潜在亏损收益比']
-        with_units = self.__with_units
+        with_units = self.with_units
         trade_summary = self.trade_summary
         net_profit = trade_summary['total'][with_units('平均净利')] * trade_summary['total'][with_units('总交易数')]
         winning = trade_summary['total'][with_units('平均盈利')] * trade_summary['total'][with_units('盈利交易数')]
@@ -327,8 +329,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             '策略最大潜在亏损': max_potential_losing * 100,
             '平仓交易最大亏损': nan2num(max_losing),
             '最大潜在亏损收益比': nan2num(rate_of_return) / -max_potential_losing if abs(
-                    max_potential_losing) > FLOAT_ERR else np.nan
-        }, index=['_']).T.reindex(names).rename(lambda x: self.__with_units(x))
+                max_potential_losing) > FLOAT_ERR else np.nan
+        }, index=['_']).T.reindex(names).rename(lambda x: self.with_units(x))
         result.index.name = 'index'
         return result
 
@@ -351,7 +353,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__cache['trade_grouped_by_symbol'] = trade_grouped
         # XXX 此操作在trade为空时会报错
         trade['trade_number'] = trade_grouped.apply(
-                lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
+            lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
         # TODO 在多品种交易下进行测试
         temp = trade_grouped['trade_number'].last().cumsum().shift(1).fillna(0)
         trade['trade_number'] = trade['trade_number'] + trade['symbol'].apply(lambda x: temp[x])
@@ -369,9 +371,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @m_profile
     def trade_summary(self):
         self.__update_units(
-                {'(%s)' % self.__currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
-                 '(%)': ['胜率'],
-                 '': ['总交易数', '未平仓交易数', '盈利交易数', '亏损交易数']})
+            {'(%s)' % self.__currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
+             '(%)': ['胜率'],
+             '': ['总交易数', '未平仓交易数', '盈利交易数', '亏损交易数']})
         columns = ['total', 'long_position', 'short_position']
         result = pd.DataFrame(index=columns)
         trade = {}
@@ -406,7 +408,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
         result['最大盈利'] = list(map(lambda x: x.max(), profits))
         result['最大亏损'] = list(map(lambda x: x.min(), profits))
-        result = result.T.rename(lambda x: self.__with_units(x))
+        result = result.T.rename(lambda x: self.with_units(x))
         result.index.name = 'index'
         trade.clear()
         trade_grouped.clear()
@@ -419,15 +421,15 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         if not self.trade_info.empty:
             trade = (
                 lambda x: pd.DataFrame(
-                        x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
-                    self.trade_info)
+                    x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
+                self.trade_info)
         else:  # 丑陋补丁X3
             trade = pd.DataFrame(columns=columns)
             trade.index.name = '_'
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
         trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
         trade['trade_time'] = trade['time'].map(
-                partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
+            partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
             .map(lambda x: x.split('+')[0])
         trade['trade_profit'] = trade['profit']
         del trade['time'], trade['profit']
@@ -497,9 +499,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         calculator = lambda x: (x['rate_square'] - x['rate'] * x['rate'] / x['trade_days']) \
                                / (x['trade_days'] - (x['trade_days'] > 1))
         ts = (lambda x: pd.DataFrame(
-                dict(rate=x['rate'],
-                     rate_square=(x['rate'] * x['rate']),
-                     trade_days=x['trade_days']))
+            dict(rate=x['rate'],
+                 rate_square=(x['rate'] * x['rate']),
+                 trade_days=x['trade_days']))
               .resample('MS', how='sum'))(sample)
         result = DataFrameExtended([], index=ts.index.rename('time'))
         # TODO numpy.sqrt np自带有开根号运算
@@ -565,13 +567,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         columns = ['high', 'low', 'max_drawdown']
         calculator = partial(reduce, lambda u, v: [max(u[0], v[0]), min(u[1], v[1]), min(u[2], v[2], v[1] - u[0])])
         ts = (lambda x: x.groupby(MonthBegin().rollback).apply(
-                lambda df: pd.Series(calculator(df.values), index=columns)))(
-                (lambda x, y, z: pd.DataFrame(
-                        {'high': np.maximum(y, z), 'low': np.minimum(y, z), 'max_drawdown': x},
-                        columns=columns))(
-                        *(lambda x, y: (x, y, y.shift(1).fillna(0)))(
-                                *(lambda x: (x['rate'] * (x['rate'] < 0), x['rate'].cumsum()))(
-                                        self.__rate_of_return['D']))))
+            lambda df: pd.Series(calculator(df.values), index=columns)))(
+            (lambda x, y, z: pd.DataFrame(
+                {'high': np.maximum(y, z), 'low': np.minimum(y, z), 'max_drawdown': x},
+                columns=columns))(
+                *(lambda x, y: (x, y, y.shift(1).fillna(0)))(
+                    *(lambda x: (x['rate'] * (x['rate'] < 0), x['rate'].cumsum()))(
+                        self.__rate_of_return['D']))))
         result = pd.DataFrame([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(_get_percent_from_log))

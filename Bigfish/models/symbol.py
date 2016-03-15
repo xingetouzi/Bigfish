@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 import os
-import sqlite3
+import pandas
 
 from Bigfish.models.common import DictLike
 
@@ -29,22 +29,24 @@ class Symbol:
         return cls.__all
     """
 
-    def __init__(self, en_name, zh_name, tw_name=None):
+    def __init__(self, code):
         super(Symbol, self).__init__()
-        self.en_name = en_name  # 交易品种英文名称
-        self.zh_name = zh_name  # 交易品种中午名称
-        self.tw_name = tw_name  # 交易品种繁体中文名称
+        self.code = code
+        self.en_name = None  # 交易品种英文名称
+        self.zh_name = None  # 交易品种中午名称
+        self.tw_name = None  # 交易品种繁体中文名称
         self.margin_rate = 0  # 交易品种保证金比例
         self.commission = 0  # 交易品种每手手续费
         self.lot_size = 1  # 交易品种一手的合约数
         self.lever = 1  # 交易杠杆
-        self._point_value = 0
+        self.point = None
+        self._big_point_value = 0
 
     def __str__(self):
         return "en_name=%s, zh_name=%s, 'tw_name=%s" % (self.en_name, self.zh_name, self.tw_name)
 
-    def point_value(self, **kwargs):  # 整点价值
-        return self._point_value
+    def big_point_value(self, **kwargs):  # 整点价值
+        return self._big_point_value
 
     def lot_value(self, point, lot=1, commission=False, slippage=0, **kwargs):
         """
@@ -58,7 +60,8 @@ class Symbol:
         """
         if not lot:
             return 0
-        return (self.lot_size * self.point_value(**kwargs) * (point - slippage) - commission * self.commission) * lot
+        return (
+               self.lot_size * self.big_point_value(**kwargs) * (point - slippage) - commission * self.commission) * lot
 
     def caution_money(self, point, lot=1, **kwargs):
         # TODO 不知道手续费是最后在收益中结算还是占用了可用保证金
@@ -69,10 +72,14 @@ class Forex(Symbol):
     """
     外汇
     """
+    PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'symbols.csv')
+    ALL = pandas.read_csv(PATH, index_col=0)
 
-    def __init__(self, en_name, zh_name, tw_name=None):
-        super(Forex, self).__init__(en_name, zh_name, tw_name)
+    def __init__(self, code):
+        super(Forex, self).__init__(code)
         self.lot_size = 100000
+        self.en_name = self.code
+        self.point = self.ALL['point'][self.code]
 
-    def point_value(self, base_price=1):
+    def big_point_value(self, base_price=1):
         return base_price

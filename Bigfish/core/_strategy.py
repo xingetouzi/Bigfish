@@ -49,19 +49,20 @@ class Strategy(HasID):
         self.series_storage = {}
         self.__printer = FilePrinter(user, name, self.engine)
         self.__context = {}
+        self.__points = {}
         # 是否完成了初始化
         self.trading = False
         # 在字典中保存Open,High,Low,Close,Volumn，CurrentBar，MarketPosition，
-        # 手动为exec语句提供local命名空间
-        self.__locals_ = dict(Buy=partial(self.engine.open_position, strategy=self.__id, direction=1),
-                              Sell=partial(self.engine.close_position, strategy=self.__id, direction=1),
-                              SellShort=partial(self.engine.open_position, strategy=self.__id, direction=-1),
-                              BuyToCover=partial(self.engine.close_position, strategy=self.__id, direction=-1),
-                              Positions=self.engine.current_positions, Data=self.engine.data,
-                              Context=self.__context, Export=partial(export, strategy=self),
-                              Put=self.put_context, Get=self.get_context, print=self.__printer.print,
-                              signals=self.signals, system_functions=self.system_functions,
-                              )
+        # 手动为exec语句提供globals命名空间
+        self.__glb = {'Buy': partial(self.engine.open_position, strategy=self.__id, direction=1),
+                      'Sell': partial(self.engine.close_position, strategy=self.__id, direction=1),
+                      'SellShort': partial(self.engine.open_position, strategy=self.__id, direction=-1),
+                      'BuyToCover': partial(self.engine.close_position, strategy=self.__id, direction=-1),
+                      'Positions': self.engine.current_positions, 'Data': self.engine.data,
+                      'Context': self.__context, 'Export': partial(export, strategy=self), 'Put': self.put_context,
+                      'Get': self.get_context, 'print': self.__printer.print,
+                      'Points': self.__points,
+                      'signals': self.signals, 'system_functions': self.system_functions}
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)
 
@@ -154,8 +155,8 @@ class Strategy(HasID):
         set_global_attrs(signal_globals_)
         set_global_attrs(function_globals_)
         signal_globals_.update(signal_locals_)
-        signal_globals_.update(self.__locals_)
-        function_globals_.update(self.__locals_)
+        signal_globals_.update(self.__glb)
+        function_globals_.update(self.__glb)
         self.engine.set_capital_base(self.capital_base)
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
@@ -171,7 +172,7 @@ class Strategy(HasID):
         signal_to_inject_loop = {}
         function_to_inject_loop = {}
         code_lines = ["import functools", "__globals = globals()"]
-        code_lines.extend(["{0} = __globals['{0}']".format(key) for key in self.__locals_.keys()
+        code_lines.extend(["{0} = __globals['{0}']".format(key) for key in self.__glb.keys()
                            if key not in ["Sell", "Buy", "SellShort", "BuyToCover"]])
         # init中可以设定全局变量，所以要以"global foo"的方式进行注入。
         if inspect.isfunction(signal_locals_.get('init', None)):
@@ -205,10 +206,12 @@ class Strategy(HasID):
                     max_length = get_parameter_default(paras, "MaxLen", lambda x: isinstance(x, int) and (x > 0),
                                                        self.max_length)
                     self.engine.add_cache_info(symbols, time_frame, max_length)
-                    self.signals[key] = self.signal_factory.new(self.engine, self.user, self.name, key, symbols, time_frame)
+                    self.signals[key] = self.signal_factory.new(self.engine, self.user, self.name, key, symbols,
+                                                                time_frame)
                     additional_instructions = ["{0} = system_functions['%s.%s'%('{1}','{0}')]".format(f, key)
                                                for f, s in funcs_in_use.items() if key in s] + ['del(system_functions)']
                     temp = []
+                    # Begin open,high,low,close相关变量的注入
                     quotes = ["open", "high", "low", "close", "datetime", "timestamp", "volume"]
                     temp.extend(["{0} = __globals['Data']['{1}']['{3}']['{2}']"
                                 .format(upper_first_letter(field), time_frame, symbols[0], field)
@@ -219,8 +222,11 @@ class Strategy(HasID):
                     temp.extend(["{0}s = __globals['Data']['{1}']['{2}']"
                                 .format(upper_first_letter(field), time_frame, field)
                                  for field in quotes])
+                    # end
+                    # get_current_bar 函数的注入，BarNum实际通过该函数维护
                     temp.append("{0} = __globals['signals']['{1}'].{0}".format('get_current_bar', key))
-                    temp.append("Symbol = Symbols[0]")
+                    temp.append("Symbol = Symbols[0]")  # Symbol注入
+                    temp.append("Point=Points[Symbol]")  # Points注入
                     function_to_inject_init[key] = code_lines + temp + ["del(functools)", "del(__globals)"] + \
                                                    additional_instructions
                     temp.extend(["{0} = functools.partial(__globals['{0}'],signal='{1}')".format(
@@ -248,6 +254,7 @@ class Strategy(HasID):
                     elif not isinstance(default, (int, float)):
                         raise ValueError('参数%s的值必须为整数或浮点数' % para_name)
                     self.signals[key].add_parameters(para_name, default)
+        self.__points.update({key: value.point for key, value in self.engine.symbol_pool.items()})
         series_exporter = SeriesExporter()  # deal with the export syntax
         # export the system functions in use
         for func, signals in funcs_in_use.items():

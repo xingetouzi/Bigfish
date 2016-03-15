@@ -7,7 +7,6 @@ Created on Wed Nov 25 21:09:47 2015
 """
 import time
 from collections import defaultdict
-from functools import wraps
 from weakref import proxy
 
 # 自定义模块
@@ -18,7 +17,6 @@ from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
 from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
-from Bigfish.event.handle import Signal
 
 
 # %% 策略引擎语句块
@@ -196,7 +194,7 @@ class DataCache:
             key = (symbol, time_frame)
             self._cache_info[key] = max(self._cache_info[key], maxlen)
         self._symbol_pool.update(
-            {symbol: Forex(symbol, symbol) for symbol in symbols if symbol not in self._symbol_pool})
+            {symbol: Forex(symbol) for symbol in symbols if symbol not in self._symbol_pool})
 
     def get_cache_info(self):
         return self._cache_info.copy()

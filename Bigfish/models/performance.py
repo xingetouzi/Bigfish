@@ -118,6 +118,7 @@ class StrategyPerformance(Performance):
 
     def get_info_on_home_page(self):
         fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
+        self._manager.strategy_summary  # 先进行计算
         return [(self._manager.with_units(field),
                  self._manager.strategy_summary['_'].fillna(0).to_dict()[self._manager.with_units(field)])
                 for field in fields]

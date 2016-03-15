@@ -66,6 +66,11 @@ class Strategy(HasID):
         self.bind_code_to_strategy(self.code)
 
     # -----------------------------------------------------------------------
+    @staticmethod
+    def open(*args, **kwargs):
+        raise RuntimeError('open函数已被禁用')
+
+    # -----------------------------------------------------------------------
     def get_output(self):
         with open(self.__printer.get_path()) as f:
             content = f.read()
@@ -141,8 +146,8 @@ class Strategy(HasID):
         import_inspector.visit(ast_)  # 模块导入检查
         signal_locals_ = {}
         function_locals = {}
-        signal_globals_ = {}  # 可动态管理的全策略命名空间
-        function_globals_ = {}  # 可动态管理的系统函数命名空间
+        signal_globals_ = {'open': self.open}  # 可动态管理的全策略命名空间,禁用open
+        function_globals_ = {'open': self.open}  # 可动态管理的系统函数命名空间,禁用open
         # 获取并检查一些全局变量的设定
         exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         get_global_attrs(signal_locals_)  # 弃用，暂时保留以便向下兼容

@@ -6,13 +6,17 @@
 __all__ = ["MEMORY_DEBUG", "DATABASE", "ASYNC", "MODULES_IMPORT", "SYMBOL_LIST", "CROSS_TRADE", "SYMBOL_LIST"]
 
 MEMORY_DEBUG = False  # 是否开启内存检测模式
-THROW_ERROR = True  # 是否正常抛出异常，True为正常抛出，False以日志的方式将异常记录下来
+THROW_ERROR = False  # 是否正常抛出异常，True为正常抛出，False以日志的方式将异常记录下来
 DATABASE = "mysql"  # 数据库
 ASYNC = False  # 数据拉取方式
-MODULES_IMPORT = ["time", "datetime"]  # 允许在策略代码中导入的模块列表
+_system_model = {"array", "bisect", "cmath", "collections", "copy", "datetime", "functools", "heapq", "itertools",
+                 "json", "math", "operator", "random", "re", "string", "time", "xml", }
+_third_party_model = {"cvxopt", "dateutil", "hmmlearn", "numpy", "pandas", "pkkalman", "pytz", "scipy", "sklearn",
+                      "statsmodels", }
+MODULES_IMPORT = _system_model or _third_party_model  # 允许在策略代码中导入的模块列表
 CROSS_TRADE = False  # 是否开启交叉盘
 SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
-               "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},
+               # "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},
                "GBP/USD": {"en_name": "GBP/USD", "zh_name": "英镑/美元"},
                "USD/JPY": {"en_name": "USD/JPY", "zh_name": "美元/日元"},
                "AUD/USD": {"en_name": "AUD/USD", "zh_name": "澳元/美元"},

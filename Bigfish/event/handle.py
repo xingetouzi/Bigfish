@@ -66,7 +66,7 @@ class SymbolBarCompletedEventsPacker(EventsPacker):
 
 
 class Signal:
-    def __init__(self, engine, symbols, time_frame, id=None):
+    def __init__(self, engine, user, strategy, name, symbols, time_frame, id=None):
         """
         信号对象，每一个信号即为策略代码中不以init为名的任意最外层函数，订阅某些品种的行情数据，运行于特定时间框架下。
         通过两个EventPacker(事件打包器)接受StrategyEngine中的DataCache(数据中转器)发出的行情事件来管理Bar数据的结构。
@@ -76,8 +76,13 @@ class Signal:
         :param id:不需要传入，由SignalFactory自动管理。
         """
         self._id = id
-        self._event_update = Event.create_event_type('SignalUpdate.%s' % self._id, priority=1).get_id()
-        self._event_completed = Event.create_event_type('SignalCompleted.%s' % self._id, priority=2).get_id()
+        self._user = user.user_id
+        self._strategy = strategy
+        self._name = name
+        self._event_update = Event.create_event_type('SignalUpdate.%s.%s.%s' % (self._user, self._strategy, self._name),
+                                                     priority=1).get_id()
+        self._event_completed = Event.create_event_type(
+            'SignalCompleted.%s.%s.%s' % (self._user, self._strategy, self._name), priority=2).get_id()
         self._update = SymbolBarUpdateEventsPacker(engine, symbols, time_frame, self._event_update)
         self._completed = SymbolBarCompletedEventsPacker(engine, symbols, time_frame, self._event_completed)
         self._parameters = OrderedDict()

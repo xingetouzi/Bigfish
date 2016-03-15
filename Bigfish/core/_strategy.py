@@ -205,8 +205,7 @@ class Strategy(HasID):
                     max_length = get_parameter_default(paras, "MaxLen", lambda x: isinstance(x, int) and (x > 0),
                                                        self.max_length)
                     self.engine.add_cache_info(symbols, time_frame, max_length)
-                    self.signals[key] = self.signal_factory.new(self.engine, symbols, time_frame)
-
+                    self.signals[key] = self.signal_factory.new(self.engine, self.user, self.name, key, symbols, time_frame)
                     additional_instructions = ["{0} = system_functions['%s.%s'%('{1}','{0}')]".format(f, key)
                                                for f, s in funcs_in_use.items() if key in s] + ['del(system_functions)']
                     temp = []

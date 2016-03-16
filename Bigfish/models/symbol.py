@@ -79,6 +79,7 @@ class Forex(Symbol):
         super(Forex, self).__init__(code)
         self.lot_size = 100000
         self.en_name = self.code
+        self.zh_name = self.ALL['zh_name'][self.code]
         self.point = self.ALL['point'][self.code]
 
     def big_point_value(self, base_price=1):

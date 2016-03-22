@@ -140,16 +140,17 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
         {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
-    def __init__(self, quotes, deals, positions, symbols, currency_symbol='$', capital_base=100000, period=86400,
-                 num=20):  # 1day = 86400seconds
+    def __init__(self, quotes, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, period=86400,
+                 num=20, **config):  # 1day = 86400seconds
         super(StrategyPerformanceManagerOffline, self).__init__(StrategyPerformance)
-        self.__symbols = symbols
+        self.__config = config
+        self.__symbols_pool = symbols_pool
         self.__quotes_raw = quotes
         self.__deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
-                                        columns=Deal.get_fields())  # deals in dataframe format
+                                        columns=Deal.get_keys())  # deals in dataframe format
         self.__positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
                                             index=positions.keys(),
-                                            columns=Position.get_fields())  # positions in dataframe format
+                                            columns=Position.get_keys())  # positions in dataframe format
         self.__deals_raw.sort_values('time', kind='mergesort', inplace=True)
         self.__positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
         self.__currency_symbol = currency_symbol  # 账户的结算货币类型
@@ -186,7 +187,9 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         positions = self.__positions_raw.groupby(['time_index', 'symbol'])[
             ['type', 'price_current', 'volume']].last()
         # TODO 检查outer连接是否会影响交易日的计算
-        calculator = lambda x: self.__symbols[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume)
+        calculator = lambda x: self.__symbols_pool[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume,
+                                                                       commission=self.__config['commission'],
+                                                                       slippage=self.__config['slippage'])
         float_profit = quotes.join(positions, how='outer').fillna(method='ffill').fillna(0) \
             .apply(calculator, axis=1).sum(level='time_index').fillna(0)
         # XXX 多品种情况这里还要测试一下正确性

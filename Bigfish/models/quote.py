@@ -25,18 +25,17 @@ class BarFactory:
         return event
 
     @classmethod
-    def get_fields(cls):
+    def get_keys(cls):
         """
         :return: field names in print order use for create dataframe
         """
-        temp = Bar.get_fields()
-        temp[-1:-1] = ["datetime", "close_time"]
-        return temp
+        return Bar.get_keys()
 
 
 class Bar(DictLike):
     """K线数据对象（开高低收成交量时间）"""
     __slots__ = ["symbol", "open", "high", "low", "close", "volume", "timestamp", "time_frame"]
+    __keys__ = __slots__ + ['datetime', "close_time"]
     datetime = property(lambda self: datetime.fromtimestamp(self.timestamp))
     close_time = property(lambda self: self.timestamp + tf2s(self.time_frame))
 
@@ -50,24 +49,16 @@ class Bar(DictLike):
         self.volume = 0
         self.timestamp = 0
 
-    def to_dict(self):
-        temp = super(Bar, self).to_dict()
-        temp['datetime'] = self.datetime
-        temp['close_time'] = self.close_time
-        return temp
-
     def to_event(self):
         event = Event(EVENT_SYMBOL_BAR_RAW[self.symbol][self.time_frame], data=self)
         return event
 
     @classmethod
-    def get_fields(cls):
+    def get_keys(cls):
         """
         :return: field names in print order use for create dataframe
         """
-        temp = super().get_fields()
-        temp[-1:-1] = ["datetime", "close_time"]
-        return temp
+        return cls.__keys__
 
 
 class Tick:
@@ -117,4 +108,4 @@ if __name__ == '__main__':
     print(BarFactory.to_dict(c))
     index = range(100)
     a = map(lambda x: Bar(x).to_dict(), index)
-    print(pd.DataFrame(list(a), columns=BarFactory.get_fields()))
+    print(pd.DataFrame(list(a), columns=BarFactory.get_keys()))

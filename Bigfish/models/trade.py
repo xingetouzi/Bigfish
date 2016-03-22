@@ -19,8 +19,8 @@ class Position(DictLike):
     """仓位对象"""
 
     __slots__ = ["symbol", "deal", "id", "prev_id", "next_id", "time_open", "time_open_msc", "time_update",
-                 "time_update_msc",
-                 "type", "volume", "price_open", "price_current", "price_profit", "strategy", "signal"]
+                 "time_update_msc", "type", "volume", "price_open", "price_current", "price_profit", "strategy",
+                 "signal"]
 
     def __init__(self, symbol=None, strategy=None, signal=None, id=None):
         self.symbol = symbol
@@ -64,7 +64,6 @@ class Position(DictLike):
 
 class PositionFactory(FactoryWithID):
     _class = Position
-
 
 # ENUM_ORDER_STATE
 ORDER_STATE_STARTED = 0  # Order checked, but not yet accepted by broker

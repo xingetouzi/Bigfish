@@ -9,10 +9,10 @@ class DictLike:
     def to_dict(self):
         cls = self.__class__.__name__
         return ({slot.replace('__', ''): getattr(self, slot.replace('__', '_%s__' % cls))
-                 for slot in self.__slots__})
+                 for slot in self.get_keys()})
 
     @classmethod
-    def get_fields(cls):
+    def get_keys(cls):
         return list(map(lambda x: x.replace('__', ''), cls.__slots__))
 
     def __getitem__(self, key):

@@ -1,8 +1,7 @@
 # -*- coding:utf-8 -*-
 import os
-import pandas
 
-from Bigfish.models.common import DictLike
+import pandas
 
 __all__ = ['Symbol', 'Forex']
 
@@ -48,7 +47,7 @@ class Symbol:
     def big_point_value(self, **kwargs):  # 整点价值
         return self._big_point_value
 
-    def lot_value(self, point, lot=1, commission=False, slippage=0, **kwargs):
+    def lot_value(self, point, lot=1, commission=None, slippage=0, **kwargs):
         """
         根据点值计算lot手合约的价值, 传入价差可以计算盈亏
         :param point: 点值
@@ -61,7 +60,8 @@ class Symbol:
         if not lot:
             return 0
         return (
-               self.lot_size * self.big_point_value(**kwargs) * (point - slippage) - commission * self.commission) * lot
+                   self.lot_size * self.big_point_value(**kwargs) * (
+                       point - slippage) - (commission if commission else self.commission)) * lot
 
     def caution_money(self, point, lot=1, **kwargs):
         # TODO 不知道手续费是最后在收益中结算还是占用了可用保证金
@@ -82,5 +82,5 @@ class Forex(Symbol):
         self.zh_name = self.ALL['zh_name'][self.code]
         self.point = self.ALL['point'][self.code]
 
-    def big_point_value(self, base_price=1):
+    def big_point_value(self, base_price=1, **kwargs):
         return base_price

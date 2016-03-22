@@ -54,9 +54,9 @@ class DataGenerator:
         if bars:
             dict_ = list(map(lambda x: x.to_dict(), bars))
             if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(dict_, columns=bars[0].get_fields())
+                self.__dataframe = pd.DataFrame(dict_, columns=bars[0].get_keys())
             else:
-                temp = pd.DataFrame(dict_, columns=bars[0].get_fields())
+                temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
                 self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
             dict_.clear()
@@ -125,9 +125,9 @@ class AsyncDataGenerator:
         bars = self.get_bars(data)
         if bars:
             if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_keys())
             else:
-                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_fields())
+                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_keys())
                 self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             # 回放数据
             for bar in bars:

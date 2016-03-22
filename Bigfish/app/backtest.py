@@ -53,7 +53,7 @@ if DATABASE == 'tushare':
                 raise ValueError
 
 
-    data_generator = DataGeneratorTushare
+    data_generator_default = DataGeneratorTushare
 elif DATABASE == 'mongodb':
     import Bigfish.data.forex_data as fx_mongo
 
@@ -69,12 +69,12 @@ elif DATABASE == 'mongodb':
             return result
 
 
-    data_generator = DataGeneratorMongoDB
+    data_generator_default = DataGeneratorMongoDB
 elif DATABASE == 'mysql':
     if ASYNC:
         from Bigfish.trial.twisted_server import TwistAsyncDataGenerator
 
-        data_generator = TwistAsyncDataGenerator
+        data_generator_default = TwistAsyncDataGenerator
     else:
         import Bigfish.data.mysql_forex_data as fx_mysql
 
@@ -89,22 +89,33 @@ elif DATABASE == 'mysql':
                 data.clear()
                 return result
 
-        data_generator = DataGeneratorMysql
+
+        data_generator_default = DataGeneratorMysql
 
 
 class Backtesting:
-    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
-                 data_generator=data_generator):
-        self.__setting = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
-                          'start_time': start_time, 'end_time': end_time}
-        self.__strategy_engine = StrategyEngine(is_backtest=True)
+    dg_cls = data_generator_default
+
+    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None, commission=0,
+                 slippage=0):
+        self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
+                         'start_time': start_time, 'end_time': end_time, 'commission': commission,
+                         'slippage': slippage}
+        self.__strategy_engine = StrategyEngine(is_backtest=True, **self.__config)
         self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = data_generator(self.__strategy_engine)
+        self.__data_generator = self.dg_cls(self.__strategy_engine)
         self.__performance_manager = None
         self.__thread = None
         self.__is_alive = False
+
+    @classmethod
+    def set_data_generator(cls, data_generator):
+        cls.dg_cls = data_generator
+
+    def set_config(self, **kwargs):
+        self.__config.update(kwargs)
 
     @property
     def is_finished(self):
@@ -112,8 +123,8 @@ class Backtesting:
 
     @property
     def progress(self):
-        et = get_datetime(self.__setting['end_time']).timestamp()
-        st = get_datetime(self.__setting['start_time']).timestamp()
+        et = get_datetime(self.__config['end_time']).timestamp()
+        st = get_datetime(self.__config['start_time']).timestamp()
         ct = self.__strategy_engine.current_time
         if ct:
             return min((ct - st) / (et - st) * 100, 100)
@@ -132,7 +143,7 @@ class Backtesting:
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self.__strategy_engine.start()
-        self.__data_generator.start(**self.__setting)
+        self.__data_generator.start(**self.__config)
         if refresh:
             self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
@@ -161,7 +172,8 @@ class Backtesting:
         return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
                                                  self.__strategy_engine.get_deals(),
                                                  self.__strategy_engine.get_positions(),
-                                                 self.__strategy_engine.symbol_pool)
+                                                 self.__strategy_engine.symbol_pool,
+                                                 **self.__config)
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()
@@ -173,7 +185,7 @@ class Backtesting:
         return self.__strategy.get_output()
 
     def get_setting(self):
-        setting = self.__setting.copy()
+        setting = self.__config.copy()
         setting.pop('user')
         return setting
 

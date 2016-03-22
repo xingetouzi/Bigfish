@@ -26,11 +26,12 @@ class StrategyEngine(object):
     CACHE_MAXLEN = 10000
 
     # ----------------------------------------------------------------------
-    def __init__(self, is_backtest=False):
+    def __init__(self, is_backtest=False, **config):
         """Constructor"""
+        self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
         self.__account_manager = AccountManager()  # 账户管理
-        self.__trade_manager = TradeManager(self, is_backtest)  # 交易管理器
+        self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self)  # 数据中继站
         self.__strategys = {}  # 策略管理器
 
@@ -239,9 +240,10 @@ class DataCache:
 class TradeManager:
     """负责保存交易信息，管理订单相关事件"""
 
-    def __init__(self, engine, is_backtest=True):
+    def __init__(self, engine, is_backtest=True, **config):
         self.engine = proxy(engine)
         self.__is_backtest = is_backtest  # 是否为回测
+        self.__config = config
         self.__position_factory = PositionFactory()
         self.__order_factory = OrderFactory()
         self.__deal_factory = DealFactory()
@@ -398,7 +400,8 @@ class TradeManager:
                 # close or underweight position
                 deal.entry = DEAL_ENTRY_OUT
                 deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
-                                               base_price=base_price)
+                                               commission=self.__config['commission'],
+                                               slippage=self.__config['slippage'], base_price=base_price)
                 if position_now.type == 0:  # 防止浮点数精度可能引起的问题
                     position_now.price_current = 0
                     position_now.volume = 0

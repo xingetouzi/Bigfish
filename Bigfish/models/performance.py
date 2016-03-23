@@ -54,8 +54,6 @@ def cache_calculator(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         nonlocal cache
-        if func.__name__ == 'trade_summary':
-            print(cache.keyrefs())
         if self not in cache:
             cache[self] = func(self, *args, **kwargs)
         return cache[self]

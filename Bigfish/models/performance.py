@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 
 import math
-from copy import deepcopy
 from collections import OrderedDict, deque
 from functools import partial, wraps, reduce
 from weakref import WeakKeyDictionary, proxy
 
-import pytz
-import pandas as pd
 import numpy as np
-from pandas.tseries.offsets import MonthBegin
+import pandas as pd
+import pytz
 import tushare
+from pandas.tseries.offsets import MonthBegin
+
 from Bigfish.models.trade import *
-from Bigfish.utils.pandas_util import rolling_apply_2d
 from Bigfish.utils.memory_profiler import profile as m_profile
+from Bigfish.utils.pandas_util import rolling_apply_2d
 
 # ——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 pd.set_option('display.precision', 6)
@@ -89,8 +89,10 @@ class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
 
     _dict = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
-    __factor_info = {'ar': '策略年化收益率(%)', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率',
-                     'max_drawdown': '最大回撤(%)'}
+    __factor_info = OrderedDict()
+    for k, v in [('ar', '策略年化收益率(%)'), ('sharpe_ratio', '夏普比率'), ('volatility', '收益波动率'),
+                 ('max_drawdown', '最大回撤(%)')]:
+        __factor_info[k] = v
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
     __optimize_info = {'optimize_info': '优化信息'}

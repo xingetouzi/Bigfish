@@ -54,8 +54,6 @@ def cache_calculator(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         nonlocal cache
-        if func.__name__ == 'trade_summary':
-            print(cache.keyrefs())
         if self not in cache:
             cache[self] = func(self, *args, **kwargs)
         return cache[self]
@@ -91,8 +89,8 @@ class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
 
     _dict = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
-    __factor_info = {'ar': '策略年化收益率', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率',
-                     'max_drawdown': '最大回撤'}
+    __factor_info = {'ar': '策略年化收益率(%)', 'sharpe_ratio': '夏普比率', 'volatility': '收益波动率',
+                     'max_drawdown': '最大回撤(%)'}
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
     __optimize_info = {'optimize_info': '优化信息'}

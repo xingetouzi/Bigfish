@@ -175,7 +175,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         self.__positions_raw = self.__positions_raw[self.__positions_raw['time_update'].notnull()]
         # XXX 去掉初始时的零仓位,因为仓位信息中其他的一些None值也算na所以不能直接用dropna
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
-        quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol']].last()
+        quotes = self.__quotes_raw.groupby(['time_index', 'symbol'])[['close', 'symbol', 'base_price']].last()
         # TODO 计算交叉盘报价货币的汇率
         deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
             self.__deals_raw['time_index']).sum().cumsum()
@@ -189,7 +189,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         # TODO 检查outer连接是否会影响交易日的计算
         calculator = lambda x: self.__symbols_pool[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume,
                                                                        commission=self.__config['commission'],
-                                                                       slippage=self.__config['slippage'])
+                                                                       slippage=self.__config['slippage'],
+                                                                       base_price=x.base_price)
         float_profit = quotes.join(positions, how='outer').fillna(method='ffill').fillna(0) \
             .apply(calculator, axis=1).sum(level='time_index').fillna(0)
         # XXX 多品种情况这里还要测试一下正确性

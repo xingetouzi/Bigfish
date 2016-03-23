@@ -53,10 +53,16 @@ class DataGenerator:
         bars = self.__get_data(symbol, time_frame)
         if bars:
             dict_ = list(map(lambda x: x.to_dict(), bars))
+            temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
+            if symbol.endswith('USD'):  # 间接报价
+                temp['base_price'] = 1
+            elif symbol.startswith('USD'):  # 直接报价
+                temp['base_price'] = 1 / temp['close']
+            else:  # TODO 处理交叉盘的情况
+                temp['base_price'] = 1
             if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(dict_, columns=bars[0].get_keys())
+                self.__dataframe = temp
             else:
-                temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
                 self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
             dict_.clear()

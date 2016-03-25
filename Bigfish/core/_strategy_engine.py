@@ -154,10 +154,11 @@ class StrategyEngine(object):
         :param call_back: 运行完成时的回调函数
         :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
         """
+        if finished:
+            self._set_finished()
         self.__event_engine.wait()
         result = call_back(*args, **kwargs)
         if finished:
-            self._set_finished()
             self.stop()
         return result
 

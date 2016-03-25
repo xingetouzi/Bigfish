@@ -85,6 +85,7 @@ class EventEngine:
             except Empty:
                 if self.__finished:
                     self.__active = False
+                print('空')
                 self.__is_empty.set()
             except Exception as e:
                 if THROW_ERROR:
@@ -94,6 +95,7 @@ class EventEngine:
                 self.__active = False
         for file in self.__file_opened:
             if not file.closed:
+                file.flush()
                 file.close()
         self.__file_opened.clear()
         self.__is_empty.set()  # 被强制stop时，也要调用is_empty事件的set方法
@@ -123,6 +125,9 @@ class EventEngine:
         # 将引擎设为启动
         self.__active = True
         self.__finished = False
+        self.__exc_type = None
+        self.__exc_value = None
+        self.__exc_traceback = None
         # 启动事件处理线程
         self.__thread = Thread(target=self.__run, name='event_engine')
         self.__thread.start()
@@ -142,13 +147,11 @@ class EventEngine:
     # -----------------------------------------------------------------------
     def wait(self):
         """等待队列中所有事件被处理完成"""
-        self.__is_empty.clear()
-        self.__is_empty.wait()
         if self.__active:
-            self.throw_error()
-            self.stop()
-        else:
-            self.throw_error()
+            self.__is_empty.clear()
+            self.__is_empty.wait()
+        self.stop()
+        self.throw_error()
 
     def set_finished(self):
         self.__finished = True
@@ -198,7 +201,7 @@ class EventEngine:
     # ----------------------------------------------------------------------
     def throw_error(self):
         if self.__exc_type:
-            raise (SlaverThreadError(self.__exc_type, self.__exc_value, self.__exc_traceback))
+            raise SlaverThreadError(self.__exc_type, self.__exc_value, self.__exc_traceback)
 
 
 ########################################################################

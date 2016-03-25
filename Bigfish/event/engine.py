@@ -85,7 +85,6 @@ class EventEngine:
             except Empty:
                 if self.__finished:
                     self.__active = False
-                print('空')
                 self.__is_empty.set()
             except Exception as e:
                 if THROW_ERROR:

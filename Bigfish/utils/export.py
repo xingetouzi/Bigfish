@@ -61,7 +61,7 @@ class SeriesFunction:
     def __call__(self, *args, **kwargs):
         # TODO 根据generator的签名信息确定唯一的key，现在kwargs中参数顺序不同也会对应两个key，然而只能是一个
         key = self.get_key(args, kwargs)
-        # XXX 目前假定键值一一对应，可不可能会有异值同键的情况
+        # XXX 目前假定键值一一对应，不可能会有异值同键的情况
         if key not in self.__cache:
             self.__count += 1
             self.__map[key] = self.__count

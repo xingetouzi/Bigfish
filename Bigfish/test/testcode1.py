@@ -1,5 +1,3 @@
-import time as t
-
 base = 100000
 
 
@@ -8,4 +6,4 @@ def init():
 
 
 def handle():
-    t.time()
+    print(ATR(10))

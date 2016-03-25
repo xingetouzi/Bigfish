@@ -88,36 +88,26 @@ class LocalsInjector(ast.NodeVisitor):
             code_init_ast = location_patcher.visit(ast.parse(code_init))
             code_loop = '\n'.join(self.__to_inject_loop[node.name])  # 每个信号或函数注入的语句可能都相同
             code_loop_ast = location_patcher.visit(ast.parse(code_loop))
-            barnum_ast = location_patcher.visit(ast.parse('BarNum = get_current_bar()'))
 
             while_node = ast.copy_location(ast.While(
-                    body=barnum_ast.body + code_loop_ast.body + node.body,
-                    test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
-            self.return_to_yield(while_node)
-            node.body = code_init_ast.body + [while_node]
+                body=code_loop_ast.body + node.body,
+                test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
+            node.body = code_init_ast.body + [self.return_to_yield(while_node)]
             # 改变函数签名
             node.args.kwonlyargs.append(location_patcher.visit(ast.arg(arg='series_id', annotation=None)))
             node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
             # print(ast.dump(node))
 
-    # TODO 未对所有return进行修改
     @staticmethod
     def return_to_yield(node):
-        has_return = False
 
-        def transform(stmt):
-            nonlocal has_return
-            if isinstance(stmt, ast.Return):
-                has_return = True
-                return LocationPatcher(stmt).visit(ast.Expr(value=ast.Yield(value=stmt.value)))
+        def trans(return_node):
+            if return_node:
+                return ast.Expr(value=ast.Yield(value=return_node.value))
             else:
-                return stmt
+                return ast.Expr(value=ast.Yield(value=None))
 
-        patcher = LocationPatcher(node.body[-1])
-        default_yield = patcher.visit(ast.Expr(value=ast.Yield(value=None)))
-        node.body = list(map(transform, node.body))
-        if not has_return:
-            node.body.append(default_yield)
+        return ReturnTransformer(target=trans, add=True).trans(node)
 
 
 class SeriesExporter(ast.NodeTransformer):
@@ -152,17 +142,17 @@ class SeriesExporter(ast.NodeTransformer):
                 self.__export_id += 1
                 patcher = LocationPatcher(value.args[-1])
                 value.keywords.append(
-                        patcher.visit(ast.keyword(arg='series_id', value=ast.Name(id='series_id', ctx=ast.Load()))))
+                    patcher.visit(ast.keyword(arg='series_id', value=ast.Name(id='series_id', ctx=ast.Load()))))
                 value.keywords.append(patcher.visit(ast.keyword(arg='export_id', value=ast.Num(n=self.__export_id))))
                 value.keywords.append(
-                        patcher.visit(ast.keyword(arg='barnum', value=ast.Name(id='BarNum', ctx=ast.Load()))))
+                    patcher.visit(ast.keyword(arg='barnum', value=ast.Name(id='BarNum', ctx=ast.Load()))))
                 # TODO行号问题
                 new_node = ast.copy_location(ast.Assign(targets=[], value=value), node)
                 new_node.targets.append(ast.copy_location(
-                        ast.Tuple(
-                                elts=[ast.copy_location(ast.Name(id=name, ctx=ast.Store()), node) for name in
-                                      arg_names],
-                                ctx=ast.Store()), node))
+                    ast.Tuple(
+                        elts=[ast.copy_location(ast.Name(id=name, ctx=ast.Store()), node) for name in
+                              arg_names],
+                        ctx=ast.Store()), node))
                 return new_node
         return node
 
@@ -257,18 +247,29 @@ class ReturnTransformer(ast.NodeTransformer):
         Return节点修改器，将一个含有body属性的节点的AST子树中所有的Return节点修改为Target的返回值
         如果没有发现Return节点，且add为True，则在body中加入Target的返回值
         """
+        self.__in_func_def = False  # 用于处理是否在嵌套定义的函数当中
         self.__target = target
         self.__add = add
         self.__has_return = False
 
     def visit_Return(self, node):
-        self.__has_return = True
-        return LocationPatcher(node).visit(self.__target(node))
+        if not self.__in_func_def:
+            self.__has_return = True
+            return LocationPatcher(node).visit(self.__target(node))
+        else:
+            return node
+
+    def visit_FunctionDef(self, node):
+        old = self.__in_func_def
+        self.__in_func_def = True
+        result = self.generic_visit(node)
+        self.__in_func_def = old
+        return result
 
     def trans(self, node):
         self.__has_return = False
         node = self.visit(node)
-        if not self.__has_return:
+        if (not self.__has_return) and self.__add:
             node.body.append(LocationPatcher(node.body[-1]).visit(self.__target(None)))
         return node
 

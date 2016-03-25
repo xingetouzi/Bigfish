@@ -201,7 +201,7 @@ class Strategy(HasID):
                 custom = get_parameter_default(paras, "Custom", lambda x: isinstance(x, bool), False)
                 if not custom:
                     # TODO加入真正的验证方法
-                    # 转化为tuple是为了去掉重复，而且symbols要那来当做字典的键
+                    # 转化为tuple是因为symbols要那来当做字典的键
                     symbols = tuple(get_parameter_default(paras, "Symbols", lambda x: True, self.symbols))
                     time_frame = get_parameter_default(paras, "TimeFrame", check_time_frame, self.time_frame)
                     max_length = get_parameter_default(paras, "MaxLen", lambda x: isinstance(x, int) and (x > 0),

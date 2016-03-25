@@ -191,11 +191,19 @@ class DataCache:
     symbol_pool = property(get_symbol_pool)
 
     def add_cache_info(self, symbols, time_frame, maxlen=0):
+        symbols = set(symbols)
+        symbols_ = symbols.copy()
         for symbol in symbols:
+            if not (symbol.startswith('USD') or symbol.endswith('USD')):
+                if symbol[-3:] + 'USD' in Forex.ALL.index:
+                    symbols_.add(symbol[-3:] + 'USD')
+                elif 'USD' + symbol[-3:] in Forex.ALL.index:
+                    symbols_.add('USD' + symbol[-3:])
+        for symbol in symbols_:
             key = (symbol, time_frame)
             self._cache_info[key] = max(self._cache_info[key], maxlen)
         self._symbol_pool.update(
-            {symbol: Forex(symbol) for symbol in symbols if symbol not in self._symbol_pool})
+            {symbol: Forex(symbol) for symbol in symbols_ if symbol not in self._symbol_pool})
 
     def get_cache_info(self):
         return self._cache_info.copy()
@@ -392,7 +400,14 @@ class TradeManager:
             elif deal.symbol.startswith('USD'):  # 直接报价
                 base_price = 1 / deal.price
             else:  # TODO 处理交叉盘的情况
-                base_price = 1
+                time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
+                base = symbol.code[-3:]
+                if base + 'USD' in symbol.ALL.index:
+                    base_price = self.engine.data[time_frame]['close'][base + 'USD'][0]
+                elif 'USD' + base in symbol.ALL.index:
+                    base_price = 1 / self.engine.data[time_frame]['close']['USD' + base][0]
+                else:
+                    raise ValueError('找不到基准报价:%s' % base)
             contracts = position_prev.volume - deal.volume
             position_now.volume = abs(contracts)
             position_now.type = position * sign(contracts)

@@ -9,6 +9,8 @@ import time
 from functools import partial, wraps
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.config import MEMORY_DEBUG
+from Bigfish.models.symbol import Forex
+
 if MEMORY_DEBUG:
     import gc
 
@@ -59,7 +61,16 @@ class DataGenerator:
             elif symbol.startswith('USD'):  # 直接报价
                 temp['base_price'] = 1 / temp['close']
             else:  # TODO 处理交叉盘的情况
-                temp['base_price'] = 1
+                base = symbol[-3:]
+                if 'USD' + base in Forex.ALL.index:
+                    extra = self.__insert_data('USD' + base, time_frame)
+                    temp['base_price'] = 1 / extra['close']
+                elif base + 'USD' in Forex.ALL.index:
+                    extra = self.__insert_data(base + 'USD', time_frame)
+                    temp['base_price'] = extra['close']
+                else:
+                    raise ValueError('找不到基准报价:%s' % base)
+                temp['base_price'] = temp['base_price'].fillna(method='ffill')
             if self.__dataframe is None:
                 self.__dataframe = temp
             else:
@@ -67,6 +78,7 @@ class DataGenerator:
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
             dict_.clear()
         bars.clear()
+        return temp
 
     @profile
     def __initialize(self):
@@ -75,7 +87,7 @@ class DataGenerator:
         for symbol, time_frame in self.__engine.get_symbol_timeframe():
             self.__insert_data(symbol, time_frame)
         self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
-        self.__dataframe.sort_values('close_time', inplace=True)
+        self.__dataframe.sort_values('close_time', kind='mergesort', inplace=True)  # 选择稳定的归并排序是为了让直盘数据排在前面
 
     @profile
     def start(self, **options):

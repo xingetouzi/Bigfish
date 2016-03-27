@@ -2,11 +2,8 @@
 
 def init():
     EntryPrice=0
-    TakeProfit=50
-    StopLoss=100
-    pass
 
-def handle():
+def handle(TakeProfit=50, StopLoss=100):
     # 若当前没有持仓，且收盘价小于开盘价
     if MarketPosition==0 and Close[0]<Open[0]:
         Buy(Symbol,1) # 开一手多仓

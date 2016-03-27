@@ -6,11 +6,11 @@
 #offset 位移数(从前多少根bar开始) int 默认为0
 
 def EMA(length,price=None,offset=0):
-    export(ema)
+    Export(ema)
     if not price:
         price=Close
     w=2/(length+1) #平滑系数
-    if barnum==1:
+    if BarNum==1:
         ema[0]=price[0]
     else: 
         ema[0]=w*price[0]+(1-w)*ema[1]

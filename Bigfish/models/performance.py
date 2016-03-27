@@ -328,7 +328,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         net_profit = trade_summary['total'][with_units('平均净利')] * trade_summary['total'][with_units('总交易数')]
         winning = trade_summary['total'][with_units('平均盈利')] * trade_summary['total'][with_units('盈利交易数')]
         losing = trade_summary['total'][with_units('平均亏损')] * trade_summary['total'][with_units('亏损交易数')]
-        rate_of_return = net_profit / self.__capital_base if self.__capital_base else 0
+        rate_of_return = (net_profit / self.__capital_base) if self.__capital_base else 0
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
         # TODO 交易日计算是否正确
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1),

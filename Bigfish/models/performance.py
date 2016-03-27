@@ -177,7 +177,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         # XXX 去掉初始时的零仓位,因为仓位信息中其他的一些None值也算na所以不能直接用dropna
         self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
         quotes = {k: v.groupby(['time_index'])[['close', 'symbol', 'base_price']].last() for k, v in
-                   self.__quotes_raw.groupby('symbol')}
+                  self.__quotes_raw.groupby('symbol')}
         # TODO 计算交叉盘报价货币的汇率
         deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
             self.__deals_raw['time_index']).sum().cumsum()
@@ -187,7 +187,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             deals_profit.index.name = 'time_index'
         # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
         positions = {k: v.groupby('time_index')['type', 'price_current', 'volume'].last() for k, v in
-                      self.__positions_raw.groupby("symbol")}
+                     self.__positions_raw.groupby("symbol")}
         # TODO 检查outer连接是否会影响交易日的计算
         calculator = lambda x: self.__symbols_pool[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume,
                                                                        commission=self.__config['commission'],
@@ -195,11 +195,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                                                                        base_price=x.base_price)
         float_profits = {}
         for symbol in self.__symbols_pool.keys():
-            if symbol in quotes and symbol in positions:
-                float_profits[symbol] = quotes[symbol].join(positions[symbol], how='outer').fillna(
-                    method='ffill').fillna(0).apply(calculator, axis=1).fillna(0)
+            if symbol in quotes:
+                if symbol in positions:
+                    float_profits[symbol] = quotes[symbol].join(positions[symbol], how='outer').fillna(
+                        method='ffill').fillna(0).apply(calculator, axis=1).fillna(0)
+                else:
+                    float_profits[symbol] = pd.Series(0, index=quotes[symbol].index)
         float_profit = reduce(lambda x, y: operator.add(*map(lambda t: t.fillna(0), x.align(y))),
-                                float_profits.values(), pd.Series())
+                              float_profits.values(), pd.Series())
         # XXX 多品种情况这里还要测试一下正确性
         rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
             0).sum(axis=1).apply(
@@ -328,7 +331,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         rate_of_return = net_profit / self.__capital_base
         trade_days = self.__rate_of_return['D']['trade_days'].sum()
         # TODO 交易日计算是否正确
-        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1), self.__annual_factor / trade_days)
+        annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1),
+                                                      self.__annual_factor / trade_days) if trade_days else 0
         max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
         max_losing = trade_summary['total'][with_units('最大亏损')]
         result = pd.DataFrame({

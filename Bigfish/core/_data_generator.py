@@ -53,6 +53,7 @@ class DataGenerator:
     @profile
     def __insert_data(self, symbol, time_frame):
         bars = self.__get_data(symbol, time_frame)
+        temp = None
         if bars:
             dict_ = list(map(lambda x: x.to_dict(), bars))
             temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
@@ -78,7 +79,7 @@ class DataGenerator:
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
             dict_.clear()
         bars.clear()
-        return temp
+        return temp if temp is not None else pd.DataFrame()
 
     @profile
     def __initialize(self):

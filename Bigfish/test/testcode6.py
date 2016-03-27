@@ -6,5 +6,4 @@ def init():
 
 
 def handle(times=0, length=10):
-    print(highest(length))
-    print(lowest(length))
+    print(EMA(5))

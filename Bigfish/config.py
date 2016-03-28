@@ -13,7 +13,7 @@ _system_model = {"array", "bisect", "cmath", "collections", "copy", "datetime", 
                  "json", "math", "operator", "random", "re", "string", "time", "xml", }
 _third_party_model = {"cvxopt", "dateutil", "hmmlearn", "numpy", "pandas", "pkkalman", "pytz", "scipy", "sklearn",
                       "statsmodels", 'talib'}
-MODULES_IMPORT = _system_model or _third_party_model  # 允许在策略代码中导入的模块列表
+MODULES_IMPORT = _system_model | _third_party_model  # 允许在策略代码中导入的模块列表
 CROSS_TRADE = True  # 是否开启交叉盘
 SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
                # "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},

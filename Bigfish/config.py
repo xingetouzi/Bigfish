@@ -12,9 +12,9 @@ ASYNC = False  # 数据拉取方式
 _system_model = {"array", "bisect", "cmath", "collections", "copy", "datetime", "functools", "heapq", "itertools",
                  "json", "math", "operator", "random", "re", "string", "time", "xml", }
 _third_party_model = {"cvxopt", "dateutil", "hmmlearn", "numpy", "pandas", "pkkalman", "pytz", "scipy", "sklearn",
-                      "statsmodels", }
-MODULES_IMPORT = _system_model or _third_party_model  # 允许在策略代码中导入的模块列表
-CROSS_TRADE = False  # 是否开启交叉盘
+                      "statsmodels", 'talib'}
+MODULES_IMPORT = _system_model | _third_party_model  # 允许在策略代码中导入的模块列表
+CROSS_TRADE = True  # 是否开启交叉盘
 SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
                # "XAU/USD": {"en_name": "XAU/USD", "zh_name": "黄金/美元"},
                "GBP/USD": {"en_name": "GBP/USD", "zh_name": "英镑/美元"},
@@ -26,13 +26,13 @@ SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
 if CROSS_TRADE:
     SYMBOL_LIST.update({
         "EUR/JPY": {"en_name": "EUR/JPY", "zh_name": "欧元/日元"},
-        "GBP/JPY": {"en_name": "GBP/JPY", "zh_name": "英镑/日元"},
-        "AUD/JPY": {"en_name": "AUD/JPY", "zh_name": "澳元/日元"},
-        "EUR/CAD": {"en_name": "EUR/CAD", "zh_name": "欧元/加元"},
-        "EUR/GBP": {"en_name": "EUR/GBP", "zh_name": "欧元/英镑"},
-        "EUR/AUD": {"en_name": "EUR/AUD", "zh_name": "欧元/澳元"},
-        "EUR/CHF": {"en_name": "EUR/CHF", "zh_name": "欧元/瑞郎"},
-        "GBP/CHF": {"en_name": "GBP/CHF", "zh_name": "英镑/瑞郎"},
-        "AUD/NZD": {"en_name": "AUD/NZD", "zh_name": "澳元/纽元"},
-        "EUR/NZD": {"en_name": "EUR/NZD", "zh_name": "欧元/纽元"},
+        # "GBP/JPY": {"en_name": "GBP/JPY", "zh_name": "英镑/日元"},
+        # "AUD/JPY": {"en_name": "AUD/JPY", "zh_name": "澳元/日元"},
+        # "EUR/CAD": {"en_name": "EUR/CAD", "zh_name": "欧元/加元"},
+        # "EUR/GBP": {"en_name": "EUR/GBP", "zh_name": "欧元/英镑"},
+        # "EUR/AUD": {"en_name": "EUR/AUD", "zh_name": "欧元/澳元"},
+        # "EUR/CHF": {"en_name": "EUR/CHF", "zh_name": "欧元/瑞郎"},
+        # "GBP/CHF": {"en_name": "GBP/CHF", "zh_name": "英镑/瑞郎"},
+        # "AUD/NZD": {"en_name": "AUD/NZD", "zh_name": "澳元/纽元"},
+        # "EUR/NZD": {"en_name": "EUR/NZD", "zh_name": "欧元/纽元"},
     })

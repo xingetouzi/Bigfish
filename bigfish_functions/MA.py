@@ -6,7 +6,7 @@
 #offset 位移数(从前多少根bar开始) int 默认为0
 
 def MA(length,price=None,offset=0):
-    Sum=Summation（length,offset,price）
+    Sum=Summation(length,price,offset)
     if BarNum<=offset:
         return 0
     else:

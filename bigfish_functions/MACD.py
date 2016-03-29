@@ -7,4 +7,4 @@
 #offset 位移数(从前多少根bar开始) int 默认为0
 
 def MACD(fastLen,slowLen,price=None,offset=0):
-    return EMA(fastLen,offset,price)-EMA(slowLen,offset,price)
+    return EMA(fastLen,price,offset)-EMA(slowLen,price,offset)

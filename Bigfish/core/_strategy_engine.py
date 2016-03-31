@@ -500,7 +500,7 @@ class TradeManager:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
-        if position and position.type < 0:
+        if position and position.type != direction:
             order = self.__order_factory(symbol, order_type, strategy, signal)
             order.volume_initial = position.volume
             order.time_setup = int(time_)

@@ -30,7 +30,7 @@ class StrategyEngine(object):
         """Constructor"""
         self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
-        self.__account_manager = AccountManager()  # 账户管理
+        self.__account_manager = AccountManager(self, **config)  # 账户管理
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self)  # 数据中继站
         self.__strategys = {}  # 策略管理器
@@ -74,6 +74,26 @@ class StrategyEngine(object):
     strategys = property(get_strategys)
     profit_records = property(get_profit_records)
     symbol_timeframe = property(get_symbol_timeframe)
+
+    def get_base_price(self, code, time_frame):
+        symbol = self.symbol_pool[code]
+        if symbol.code.endswith('USD'):  # 间接报价
+            base_price = 1
+        elif symbol.code.startswith('USD'):  # 直接报价
+            base = symbol.code[-3:]
+            base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+        else:
+            base = symbol.code[-3:]
+            if base + 'USD' in symbol.ALL.index:
+                base_price = self.data[time_frame]['close'][base + 'USD'][0]
+            elif 'USD' + base in symbol.ALL.index:
+                base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+            else:
+                raise ValueError('找不到基准报价:%s' % base)
+        return base_price
+
+    def update_records(self, positions, time, time_frame=None):
+        self.__account_manager.update_records(positions, time, time_frame=time_frame)
 
     def update_deal(self, deal):
         self.__account_manager.update_deal(deal)
@@ -131,6 +151,7 @@ class StrategyEngine(object):
         self.__data_cache.start()
         self.__trade_manager.init()
         self.__event_engine.start()
+        self.__account_manager.initialize()
 
     # ----------------------------------------------------------------------
 
@@ -147,23 +168,18 @@ class StrategyEngine(object):
     def _recycle(self):
         self.__data_cache.stop()
         self.__trade_manager.recycle()
-        self.__account_manager.initialize()
+        # self.__account_manager.initialize()
 
     def wait(self, call_back=None, finished=True, *args, **kwargs):
         """等待所有事件处理完毕
         :param call_back: 运行完成时的回调函数
         :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
         """
-        if finished:
-            self._set_finished()
         self.__event_engine.wait()
         result = call_back(*args, **kwargs)
         if finished:
             self.stop()
         return result
-
-    def _set_finished(self):  # 标记即不会再有新数据到来
-        self.__event_engine.set_finished()
 
 
 class DataCache:
@@ -180,7 +196,16 @@ class DataCache:
         self._running = False
         self._data = {}
         self._symbol_pool = {}
-        self.current_time = None  # 目前数据运行到的事件，用于计算回测进度
+        self.current_time = None  # 目前数据运行到的时间，用于计算回测进度
+        self._min_time_frame = None
+        self._count = 0
+
+    def get_min_time_frame(self):
+        return self._min_time_frame
+
+    def set_min_time_frame(self, time_frame):
+        if not self._min_time_frame or tf2s(time_frame) < tf2s(self._min_time_frame):
+            self._min_time_frame = time_frame
 
     def get_data(self):
         return self._data
@@ -188,8 +213,17 @@ class DataCache:
     def get_symbol_pool(self):
         return self._symbol_pool
 
+    # TODO 根据总回测时间区间去计算浮动收益的统计频率
+    @property
+    def float_pnl_frequency(self):
+        if self.min_time_frame in ['M1', 'M5']:
+            return 1
+        time = tf2s(self.min_time_frame)
+        return 2 * 60 * 60 // time  # 统计频率为2H一次
+
     data = property(get_data)
     symbol_pool = property(get_symbol_pool)
+    min_time_frame = property(get_min_time_frame, set_min_time_frame)
 
     def add_cache_info(self, symbols, time_frame, maxlen=0):
         symbols = set(symbols)
@@ -202,6 +236,7 @@ class DataCache:
                     symbols_.add('USD' + symbol[-3:])
         for symbol in symbols_:
             key = (symbol, time_frame)
+            self.min_time_frame = time_frame
             self._cache_info[key] = max(self._cache_info[key], maxlen)
         self._symbol_pool.update(
             {symbol: Forex(symbol) for symbol in symbols_ if symbol not in self._symbol_pool})
@@ -219,6 +254,9 @@ class DataCache:
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
             self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
+            # TODO 这里只考虑了单品种情况
+            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
+        self._count = 0
 
     def start(self):
         self.init()
@@ -244,6 +282,11 @@ class DataCache:
                 for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                     self._data[time_frame][field][symbol][0] = getattr(bar, field)
                 self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
+    def on_next_bar(self, event):
+        self._count += 1
+        if self._count % self.float_pnl_frequency == 0:
+            self._engine.update_records(self._engine.get_current_positions(), self.current_time)
 
 
 class TradeManager:
@@ -396,19 +439,8 @@ class TradeManager:
             position_now.price_current = (position_prev.price_current * position_prev.volume
                                           + deal.price * deal.volume) / position_now.volume
         else:
-            if deal.symbol.endswith('USD'):  # 间接报价
-                base_price = 1
-            elif deal.symbol.startswith('USD'):  # 直接报价
-                base_price = 1 / deal.price
-            else:  # TODO 处理交叉盘的情况
-                time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
-                base = symbol.code[-3:]
-                if base + 'USD' in symbol.ALL.index:
-                    base_price = self.engine.data[time_frame]['close'][base + 'USD'][0]
-                elif 'USD' + base in symbol.ALL.index:
-                    base_price = 1 / self.engine.data[time_frame]['close']['USD' + base][0]
-                else:
-                    raise ValueError('找不到基准报价:%s' % base)
+            time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
+            base_price = self.engine.get_base_price(deal.symbol, time_frame)
             contracts = position_prev.volume - deal.volume
             position_now.volume = abs(contracts)
             position_now.type = position * sign(contracts)

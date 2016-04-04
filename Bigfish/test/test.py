@@ -9,7 +9,6 @@ import sys
 class g:
     pass
 
-
 def weakref_test():
     print('weakref test begin')
     cache = WeakKeyDictionary()

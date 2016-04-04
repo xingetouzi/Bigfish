@@ -4,18 +4,21 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
+import logging
 import pandas as pd
 import time
 from functools import partial, wraps
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.config import MEMORY_DEBUG
 from Bigfish.models.symbol import Forex
+from Bigfish.utils.log import LoggerInterface
+from Bigfish.event.event import EVENT_EXIT, EVENT_FINISH, Event
 
 if MEMORY_DEBUG:
     import gc
 
 
-class DataGenerator:
+class DataGenerator(LoggerInterface):
     """fetch data from somewhere and put dataEvent into eventEngine
         数据生成器
     Attr:
@@ -23,14 +26,20 @@ class DataGenerator:
         __dataframe:data in pandas's dataframe format
     """
 
-    def __init__(self, engine):
+    def __init__(self, engine, logger=None, timer=None):
+        super().__init__()
         self.__engine = engine
         self.__data_events = []
+        self.__timer = timer
         self.__dataframe = None
         self.__get_data = None
         self.__is_alive = False
         self.__has_data = False
         self.__time_cost = 0
+        if logger:
+            self._logger = logger
+        else:
+            pass  # TODO 默认的日志行为
 
     # TODO 多态
     def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
@@ -53,7 +62,6 @@ class DataGenerator:
     @profile
     def __insert_data(self, symbol, time_frame):
         bars = self.__get_data(symbol, time_frame)
-        temp = None
         if bars:
             dict_ = list(map(lambda x: x.to_dict(), bars))
             temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
@@ -79,7 +87,6 @@ class DataGenerator:
             self.__data_events.extend(map(lambda x: x.to_event(), bars))
             dict_.clear()
         bars.clear()
-        return temp if temp is not None else pd.DataFrame()
 
     @profile
     def __initialize(self):
@@ -88,7 +95,8 @@ class DataGenerator:
         for symbol, time_frame in self.__engine.get_symbol_timeframe():
             self.__insert_data(symbol, time_frame)
         self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
-        self.__dataframe.sort_values('close_time', kind='mergesort', inplace=True)  # 选择稳定的归并排序是为了让直盘数据排在前面
+        if self.__dataframe is not None:
+            self.__dataframe.sort_values('close_time', kind='mergesort', inplace=True)  # 选择稳定的归并排序是为了让直盘数据排在前面
 
     @profile
     def start(self, **options):
@@ -96,12 +104,14 @@ class DataGenerator:
         if not self.__has_data:
             self.__initialize()
             self.__has_data = True
-            print('拉取数据完毕，耗时<%s>s' % self.__time_cost)
+            self.log(self.__timer.time('拉取数据完毕，耗时:{0}'), logging.INFO)
         # 回放数据
         for data_event in self.__data_events:
             self.__engine.put_event(data_event)
             if not self.__is_alive:  # 判断用户是否取消
+                self.__engine.put_event(Event(EVENT_EXIT))
                 break
+        self.__engine.put_event(Event(EVENT_FINISH))
 
     def stop(self):
         self._recycle()

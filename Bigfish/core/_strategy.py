@@ -7,9 +7,11 @@ import inspect
 from functools import partial
 import codecs
 from weakref import proxy
+import logging
 
 # 自定义模块
-from Bigfish.utils.log import FilePrinter
+from Bigfish.utils.log import FilePrinter, LoggerInterface
+from Bigfish.models.model import User
 from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SignalFactory
@@ -20,7 +22,7 @@ from Bigfish.models.common import HasID
 from Bigfish.store.code_manage import get_sys_func_list
 
 
-class Strategy(HasID):
+class Strategy(LoggerInterface, HasID):
     ATTR_MAP = dict(TimeFrame="time_frame", Base="capital_base", Symbols="symbols", StartTime="start_time",
                     EndTime="end_time", MaxLen="max_length")
     API_FUNCTION = ['Buy', 'Sell', 'SellShort', 'BuyToCover', 'Export'] + get_sys_func_list()
@@ -29,11 +31,13 @@ class Strategy(HasID):
                      'Symbol', 'BarNum', 'MarketPosition', 'Positions', 'Pos', 'CurrentContracts', 'Point']
 
     # ----------------------------------------------------------------------
-    def __init__(self, engine, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None):
+    def __init__(self, engine, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None,
+                 end_time=None, logger=None, **kwargs):
         """Constructor"""
+        super().__init__()
         self.__id = self.next_auto_inc()
         self.user = user
-        self.user_dir = UserDirectory(user)
+        self.user_dir = UserDirectory(User(user))
         self.name = name
         self.code = code
         self.engine = proxy(engine)
@@ -41,6 +45,10 @@ class Strategy(HasID):
         self.symbols = symbols
         self.start_time = start_time
         self.end_time = end_time
+        if logger:
+            self._logger = logger
+        else:
+            pass  # TODO 默认的日志行为
         self.max_length = 0
         self.capital_base = 100000
         self.handlers = {}
@@ -48,6 +56,7 @@ class Strategy(HasID):
         self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
+        self.__logger = logger
         self.__printer = FilePrinter(user, name, self.engine)
         self.__context = {}
         self.__points = {}
@@ -281,7 +290,7 @@ class Strategy(HasID):
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
             self.signals[key].set_generator(signal_locals_[key])
-        print("<%s>信号添加成功" % self.name)
+        self.log("<%s>策略添加成功" % self.name, logging.INFO)
         return True
 
     # ----------------------------------------------------------------------
@@ -298,7 +307,7 @@ class Strategy(HasID):
         for function in self.system_functions.values():
             function.start()
         self.__printer.start()
-        print(self.name + u'开始运行')
+        self.log("<%s>策略开始运行" % self.name, logging.INFO)
 
     # ----------------------------------------------------------------------
     def stop(self):
@@ -312,4 +321,4 @@ class Strategy(HasID):
         for function in self.system_functions.values():
             function.stop()
         self.__printer.stop()
-        print(self.name + u'停止运行')
+        self.log("<%s>策略停止运行" % self.name, logging.INFO)

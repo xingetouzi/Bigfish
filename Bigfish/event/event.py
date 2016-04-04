@@ -84,3 +84,6 @@ EVENT_ORDER_SYMBOL = {symbol: Event.create_event_type('Order.%s' % symbol).get_i
 EVENT_POSITION = 'Position'  # 持仓查询回报事件
 EVENT_POSITION_SYMBOL = {symbol: Event.create_event_type('Position.%s' % symbol).get_id()
                          for symbol in SYMBOLS}  # 特定交易物持仓查询回报事件
+# TODO 其实这里的事件可以模仿LOG模块的日志传递，也有像树一样的结构，子节点上的事件可以也会被父节点上的监听函数处理
+EVENT_FINISH = Event.create_event_type('Finish', priority=-1).get_id()  # 停止事件，用于停止引擎的运行
+EVENT_EXIT = Event.create_event_type('Exit', priority=100)  # 退出事件，用于强制停止引擎运行

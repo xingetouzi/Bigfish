@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from Bigfish.config import *
-from Bigfish.core import DataGenerator, StrategyEngine, Strategy
+from Bigfish.core import DataGenerator, StrategyEngine
 from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.models.quote import Bar
 from Bigfish.utils.common import get_datetime
@@ -55,7 +55,7 @@ if DATABASE == 'tushare':
 
     data_generator = DataGeneratorTushare
 elif DATABASE == 'mongodb':
-    import Bigfish.data.forex_data as fx_mongo
+    import Bigfish.trial.forex_data as fx_mongo
 
 
     class DataGeneratorMongoDB(DataGenerator):

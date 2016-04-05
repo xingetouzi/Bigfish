@@ -4,7 +4,6 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-import logging
 import codecs
 import gc
 from functools import partial
@@ -13,13 +12,11 @@ import numpy as np
 import pandas as pd
 
 from Bigfish.config import *
-from Bigfish.core import DataGenerator, StrategyEngine, Strategy
-from Bigfish.models.performance import StrategyPerformanceManagerOnline
+from Bigfish.core import DataGenerator, StrategyEngine
+from Bigfish.models.performance import StrategyPerformanceManagerOffline
 from Bigfish.models.quote import Bar
 from Bigfish.utils.common import get_datetime
 from Bigfish.utils.memory_profiler import profile
-from Bigfish.utils.timer import Timer
-from Bigfish.utils.log import LoggerInterface
 
 if MEMORY_DEBUG:
     import sys
@@ -56,9 +53,9 @@ if DATABASE == 'tushare':
                 raise ValueError
 
 
-    data_generator_default = DataGeneratorTushare
+    data_generator = DataGeneratorTushare
 elif DATABASE == 'mongodb':
-    import Bigfish.data.forex_data as fx_mongo
+    import Bigfish.trial.forex_data as fx_mongo
 
 
     class DataGeneratorMongoDB(DataGenerator):
@@ -72,12 +69,12 @@ elif DATABASE == 'mongodb':
             return result
 
 
-    data_generator_default = DataGeneratorMongoDB
+    data_generator = DataGeneratorMongoDB
 elif DATABASE == 'mysql':
     if ASYNC:
         from Bigfish.trial.twisted_server import TwistAsyncDataGenerator
 
-        data_generator_default = TwistAsyncDataGenerator
+        data_generator = TwistAsyncDataGenerator
     else:
         import Bigfish.data.mysql_forex_data as fx_mysql
 
@@ -92,48 +89,22 @@ elif DATABASE == 'mysql':
                 data.clear()
                 return result
 
+        data_generator = DataGeneratorMysql
 
-        data_generator_default = DataGeneratorMysql
 
-
-class Backtesting(LoggerInterface):
-    dg_cls = data_generator_default
-
-    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None, commission=0,
-                 slippage=0):
-        super().__init__()
-        self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
-                         'start_time': start_time, 'end_time': end_time, 'commission': commission,
-                         'slippage': slippage}
-        self.__code = code
-        self.__strategy = None
-        self.__strategy_engine = None
-        self.__data_generator = None
+class Backtesting:
+    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None,
+                 data_generator=data_generator):
+        self.__setting = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
+                          'start_time': start_time, 'end_time': end_time}
+        self.__strategy_engine = StrategyEngine(is_backtest=True)
+        self.__strategy = Strategy(self.__strategy_engine, user, name, code, symbols, time_frame, start_time, end_time)
         self.__strategy_parameters = None
-        self._logger = None
-        self.__performance_manager = None
-        self.__timer = Timer()
-        self.__is_alive = False
-        self.__initialized = False
-
-    def init(self):
-        if self.__initialized:
-            return True
-        self.__strategy_engine = StrategyEngine(is_backtest=True, **self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, logger=self._logger, **self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = self.dg_cls(self.__strategy_engine, logger=self._logger, timer=self.__timer)
-        self.__initialized = True
-
-    @classmethod
-    def set_data_generator(cls, data_generator):
-        cls.dg_cls = data_generator
-
-    def set_config(self, **kwargs):
-        self.__config.update(kwargs)
-
-    def set_logger(self, logger):
-        self._logger = logger
+        self.__data_generator = data_generator(self.__strategy_engine)
+        self.__performance_manager = None
+        self.__thread = None
+        self.__is_alive = False
 
     @property
     def is_finished(self):
@@ -141,10 +112,8 @@ class Backtesting(LoggerInterface):
 
     @property
     def progress(self):
-        if not self.__initialized:
-            return 0
-        et = get_datetime(self.__config['end_time']).timestamp()
-        st = get_datetime(self.__config['start_time']).timestamp()
+        et = get_datetime(self.__setting['end_time']).timestamp()
+        st = get_datetime(self.__setting['start_time']).timestamp()
         ct = self.__strategy_engine.current_time
         if ct:
             return min((ct - st) / (et - st) * 100, 100)
@@ -158,15 +127,12 @@ class Backtesting(LoggerInterface):
         :param paras:
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
-        if not self.__initialized:
-            self.init()
         gc.collect()
         self.__is_alive = True
         if paras is not None:
             self.__strategy.set_parameters(paras)
         self.__strategy_engine.start()
-        self.__data_generator.start(**self.__config)
-        self.log(self.__timer.time("数据回放完成，耗时:{0}"), logging.INFO)
+        self.__data_generator.start(**self.__setting)
         if refresh:
             self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
@@ -179,15 +145,12 @@ class Backtesting(LoggerInterface):
                         gb_log[type_] = 0
                     gb_log[type_] += sys.getsizeof(gb)
                 print(gb_log)
-            result = self.__performance_manager
+            return self.__performance_manager
         else:
-            result = self.__strategy_engine.wait(self.__get_performance_manager)
-        self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
-        return result
+            return self.__strategy_engine.wait(self.__get_performance_manager)
 
     def stop(self):
         self.__is_alive = False
-        self.__timer.reset()
         self.__data_generator.stop()
         self.__strategy_engine.stop()
 
@@ -195,11 +158,10 @@ class Backtesting(LoggerInterface):
         # TODO 加入回测是否运行的判断
         if False:
             raise ValueError('please run the backtest first')
-        return StrategyPerformanceManagerOnline(self.__strategy_engine.get_profit_records(),
-                                                self.__strategy_engine.get_deals(),
-                                                self.__strategy_engine.get_positions(),
-                                                self.__strategy_engine.symbol_pool,
-                                                **self.__config)
+        return StrategyPerformanceManagerOffline(self.__data_generator.get_dataframe(),
+                                                 self.__strategy_engine.get_deals(),
+                                                 self.__strategy_engine.get_positions(),
+                                                 self.__strategy_engine.symbol_pool)
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()
@@ -211,7 +173,7 @@ class Backtesting(LoggerInterface):
         return self.__strategy.get_output()
 
     def get_setting(self):
-        setting = self.__config.copy()
+        setting = self.__setting.copy()
         setting.pop('user')
         return setting
 
@@ -302,11 +264,10 @@ class Backtesting(LoggerInterface):
         optimizer = getattr(self, '_%s_optimize' % type)
         return optimizer(ranges, goal, num)
 
-    def time(self, *args):
-        return self.__timer.time(*args)
-
 
 if __name__ == '__main__':
+    from Bigfish.core import Strategy
+    from Bigfish.models.model import User
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
@@ -319,52 +280,44 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode4.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode9.py', 'r', 'utf-8') as f:
         code = f.read()
-    user = '10032'
-    backtest = Backtesting(user, 'test', code, ['USDJPY'], 'M15', '2015-01-01', '2015-12-01')
+    user = User('10032')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-02', '2015-03-01')
     print(backtest.progress)
     backtest.start()
     translator = DataframeTranslator()
     user_dir = UserDirectory(user)
-    # print(user_dir.get_sys_func_list())
+    print(user_dir.get_sys_func_list())
     print(backtest.get_profit_records())  # 获取浮动收益曲线
-    # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
+    print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     performance = backtest.get_performance()  # 获取策略的各项指标
-    # print('trade_info:\n%s' % performance._manager.trade_info)
-    # print('trade_summary:\n%s' % performance.trade_summary)
-    # print('trade_details:\n%s' % performance.trade_details)
-    # print(translator.dumps(performance._manager.trade_info))
-    # print(translator.dumps(performance.trade_details))
-    # print('strategy_summary:\n%s' % performance.strategy_summary)
-    # print('optimize_info:\n%s' % performance.optimize_info)
-    # print('info_on_home_page\n%s' % performance.get_info_on_home_page())
-    # print(performance.get_factor_list())
+    print('trade_info:\n%s' % performance._manager.trade_info)
+    print('trade_summary:\n%s' % performance.trade_summary)
+    print('trade_details:\n%s' % performance.trade_details)
+    print(translator.dumps(performance._manager.trade_info))
+    print(translator.dumps(performance.trade_details))
+    print('strategy_summary:\n%s' % performance.strategy_summary)
+    print('optimize_info:\n%s' % performance.optimize_info)
+    print('info_on_home_page\n%s' % performance.get_info_on_home_page())
+    print(performance.get_factor_list())
     print(performance.yield_curve)
-    # print('ar:\n%s' % performance.ar)  # 年化收益率
-    # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
-    # print('volatility:\n%s' % performance.volatility)  # 波动率
-    # print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
-    # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
-    # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
-    # print(time.time() - start_time)
+    print('ar:\n%s' % performance.ar)  # 年化收益率
+    print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
+    print('volatility:\n%s' % performance.volatility)  # 波动率
+    print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
+    print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
+    print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
+    print(time.time() - start_time)
     print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
-    # print(time.time() - start_time)
-    # print(backtest.progress)
-    # print(performance.trade_details)
-    # print(Strategy.API_FUNCTION)
-    # print(Strategy.API_VARIABLES)
-    # start_time = time.time()
-    # # paras = {
-    # #     'handle': {'TakeProfit': {'start': 46, 'end': 54, 'step': 1},
-    # #                'StopLoss': {'start': 96, 'end': 104, 'step': 1}
-    # #                }
-    # # }
+    print(time.time() - start_time)
+    print(backtest.progress)
+    print(performance.trade_details)
+    print(Strategy.API_FUNCTION)
+    print(Strategy.API_VARIABLES)
     # paras = {
-    #     'handle': {'fastlength': {'start': 6, 'end': 14, 'step': 1},
-    #                'slowlength': {'start': 16, 'end': 24, 'step': 1}
-    #                }
-    # }
+    #     'handle': {'slowlength': {'start': 18, 'end': 20, 'step': 1},
+    #                'fastlength': {'start': 10, 'end': 10, 'step': 1}}}
     # optimize = backtest.optimize(paras, None, None)
     # print('optimize\n%s' % optimize)
-    # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))
+    # print(time.time() - start_time)

@@ -4,9 +4,9 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-import logging
 import codecs
 import gc
+import logging
 from functools import partial
 
 import numpy as np
@@ -14,12 +14,12 @@ import pandas as pd
 
 from Bigfish.config import *
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
-from Bigfish.models.performance import StrategyPerformanceManagerOnline
 from Bigfish.models.quote import Bar
+from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.common import get_datetime
+from Bigfish.utils.log import LoggerInterface
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.utils.timer import Timer
-from Bigfish.utils.log import LoggerInterface
 
 if MEMORY_DEBUG:
     import sys
@@ -319,18 +319,21 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode4.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode9.py', 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
-    backtest = Backtesting(user, 'test', code, ['USDJPY'], 'M15', '2015-01-01', '2015-12-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-02', '2015-03-01')
     print(backtest.progress)
     backtest.start()
+    performance = backtest.get_performance()  # 获取策略的各项指标
     translator = DataframeTranslator()
     user_dir = UserDirectory(user)
     # print(user_dir.get_sys_func_list())
     print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
-    performance = backtest.get_performance()  # 获取策略的各项指标
+    print(performance._dict_name)
+    for k, v in performance.__dict__.items():
+        print("%s\n%s" % (k, v))
     # print('trade_info:\n%s' % performance._manager.trade_info)
     # print('trade_summary:\n%s' % performance.trade_summary)
     # print('trade_details:\n%s' % performance.trade_details)
@@ -338,9 +341,9 @@ if __name__ == '__main__':
     # print(translator.dumps(performance.trade_details))
     # print('strategy_summary:\n%s' % performance.strategy_summary)
     # print('optimize_info:\n%s' % performance.optimize_info)
-    # print('info_on_home_page\n%s' % performance.get_info_on_home_page())
+    # print('info_on_home_page\n%s' % performance.info_on_home_page())
     # print(performance.get_factor_list())
-    print(performance.yield_curve)
+    # print(performance.yield_curve)
     # print('ar:\n%s' % performance.ar)  # 年化收益率
     # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
     # print('volatility:\n%s' % performance.volatility)  # 波动率
@@ -348,7 +351,7 @@ if __name__ == '__main__':
     # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
     # print(time.time() - start_time)
-    print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
+    # print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
     # print(time.time() - start_time)
     # print(backtest.progress)
     # print(performance.trade_details)

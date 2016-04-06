@@ -2,18 +2,7 @@
 数据连接类
 """
 import pymysql
-import traceback
-
-
-def singleton(cls, *args, **kw):
-    instances = {}
-
-    def _singleton():
-        if cls not in instances:
-            instances[cls] = cls(*args, **kw)
-        return instances[cls]
-
-    return _singleton
+from Bigfish.data.cache import singleton
 
 
 @singleton

@@ -661,11 +661,12 @@ class StrategyPerformanceManagerOnline(StrategyPerformanceManager):
     @property
     @cache_calculator
     def _rate_of_return_raw(self):
+        if not self._yield_raw:
+            return pd.Series(name='rate')
         temp = pd.DataFrame(self._yield_raw)
-        rate_of_return = pd.Series(temp['y'].values, index=temp['x'].map(pd.datetime.fromtimestamp)) / 100 + 1
+        rate_of_return = pd.Series(temp['y'].values, name='rate',
+                                   index=temp['x'].map(pd.datetime.fromtimestamp)) / 100 + 1
         rate_of_return.index.name = 'time_index'
-        rate_of_return.name = 'rate'
-        print(rate_of_return)
         return rate_of_return
 
     @property

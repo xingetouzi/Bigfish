@@ -7,4 +7,4 @@ class BaseHandler(tornado.web.RequestHandler):
         super(BaseHandler, self).__init__(*argc, **argkw)
 
     def post(self):
-        self.write("")
+        self.write("result")

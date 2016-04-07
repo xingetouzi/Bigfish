@@ -1,7 +1,6 @@
 import tornado
 from Bigfish.web.views import *
 from tornado.web import HTTPError
-from Bigfish.web.session import SessionManager
 
 
 class Application(tornado.web.Application):
@@ -15,12 +14,9 @@ class Application(tornado.web.Application):
             # },
         )
         handlers = [
-            (r"/", MainHandler),
-            (r"", MainHandler),
-            (r"/login", LoginHandler)
+            (r"/", BaseHandler),
         ]
         tornado.web.Application.__init__(self, handlers, **settings)
-        self.session_manager = SessionManager(settings["session_secret"], settings["session_timeout"])
 
 
 if __name__ == "__main__":

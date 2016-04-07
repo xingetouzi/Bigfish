@@ -55,9 +55,9 @@ class DataGenerator:
         self.__dq = Queue(maxsize=maxsize * 2)  # 数据缓存器,避免数据在内存里过大,造成内存不足的错误
         self.__config = config
         self.__symbol = config.symbols[0]
-        self.__start_time = get_datetime(config.start_time).timestamp()
+        self.__start_time = int(get_datetime(config.start_time).timestamp())
         if config.end_time:
-            self.__end_time = get_datetime(config.end_time).timestamp()
+            self.__end_time = int(get_datetime(config.end_time).timestamp())
         else:  # 如果没有指定结束时间,默认查询到最近的数据
             self.__end_time = int(time.time())
         self.__handle = process  # 行情数据监听函数(可以想象成java的interface)
@@ -118,17 +118,17 @@ class DataGenerator:
         for row in cur.fetchall():
             bar = Bar(self.__symbol)
             bar.close = row["close"]
-            bar.timestamp = row["ctime"]
+            bar.timestamp = int(row["ctime"])
             bar.high = row["high"]
             bar.low = row["low"]
             bar.open = row["open"]
             bar.volume = row["volume"]
             bar.time_frame = self.__config.time_frame
             self.__dq.put(bar)
-            self.__start_time = bar.timestamp
+            self.__start_time = bar.timestamp + tf2s(self.__config.time_frame)
         cur.close()
         # 如果开始时间距结束时间的距离不超过当前时间尺度,证明数据查询完成
-        if self.__end_time - self.__start_time <= tf2s(self.__config.time_frame):
+        if (cur.rownumber == 0) or self.__end_time - self.__start_time <= tf2s(self.__config.time_frame):
             self._finished = True
 
     @classmethod

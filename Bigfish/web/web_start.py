@@ -1,5 +1,6 @@
 import tornado
-from Bigfish.web.views import *
+from Bigfish.web.views import BaseHandler
+from Bigfish.web.socket_handler import SocketHandler
 from tornado.web import HTTPError
 
 
@@ -15,6 +16,7 @@ class Application(tornado.web.Application):
         )
         handlers = [
             (r"/", BaseHandler),
+            (r'/soc', SocketHandler),
         ]
         tornado.web.Application.__init__(self, handlers, **settings)
 
@@ -24,4 +26,3 @@ if __name__ == "__main__":
     app.listen(8000)
     print("starting...")
     tornado.ioloop.IOLoop.current().start()
-    print("start success...")

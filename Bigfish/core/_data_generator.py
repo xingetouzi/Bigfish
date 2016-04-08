@@ -1,184 +1,136 @@
-﻿# -*- coding: utf-8 -*-
-"""
-Created on Wed Nov 25 20:41:04 2015
-
-@author: BurdenBear
-"""
-import logging
-import pandas as pd
+import threading
 import time
-from functools import partial, wraps
-from Bigfish.utils.memory_profiler import profile
-from Bigfish.config import MEMORY_DEBUG
-from Bigfish.models.symbol import Forex
-from Bigfish.utils.log import LoggerInterface
-from Bigfish.event.event import EVENT_EXIT, EVENT_FINISH, Event
+from queue import Queue, Empty
 
-if MEMORY_DEBUG:
-    import gc
+import pymysql
+from Bigfish.models.quote import Bar
+from Bigfish.utils.common import check_time_frame, tf2s, get_datetime
+
+from Bigfish.data.connection import MySql
 
 
-class DataGenerator(LoggerInterface):
-    """fetch data from somewhere and put dataEvent into eventEngine
-        数据生成器
-    Attr:
-        __engine:the eventEngine where data event putted into
-        __dataframe:data in pandas's dataframe format
+# 定义两个线程执行接口
+def produce(generator):
+    """
+    生产者,不断的从后台数据库取数据
+    :param generator:
+    """
+    while not generator.finished:
+        generator.get_bars()
+
+
+def consume(generator):
+    """
+    消费者,不断的从数据队列中取数据,并通知监听函数
+    :param generator: 数据生产器对象
+    """
+    # 只有对列为空,并且状态是已完成时才标志数据取完了
+    while (not generator.empty()) or (not generator.finished):
+        generator.consume()
+    generator.finish()
+
+
+class DataGenerator:
+    """
+    这个对象包括两个线程,一个生产者,一段一段的不断从数据库中查询记录,并存入缓存队列.
+    另一个消费者,不断的从缓存队列中取数据,这样做的好处是避免一次回测的数据太多占用太多的内存
+    基本使用:
+    dg = DataGenerator(config, self.process, self.finished)  # 数据生成器
+    dg.start()
     """
 
-    def __init__(self, engine, logger=None, timer=None):
-        super().__init__()
-        self.__engine = engine
-        self.__data_events = []
-        self.__timer = timer
-        self.__dataframe = None
-        self.__get_data = None
-        self.__is_alive = False
-        self.__has_data = False
-        self.__time_cost = 0
-        if logger:
-            self._logger = logger
-        else:
-            pass  # TODO 默认的日志行为
+    def __init__(self, config, process, finish=None, maxsize=500):
+        """
 
-    # TODO 多态
-    def _get_data(self, symbol, time_frame, start_time=None, end_time=None):
-        """根据数据源的不同选择不同的实现"""
-        raise NotImplementedError
+        Parameters
+        ----------
+        config: BfConfig对象
+        process: 每个数据bar事件来时的回调方法
+        finish: 数据结束的回调方法
+        maxsize: 缓存大小,默认500
+        """
+        # assert isinstance(config, Config)
+        self.__check_tf(config.time_frame)
+        self.__maxsize = maxsize
+        self.__dq = Queue(maxsize=maxsize * 2)  # 数据缓存器,避免数据在内存里过大,造成内存不足的错误
+        self.__config = config
+        self.__symbol = config.symbols[0]
+        self.__start_time = get_datetime(config.start_time).timestamp()
+        if config.end_time:
+            self.__end_time = get_datetime(config.end_time).timestamp()
+        else:  # 如果没有指定结束时间,默认查询到最近的数据
+            self.__end_time = int(time.time())
+        self.__handle = process  # 行情数据监听函数(可以想象成java的interface)
+        self.__finish = finish  # 数据结束函数
+        self._finished = False
 
-    def get_dataframe(self):
-        return self.__dataframe
+    @property
+    def finished(self):
+        return self._finished
 
-    def with_time_cost_count(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            st = time.time()
-            result = func(*args, **kwargs)
-            self.__time_cost += time.time() - st
-            return result
+    def empty(self):
+        return self.__dq.empty()
 
-        return wrapper
+    def consume(self):
+        """
+        从缓存队列中消费数据(生产行情信号)
+        :return:
+        """
+        try:
+            data = self.__dq.get(timeout=0.5)
+            self.__handle(data)
+        except Empty:
+            pass
 
-    @profile
-    def __insert_data(self, symbol, time_frame):
-        bars = self.__get_data(symbol, time_frame)
-        if bars:
-            dict_ = list(map(lambda x: x.to_dict(), bars))
-            temp = pd.DataFrame(dict_, columns=bars[0].get_keys())
-            if symbol.endswith('USD'):  # 间接报价
-                temp['base_price'] = 1
-            elif symbol.startswith('USD'):  # 直接报价
-                temp['base_price'] = 1 / temp['close']
-            else:  # TODO 处理交叉盘的情况
-                base = symbol[-3:]
-                if 'USD' + base in Forex.ALL.index:
-                    extra = self.__insert_data('USD' + base, time_frame)
-                    temp['base_price'] = 1 / extra['close']
-                elif base + 'USD' in Forex.ALL.index:
-                    extra = self.__insert_data(base + 'USD', time_frame)
-                    temp['base_price'] = extra['close']
-                else:
-                    raise ValueError('找不到基准报价:%s' % base)
-                temp['base_price'] = temp['base_price'].fillna(method='ffill')
-            if self.__dataframe is None:
-                self.__dataframe = temp
-            else:
-                self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
-            self.__data_events.extend(map(lambda x: x.to_event(), bars))
-            dict_.clear()
-        bars.clear()
-
-    @profile
-    def __initialize(self):
-        self.__time_cost = 0
-        self.__get_data = partial(self._get_data, start_time=self.__engine.start_time, end_time=self.__engine.end_time)
-        for symbol, time_frame in self.__engine.get_symbol_timeframe():
-            self.__insert_data(symbol, time_frame)
-        self.__data_events.sort(key=lambda x: x.content['data'].close_time)  # 按结束时间排序
-        if self.__dataframe is not None:
-            self.__dataframe.sort_values('close_time', kind='mergesort', inplace=True)  # 选择稳定的归并排序是为了让直盘数据排在前面
-
-    @profile
-    def start(self, **options):
-        self.__is_alive = True
-        if not self.__has_data:
-            self.__initialize()
-            self.__has_data = True
-            self.log(self.__timer.time('拉取数据完毕，耗时:{0}'), logging.INFO)
-        # 回放数据
-        for data_event in self.__data_events:
-            self.__engine.put_event(data_event)
-            if not self.__is_alive:  # 判断用户是否取消
-                self.__engine.put_event(Event(EVENT_EXIT))
-                break
-        self.__engine.put_event(Event(EVENT_FINISH))
+    def start(self):
+        self._finished = False
+        # 启动生产者
+        t1 = threading.Thread(target=produce, args=(self,))
+        # t1.setDaemon(True)
+        # 启动消费者
+        t2 = threading.Thread(target=consume, args=(self,))
+        # t2.setDaemon(True)
+        t1.start()
+        t2.start()
 
     def stop(self):
-        self._recycle()
-        self.__is_alive = False
+        self._finished = True
 
-    @profile
-    def _recycle(self):
+    def finish(self):
+        if self.__finish is not None:
+            self.__finish()
+
+    def get_bars(self):
         """
-        释放内存资源
+        从数据库中取出数据
         """
-        self.__data_events.clear()
-        del self.__dataframe
-        self.__dataframe = None
-        self.__has_data = False
+        conn = MySql().get_connection()  # 得到连接
+        # 构造查询条件
+        query_params = " where ctime >= '%s'" % (self.__start_time,)
+        query_params += " and ctime < '%s'" % (self.__end_time,)
 
+        coll = "%s_%s" % (self.__symbol, self.__config.time_frame)
 
-class AsyncDataGenerator:
-    """fetch data from somewhere and put dataEvent into eventEngine
-        数据生成器,分块异步读取数据
-    Attr:
-        __engine:the eventEngine where data event putted into
-        __dataframe:data in pandas's dataframe format
-    """
+        cur = conn.cursor(pymysql.cursors.DictCursor)
 
-    def __init__(self, engine):
-        self.__engine = engine
-        self.__dataframe = None
-        self.__get_data = None
-        self.__is_alive = False
-        self.__time_cost = 0
+        cur.execute("select * from %s " % coll + query_params + " limit %d " % self.__maxsize)
+        # print(cur.fetchall())
+        for row in cur.fetchall():
+            bar = Bar(self.__symbol)
+            bar.close = row["close"]
+            bar.timestamp = row["ctime"]
+            bar.high = row["high"]
+            bar.low = row["low"]
+            bar.open = row["open"]
+            bar.volume = row["volume"]
+            bar.time_frame = self.__config.time_frame
+            self.__dq.put(bar)
+            self.__start_time = bar.timestamp
+        cur.close()
+        # 如果开始时间距结束时间的距离不超过当前时间尺度,证明数据查询完成
+        if self.__end_time - self.__start_time <= tf2s(self.__config.time_frame):
+            self._finished = True
 
-    def get_dataframe(self):
-        return self.__dataframe
-
-    @staticmethod
-    def get_bars(self, data):
-        return data
-
-    def receive_data(self, data):
-        bars = self.get_bars(data)
-        if bars:
-            if self.__dataframe is None:
-                self.__dataframe = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_keys())
-            else:
-                temp = pd.DataFrame(self.__data_raw[0], columns=bars[0].get_keys())
-                self.__dataframe = pd.concat([self.__dataframe, temp], ignore_index=True, copy=False)
-            # 回放数据
-            for bar in bars:
-                self.__engine.put_event(bar.to_event())
-                if not self.__is_alive:  # 判断用户是否取消
-                    break
-
-    def subscribe_data(self, **options):
-        """根据数据源的不同选择不同的实现"""
-        raise NotImplementedError
-
-    def start(self, **options):
-        self.__is_alive = True
-        self.subscribe_data(**options)
-
-    def stop(self):
-        self.__is_alive = False
-        self._recycle()
-
-    def _recycle(self):
-        """
-        释放内存资源
-        """
-        if self.__is_alive:
-            self.__dataframe = None
+    @classmethod
+    def __check_tf(cls, time_frame):
+        check_time_frame(time_frame)

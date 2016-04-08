@@ -65,16 +65,27 @@ def cache_calculator(func):
 
 class Performance:
     _manager = None
-    _dict = {}
+    _dict_name = {}
 
     def __init__(self, manager=None):
-        self._manager = proxy(manager)  # 避免循环引用
+        if manager:
+            self._manager = proxy(manager)  # 避免循环引用
+        self._dict = None
 
     def __getattr__(self, item):
-        if item in self._dict:
-            return getattr(self._manager, item)
+        if item in self._dict_name:
+            if self._manager is not None:
+                return getattr(self._manager, item)
+            else:
+                return None
         else:
-            raise AttributeError
+            return self.__getattribute__(item)
+
+    @property
+    def __dict__(self):
+        if self._dict is None:
+            self._dict = {field: getattr(self, field) for field in self._dict_name.keys()}
+        return self._dict
 
 
 class PerformanceManager:
@@ -90,7 +101,7 @@ class PerformanceManager:
 class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
 
-    _dict = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
+    _dict_name = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
     __factor_info = OrderedDict()
     for k, v in [('ar', '策略年化收益率(%)'), ('sharpe_ratio', '夏普比率'), ('volatility', '收益波动率'),
                  ('max_drawdown', '最大回撤(%)')]:
@@ -98,10 +109,11 @@ class StrategyPerformance(Performance):
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
     __optimize_info = {'optimize_info': '优化信息'}
-    _dict.update(__factor_info)
-    _dict.update(__trade_info)
-    _dict.update(__strategy_info)
-    _dict.update(__optimize_info)
+    _dict_name.update(__factor_info)
+    _dict_name.update(__trade_info)
+    _dict_name.update(__strategy_info)
+    _dict_name.update(__optimize_info)
+    _dict_name.update({'info_on_home_page': '首页信息'})
 
     @classmethod
     def get_factor_list(cls):
@@ -115,15 +127,8 @@ class StrategyPerformance(Performance):
     def get_strategy_info_list(cls):
         return cls.__strategy_info
 
-    def __init__(self, manager):
+    def __init__(self, manager=None):
         super(StrategyPerformance, self).__init__(manager)
-
-    def get_info_on_home_page(self):
-        fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
-        self._manager.strategy_summary  # 先进行计算
-        return [(self._manager.with_units(field),
-                 self._manager.strategy_summary['_'].fillna(0).to_dict()[self._manager.with_units(field)])
-                for field in fields]
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -567,6 +572,15 @@ class StrategyPerformanceManager(PerformanceManager):
         result.total = matrix[0][1] * matrix[1][0] / (matrix[0][0] * matrix[1][1])
         return result
 
+    @property
+    @cache_calculator
+    def info_on_home_page(self):
+        fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
+        self.strategy_summary  # 先进行计算把单位更新了
+        return [(self.with_units(field),
+                 self.strategy_summary['_'].fillna(0).to_dict()[self.with_units(field)])
+                for field in fields]
+
 
 class StrategyPerformanceManagerOffline(StrategyPerformanceManager):
     """只需要写根据输入计算输出的逻辑"""
@@ -647,10 +661,12 @@ class StrategyPerformanceManagerOnline(StrategyPerformanceManager):
     @property
     @cache_calculator
     def _rate_of_return_raw(self):
+        if not self._yield_raw:
+            return pd.Series(name='rate')
         temp = pd.DataFrame(self._yield_raw)
-        rate_of_return = pd.Series(temp['y'].values, index=temp['x'].map(pd.datetime.fromtimestamp))
+        rate_of_return = pd.Series(temp['y'].values, name='rate',
+                                   index=temp['x'].map(pd.datetime.fromtimestamp)) / 100 + 1
         rate_of_return.index.name = 'time_index'
-        rate_of_return.name = 'rate'
         return rate_of_return
 
     @property

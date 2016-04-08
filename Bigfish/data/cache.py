@@ -54,6 +54,7 @@ class RedisCache:
     也可以访问这个对象的成员变量 redis 获得Redis对象直接操作缓存
 
     """
+
     def __init__(self, user):
         self.pool = RedisPool()
         self.redis = redis.Redis(connection_pool=self.pool.pool)
@@ -78,7 +79,7 @@ class RedisCache:
             self.redis.set(cache_key, value)
         elif value is False:
             self.redis.set(cache_key, value)
-        elif isinstance(value, (int, float, str)):
+        elif isinstance(value, (int, float, str, bytes)):
             self.redis.set(cache_key, value)
         elif isinstance(value, (list, tuple)):
             self.put_list(cache_key, value)
@@ -105,13 +106,17 @@ class RedisCache:
                 self.redis.rpush(cache_key, values)
             elif isinstance(values[0], dict):
                 for dk in values[0].keys():
-                    self.redis.rpush("%s_%s" % (cache_key, dk), [dv[dk] for dv in values])
+                    self.redis.rpush("%s:%s" % (cache_key, dk), [dv[dk] for dv in values])
             else:
                 for dk in values[0].keys():
-                    self.redis.rpush("%s_%s" % (cache_key, dk), [dv[dk] for dv in values])
+                    self.redis.rpush("%s:%s" % (cache_key, dk), [dv[dk] for dv in values])
 
-    def get(self, key):
-        return self.redis.get(self.get_cache_key(key)).decode("utf8")
+    def get(self, key, decode=True):
+        result = self.redis.get(self.get_cache_key(key))
+        if decode:
+            return result.decode("utf8")
+        else:
+            return result
 
     def remove(self, key):
         self.redis.delete(self.get_cache_key(key))
@@ -127,6 +132,12 @@ class RedisCache:
         keys = self.redis.hkeys(self.get_cache_key(key))
         return [key.decode("utf8") for key in keys]
 
+    def hgetall(self, cache_key, decode=True):
+        result = self.redis.hgetall(self.get_cache_key(cache_key))
+        if decode:
+            return {k.decode('utf-8'):v.decode('utf-8') for k,v in result.items()}
+        else:
+            return result
 
     # =============列表相关方法============= #
     # 注意:以下dict_key是缓存dict对象列表时的dict的key #
@@ -162,9 +173,9 @@ class RedisCache:
 
     def get_cache_key(self, key, dict_key=None):
         if dict_key:
-            return "%s_%s_%s" % (self.user.user_id, key, dict_key)
+            return "%s:%s:%s" % (self.user, key, dict_key)
         else:
-            return "%s_%s" % (self.user.user_id, key)
+            return "%s:%s" % (self.user, key)
 
     def __check_key(self, key):
         if not isinstance(key, str):
@@ -173,10 +184,10 @@ class RedisCache:
 
 if __name__ == '__main__':
     from Bigfish.models.model import User
+
     r = RedisCache(User("10086"))
-    d = {"a":"123", "b":"456"}
-    r.put('test',  d)
+    d = {"a": "123", "b": "456"}
+    r.put('test', d)
     print(r.redis.hgetall("test"))
     # r.put_list("abc", [{"a":"123", "b":"456"}, {"a":"789", "b":"678"}])
     r.remove_keys("abc", "a", "b")
-

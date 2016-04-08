@@ -45,7 +45,7 @@ def tf2s(time_frame):
 
 
 def check_time_frame(time_frame):
-    if not time_frame in _TIME_FRAME.keys():
+    if time_frame not in _TIME_FRAME.keys():
         raise (ValueError("不合法的time_frame值:%s" % time_frame))
     return True
 

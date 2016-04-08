@@ -7,7 +7,7 @@ from threading import Thread, Event as ThreadEvent
 import sys
 import time
 # 自定义模块
-from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event
+from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event, EVENT_FINISH, EVENT_EXIT
 from Bigfish.utils.error import SlaverThreadError
 from Bigfish.config import THROW_ERROR
 
@@ -54,7 +54,7 @@ class EventEngine:
     def __init__(self):
         """初始化事件引擎"""
         # 事件队列
-        self.__queue = Queue()
+        self.__queue = None
         self.__count = 0  # 计数器，用于辅助实现优先级队列
         self.__file_opened = []
         # 事件引擎开关
@@ -74,6 +74,8 @@ class EventEngine:
         self.__handlers = {}
         # 注册异步事件
         self.register(EVENT_ASYNC, lambda event: event.content['func']())
+        self.register(EVENT_FINISH, self._stop)
+        self.register(EVENT_EXIT, self._stop)
 
     # ----------------------------------------------------------------------
     def __run(self):
@@ -83,9 +85,7 @@ class EventEngine:
                 *_, event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
                 self.__process(event)
             except Empty:
-                if self.__finished:
-                    self.__active = False
-                self.__is_empty.set()
+                time.sleep(0)
             except Exception as e:
                 if THROW_ERROR:
                     raise e
@@ -97,7 +97,6 @@ class EventEngine:
                 file.flush()
                 file.close()
         self.__file_opened.clear()
-        self.__is_empty.set()  # 被强制stop时，也要调用is_empty事件的set方法
 
     # ----------------------------------------------------------------------
     def __process(self, event):
@@ -122,6 +121,7 @@ class EventEngine:
     def start(self):
         """引擎启动"""
         # 将引擎设为启动
+        self.__queue = Queue()
         self.__active = True
         self.__finished = False
         self.__exc_type = None
@@ -133,27 +133,32 @@ class EventEngine:
         # 启动计时器，计时器事件间隔默认设定为1秒
         # self.__timer.start(1000)
 
+    def _stop(self, event):
+        """
+
+        :param event: event参数只是符合EventHandle的格式
+        """
+        self.__active = False
+
     # ----------------------------------------------------------------------
     def stop(self):
-        """停止引擎"""
+        """
+        停止引擎
+        """
         # 将引擎设为停止
         if self.__active:
             self.__active = False
             self.__thread.join()  # 等待事件处理线程退出
-        if self.__thread:
-            self.__thread = None
+        self.__thread = None
+        self.__queue = None  # 测试可能提前中止,必须清空队列中的事件
 
     # -----------------------------------------------------------------------
     def wait(self):
         """等待队列中所有事件被处理完成"""
-        if self.__active:
-            self.__is_empty.clear()
-            self.__is_empty.wait()
+        if self.__thread:
+            self.__thread.join()
         self.stop()
         self.throw_error()
-
-    def set_finished(self):
-        self.__finished = True
 
     # ----------------------------------------------------------------------
     def register(self, type, handler):
@@ -194,8 +199,9 @@ class EventEngine:
     # ----------------------------------------------------------------------
     def put(self, event):
         """向事件队列中存入事件"""
-        self.__count += 1
-        self.__queue.put((-event.priority, self.__count, event))
+        if self.__active:
+            self.__count += 1
+            self.__queue.put((-event.priority, self.__count, event))
 
     # ----------------------------------------------------------------------
     def throw_error(self):

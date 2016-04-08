@@ -12,6 +12,7 @@ import pytz
 import tushare
 from pandas.tseries.offsets import MonthBegin
 
+from Bigfish.models.quote import Bar
 from Bigfish.models.trade import *
 from Bigfish.utils.memory_profiler import profile as m_profile
 from Bigfish.utils.pandas_util import rolling_apply_2d
@@ -64,16 +65,27 @@ def cache_calculator(func):
 
 class Performance:
     _manager = None
-    _dict = {}
+    _dict_name = {}
 
     def __init__(self, manager=None):
-        self._manager = proxy(manager)  # 避免循环引用
+        if manager:
+            self._manager = proxy(manager)  # 避免循环引用
+        self._dict = None
 
     def __getattr__(self, item):
-        if item in self._dict:
-            return getattr(self._manager, item)
+        if item in self._dict_name:
+            if self._manager is not None:
+                return getattr(self._manager, item)
+            else:
+                return None
         else:
-            raise AttributeError
+            return self.__getattribute__(item)
+
+    @property
+    def __dict__(self):
+        if self._dict is None:
+            self._dict = {field: getattr(self, field) for field in self._dict_name.keys()}
+        return self._dict
 
 
 class PerformanceManager:
@@ -89,7 +101,7 @@ class PerformanceManager:
 class StrategyPerformance(Performance):
     """只需定义performance中应该有的属性"""
 
-    _dict = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
+    _dict_name = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
     __factor_info = OrderedDict()
     for k, v in [('ar', '策略年化收益率(%)'), ('sharpe_ratio', '夏普比率'), ('volatility', '收益波动率'),
                  ('max_drawdown', '最大回撤(%)')]:
@@ -97,10 +109,11 @@ class StrategyPerformance(Performance):
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
     __optimize_info = {'optimize_info': '优化信息'}
-    _dict.update(__factor_info)
-    _dict.update(__trade_info)
-    _dict.update(__strategy_info)
-    _dict.update(__optimize_info)
+    _dict_name.update(__factor_info)
+    _dict_name.update(__trade_info)
+    _dict_name.update(__strategy_info)
+    _dict_name.update(__optimize_info)
+    _dict_name.update({'info_on_home_page': '首页信息'})
 
     @classmethod
     def get_factor_list(cls):
@@ -114,15 +127,8 @@ class StrategyPerformance(Performance):
     def get_strategy_info_list(cls):
         return cls.__strategy_info
 
-    def __init__(self, manager):
+    def __init__(self, manager=None):
         super(StrategyPerformance, self).__init__(manager)
-
-    def get_info_on_home_page(self):
-        fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
-        self._manager.strategy_summary  # 先进行计算
-        return [(self._manager.with_units(field),
-                 self._manager.strategy_summary['_'].fillna(0).to_dict()[self._manager.with_units(field)])
-                for field in fields]
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -135,99 +141,52 @@ def _deal_float_error(dataframe, fill=0):
     return dataframe
 
 
-class StrategyPerformanceManagerOffline(PerformanceManager):
-    """只需要写根据输入计算输出的逻辑"""
+class StrategyPerformanceManager(PerformanceManager):
     _column_names = {}
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
         {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
-    def __init__(self, quotes, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, period=86400,
-                 num=20, **config):  # 1day = 86400seconds
-        super(StrategyPerformanceManagerOffline, self).__init__(StrategyPerformance)
-        self.__config = config
-        self.__symbols_pool = symbols_pool
-        self.__quotes_raw = quotes
-        self.__deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
-                                        columns=Deal.get_keys())  # deals in dataframe format
-        self.__positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
-                                            index=positions.keys(),
-                                            columns=Position.get_keys())  # positions in dataframe format
-        self.__deals_raw.sort_values('time', kind='mergesort', inplace=True)
-        self.__positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
-        self.__currency_symbol = currency_symbol  # 账户的结算货币类型
-        self.__annual_factor = 250  # 年化因子
-        self.__capital_base = capital_base
-        self.__period = period
-        self.__num = num
-        self.__precision = 4
-        self.__cache = {}  # 用于存放将要在函数中复用的变量
-        self.__units = {}  # 用于存储计算中需要用到的单位信息
-        self.__get_rate_of_return_raw
-        self.__quotes_raw = None  # 计算完毕折后就可以释放资源了
+    def __init__(self, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, **config):
+        super(StrategyPerformanceManager, self).__init__(StrategyPerformance)
+        self._config = config
+        self._symbols_pool = symbols_pool
+        self._deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
+                                       columns=Deal.get_keys())  # deals in dataframe format
+        self._positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
+                                           index=positions.keys(),
+                                           columns=Position.get_keys())  # positions in dataframe format
+        self._deals_raw.sort_values('time', kind='mergesort', inplace=True)
+        self._positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
+        self._currency_symbol = currency_symbol  # 账户的结算货币类型
+        self._annual_factor = 250  # 年化因子
+        self._capital_base = capital_base
+        self._precision = 4
+        self._cache = {}  # 用于存放将要在函数中复用的变量
+        self._units = {}  # 用于存储计算中需要用到的单位信息
 
     # @profile
     @property
     @cache_calculator
-    def __get_rate_of_return_raw(self):
-        interval = self.__period // self.__num
-        time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
-        self.__quotes_raw['time_index'] = self.__quotes_raw['close_time'].map(time_index_calculator)
-        self.__deals_raw['time_index'] = self.__deals_raw['time'].map(time_index_calculator)
-        self.__positions_raw = self.__positions_raw[self.__positions_raw['time_update'].notnull()]
-        # XXX 去掉初始时的零仓位,因为仓位信息中其他的一些None值也算na所以不能直接用dropna
-        self.__positions_raw['time_index'] = self.__positions_raw['time_update'].map(time_index_calculator)
-        quotes = {k: v.groupby(['time_index'])[['close', 'symbol', 'base_price']].last() for k, v in
-                  self.__quotes_raw.groupby('symbol')}
-        # TODO 计算交叉盘报价货币的汇率
-        deals_profit = self.__deals_raw['profit'].fillna(0).groupby(
-            self.__deals_raw['time_index']).sum().cumsum()
-        # XXX deals_profit为空，即没有下单的情况，非常丑陋的补丁 @ ^ @
-        if deals_profit.empty:
-            deals_profit = pd.DataFrame(columns=['profit'])
-            deals_profit.index.name = 'time_index'
-        # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
-        positions = {k: v.groupby('time_index')['type', 'price_current', 'volume'].last() for k, v in
-                     self.__positions_raw.groupby("symbol")}
-        # TODO 检查outer连接是否会影响交易日的计算
-        calculator = lambda x: self.__symbols_pool[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume,
-                                                                       commission=self.__config['commission'],
-                                                                       slippage=self.__config['slippage'],
-                                                                       base_price=x.base_price)
-        float_profits = {}
-        for symbol in self.__symbols_pool.keys():
-            if symbol in quotes:
-                if symbol in positions:
-                    float_profits[symbol] = quotes[symbol].join(positions[symbol], how='outer').fillna(
-                        method='ffill').fillna(0).apply(calculator, axis=1).fillna(0)
-                else:
-                    float_profits[symbol] = pd.Series(0, index=quotes[symbol].index)
-        float_profit = reduce(lambda x, y: operator.add(*map(lambda t: t.fillna(0), x.align(y))),
-                              float_profits.values(), pd.Series())
-        # XXX 多品种情况这里还要测试一下正确性
-        rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
-            0).sum(axis=1).apply(
-            lambda x: x / self.__capital_base + 1)  # rate_of_return represent net yield now / capital base
-        rate_of_return.index = rate_of_return.index.map(pd.datetime.fromtimestamp)
-        rate_of_return.name = 'rate'
-        return rate_of_return
+    def _rate_of_return_raw(self):
+        raise NotImplementedError
 
     def with_units(self, x):
-        return x + self.__units[x]
+        return x + self._units[x]
 
-    def __update_units(self, d):
+    def _update_units(self, d):
         for key, value in d.items():
-            self.__units.update(dict.fromkeys(value, key))
+            self._units.update(dict.fromkeys(value, key))
 
     @property
     @cache_calculator
     def is_negative(self):
-        return self.__rate_of_return['R'].min() <= 0
+        return self._rate_of_return['R'].min() <= 0
 
     @property
     @cache_calculator
-    def __rate_of_return(self):
+    def _rate_of_return(self):
         result = {}
-        result['R'] = self.__get_rate_of_return_raw  # 'R' means raw
+        result['R'] = self._rate_of_return_raw  # 'R' means raw
         # TODO 对爆仓情况的考虑
         if result['R'].min() <= 0:
             result['D'], self.__index_daily = \
@@ -248,13 +207,13 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
-    def __rate_of_return_percent(self):
+    def _rate_of_return_percent(self):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame(
                 {'rate': x['rate'].apply(partial(_get_percent_from_log)),
                  'trade_days': x['trade_days']}))(
-                self.__rate_of_return['D']
+                self._rate_of_return['D']
             )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
         result['M'] = result['D'].resample('MS', how='sum').dropna()
@@ -262,7 +221,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
 
     @property
     @cache_calculator
-    def __risk_free_rate(self):
+    def _risk_free_rate(self):
         result = {}
         result['D'] = \
             (lambda x: pd.DataFrame({'rate': x, 'trade_days': np.ones(x.shape)}, index=x.index))(
@@ -281,14 +240,14 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     # @profile
-    def __excess_return(self):
+    def _excess_return(self):
         result = {}
         result['D'] = \
             (lambda x, y: pd.DataFrame(
-                {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self.__annual_factor)) - y[
+                {'rate': x['rate'].apply(partial(_get_percent_from_log, factor=self._annual_factor)) - y[
                     'rate'].reindex(x.index),
                  'trade_days': x['trade_days']}))(
-                self.__rate_of_return['D'], self.__risk_free_rate['D']
+                self._rate_of_return['D'], self._risk_free_rate['D']
             )
         result['W'] = result['D'].resample('W-MON', how='sum')
         result['M'] = result['D'].resample('MS', how='sum')
@@ -297,13 +256,18 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def yield_curve(self):
-        rate_of_return = ((self.__rate_of_return['R'] - 1) * 100).apply(lambda x: round(x, self.__precision))
+        rate_of_return = ((self._rate_of_return['R'] - 1) * 100).apply(lambda x: round(x, self._precision))
         return [{'x': int(x.timestamp()), 'y': y} for x, y in zip(rate_of_return.index, rate_of_return.tolist())]
 
     @property
     @cache_calculator
     def optimize_info(self):
-        return pd.concat([self.trade_summary['total'], self.strategy_summary['_']])
+        temp = pd.Series()  # TODO 把这两项也加入策略的概要
+        temp['夏普比率'] = self.sharpe_ratio.total
+        temp['R平方'] = self.r_square.total
+        result = pd.concat([temp, self.strategy_summary['_'], self.trade_summary['total']])
+
+        return result
 
     @property
     @cache_calculator
@@ -317,8 +281,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             """
             return default if np.isnan(num) else num
 
-        self.__update_units(
-            {'(%s)' % self.__currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
+        self._update_units(
+            {'(%s)' % self._currency_symbol: ['净利', '盈利', '亏损', '平仓交易最大亏损', ],
              '(%)': ['账户资金收益率', '年化收益率', '最大回撤', '策略最大潜在亏损', ],
              '': ['最大潜在亏损收益比']}
         )
@@ -328,12 +292,12 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
         net_profit = trade_summary['total'][with_units('平均净利')] * trade_summary['total'][with_units('总交易数')]
         winning = trade_summary['total'][with_units('平均盈利')] * trade_summary['total'][with_units('盈利交易数')]
         losing = trade_summary['total'][with_units('平均亏损')] * trade_summary['total'][with_units('亏损交易数')]
-        rate_of_return = (net_profit / self.__capital_base) if self.__capital_base else 0
-        trade_days = self.__rate_of_return['D']['trade_days'].sum()
+        rate_of_return = (net_profit / self._capital_base) if self._capital_base else 0
+        trade_days = self._rate_of_return['D']['trade_days'].sum()
         # TODO 交易日计算是否正确
         annual_rate_of_return = _get_percent_from_log(math.log(rate_of_return + 1),
-                                                      self.__annual_factor / trade_days) if trade_days else 0
-        max_potential_losing = min(self.__rate_of_return['R'].min() - 1, 0)
+                                                      self._annual_factor / trade_days) if trade_days else 0
+        max_potential_losing = min(self._rate_of_return['R'].min() - 1, 0)
         max_losing = trade_summary['total'][with_units('最大亏损')]
         result = pd.DataFrame({
             '净利': nan2num(net_profit),
@@ -354,8 +318,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @cache_calculator
     @m_profile
     def trade_info(self):
-        positions = self.__positions_raw[['symbol', 'type', 'price_current', 'volume']]
-        deals = self.__deals_raw[
+        positions = self._positions_raw[['symbol', 'type', 'price_current', 'volume']]
+        deals = self._deals_raw[
             ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'signal']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
@@ -366,7 +330,7 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
             trade.index.name = 'deal_number'
             return trade
         trade_grouped = trade.groupby('symbol')
-        self.__cache['trade_grouped_by_symbol'] = trade_grouped
+        self._cache['trade_grouped_by_symbol'] = trade_grouped
         # XXX 此操作在trade为空时会报错
         trade['trade_number'] = trade_grouped.apply(
             lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
@@ -386,8 +350,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @cache_calculator
     @m_profile
     def trade_summary(self):
-        self.__update_units(
-            {'(%s)' % self.__currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
+        self._update_units(
+            {'(%s)' % self._currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
              '(%)': ['胜率'],
              '': ['总交易数', '未平仓交易数', '盈利交易数', '亏损交易数']})
         columns = ['total', 'long_position', 'short_position']
@@ -538,8 +502,8 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     # @profile
     def ar(self):
         # TODO 可以抽象为日分析，周分析，月分析之类的
-        calculator = lambda x: _get_percent_from_log(x['rate'], factor=self.__annual_factor / x['trade_days'])
-        ts = self.__rate_of_return['M']
+        calculator = lambda x: _get_percent_from_log(x['rate'], factor=self._annual_factor / x['trade_days'])
+        ts = self._rate_of_return['M']
         result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
@@ -549,22 +513,22 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
     @property
     @cache_calculator
     def risk_free_rate(self):
-        return self._roll_exp(self.__risk_free_rate['M'])
+        return self._roll_exp(self._risk_free_rate['M'])
 
     @property
     @cache_calculator
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
-        return self._roll_std(self.__rate_of_return_percent['D'])
+        return self._roll_std(self._rate_of_return_percent['D'])
 
     @property
     @cache_calculator
     def sharpe_ratio(self):
         expected = self.ar
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
-        std = _deal_float_error(self.volatility, fill=np.nan) * (self.__annual_factor ** 0.5)  # 年化标准差
-        std.total = self.volatility.total * (self.__annual_factor ** 0.5)
+        std = _deal_float_error(self.volatility, fill=np.nan) * (self._annual_factor ** 0.5)  # 年化标准差
+        std.total = self.volatility.total * (self._annual_factor ** 0.5)
         result = expected / std
         result.total = expected.total / std.total
         return result
@@ -589,16 +553,126 @@ class StrategyPerformanceManagerOffline(PerformanceManager):
                 columns=columns))(
                 *(lambda x, y: (x, y, y.shift(1).fillna(0)))(
                     *(lambda x: (x['rate'] * (x['rate'] < 0), x['rate'].cumsum()))(
-                        self.__rate_of_return['D']))))
-        result = pd.DataFrame([], index=ts.index.rename('time'))
+                        self._rate_of_return['D']))))
+        result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(_get_percent_from_log))
         result.total = -_get_percent_from_log(calculator(ts.values)[2])
         return _deal_float_error(result)
 
+    @property
+    @cache_calculator
+    def r_square(self):
+        result = DataFrameExtended()
+        matrix = (lambda x, y: np.cov(x, y))(
+            *(lambda x: (np.array(range(len(x))), x))(
+                self._rate_of_return_raw.resample('D', how='last').fillna(method='ffill')
+            )
+        )
+        result.total = matrix[0][1] * matrix[1][0] / (matrix[0][0] * matrix[1][1])
+        return result
 
-class StrategyPerformanceManageOnline(PerformanceManager):
-    pass
+    @property
+    @cache_calculator
+    def info_on_home_page(self):
+        fields = ["净利", "策略最大潜在亏损", "账户资金收益率", "平仓交易最大亏损", "年化收益率", "最大潜在亏损收益比"]
+        self.strategy_summary  # 先进行计算把单位更新了
+        return [(self.with_units(field),
+                 self.strategy_summary['_'].fillna(0).to_dict()[self.with_units(field)])
+                for field in fields]
+
+
+class StrategyPerformanceManagerOffline(StrategyPerformanceManager):
+    """只需要写根据输入计算输出的逻辑"""
+
+    def __init__(self, quotes, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, period=86400,
+                 num=20, **config):  # 1day = 86400seconds
+        super(StrategyPerformanceManagerOffline, self).__init__(deals, positions, symbols_pool,
+                                                                currency_symbol=currency_symbol,
+                                                                capital_base=capital_base, **config)
+        if quotes is not None:
+            self._quotes_raw = quotes
+        else:
+            self._quotes_raw = pd.DataFrame(columns=Bar.get_keys())
+        self._num = num
+        self._period = period
+        self._rate_of_return_raw
+        self._quotes_raw = None  # 计算完毕折后就可以释放资源了
+
+    # @profile
+    @property
+    @cache_calculator
+    def _rate_of_return_raw(self):
+        interval = self._period // self._num
+        time_index_calculator = lambda x: ((x - 1) // interval + 1) * interval
+        self._quotes_raw['time_index'] = self._quotes_raw['close_time'].map(time_index_calculator)
+        self._deals_raw['time_index'] = self._deals_raw['time'].map(time_index_calculator)
+        self._positions_raw = self._positions_raw[self._positions_raw['time_update'].notnull()]
+        # XXX 去掉初始时的零仓位,因为仓位信息中其他的一些None值也算na所以不能直接用dropna
+        self._positions_raw['time_index'] = self._positions_raw['time_update'].map(time_index_calculator)
+        quotes = {k: v.groupby(['time_index'])[['close', 'symbol', 'base_price']].last() for k, v in
+                  self._quotes_raw.groupby('symbol')}
+        # TODO 计算交叉盘报价货币的汇率
+        deals_profit = self._deals_raw['profit'].fillna(0).groupby(
+            self._deals_raw['time_index']).sum().cumsum()
+        # XXX deals_profit为空，即没有下单的情况，非常丑陋的补丁 @ ^ @
+        if deals_profit.empty:
+            deals_profit = pd.DataFrame(columns=['profit'])
+            deals_profit.index.name = 'time_index'
+        # XXX 注意初始时加入的未指明交易时间的”零“仓位的特殊处理,这里groupby中把time_index为NaN的行自动去除了
+        positions = {k: v.groupby('time_index')['type', 'price_current', 'volume'].last() for k, v in
+                     self._positions_raw.groupby("symbol")}
+        # TODO 检查outer连接是否会影响交易日的计算
+        calculator = lambda x: self._symbols_pool[x.symbol].lot_value((x.close - x.price_current) * x.type, x.volume,
+                                                                      commission=self._config['commission'],
+                                                                      slippage=self._config['slippage'],
+                                                                      base_price=x.base_price)
+        float_profits = {}
+        for symbol in self._symbols_pool.keys():
+            if symbol in quotes:
+                if symbol in positions:
+                    float_profits[symbol] = quotes[symbol].join(positions[symbol], how='outer').fillna(
+                        method='ffill').fillna(0).apply(calculator, axis=1).fillna(0)
+                else:
+                    float_profits[symbol] = pd.Series(0, index=quotes[symbol].index)
+        float_profit = reduce(lambda x, y: operator.add(*map(lambda t: t.fillna(0), x.align(y))),
+                              float_profits.values(), pd.Series())
+        # XXX 多品种情况这里还要测试一下正确性
+        rate_of_return = pd.DataFrame(float_profit).join(deals_profit, how='outer').fillna(method='ffill').fillna(
+            0).sum(axis=1).apply(
+            lambda x: x / self._capital_base + 1)  # rate_of_return represent net yield now / capital base
+        rate_of_return.index = rate_of_return.index.map(pd.datetime.fromtimestamp)
+        rate_of_return.name = 'rate'
+        return rate_of_return
+
+
+class StrategyPerformanceManagerOnline(StrategyPerformanceManager):
+    def __init__(self, yield_raw, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, **config):
+        super(StrategyPerformanceManagerOnline, self).__init__(deals, positions, symbols_pool,
+                                                               currency_symbol=currency_symbol,
+                                                               capital_base=capital_base, **config)
+        self._config = config
+        self._symbols_pool = symbols_pool
+        self._precision = 4
+        self._yield_raw = yield_raw
+        self._quotes_raw = None  # 计算完毕折后就可以释放资源了
+
+    # @profile
+    @property
+    @cache_calculator
+    def _rate_of_return_raw(self):
+        if not self._yield_raw:
+            return pd.Series(name='rate')
+        temp = pd.DataFrame(self._yield_raw)
+        rate_of_return = pd.Series(temp['y'].values, name='rate',
+                                   index=temp['x'].map(pd.datetime.fromtimestamp)) / 100 + 1
+        rate_of_return.index.name = 'time_index'
+        return rate_of_return
+
+    @property
+    @cache_calculator
+    def yield_curve(self):
+        return self._yield_raw
 
 
 class AccountPerformance(Performance):

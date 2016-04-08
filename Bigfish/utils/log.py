@@ -5,10 +5,23 @@ Created on Mon Nov  2 19:07:00 2015
 @author: BurdenBear
 """
 import os
+import logging
 from functools import partial
 
 from contextlib import redirect_stdout
 from Bigfish.store.directory import UserDirectory
+from Bigfish.models.model import User
+
+
+class LoggerInterface:
+    def __init__(self):
+        self._logger = None
+
+    def log(self, message, lvl=logging.NOTSET):
+        if self._logger:
+            self._logger.log(lvl, message)
+        else:
+            print("[日志优先级{0}]{1}".format(lvl, message))
 
 
 class Printer:
@@ -49,7 +62,7 @@ class FilePrinter:
         self.__user = user
         self.__name = name
         self.__engine = engine
-        self.__file_path = os.path.join(UserDirectory(user).get_temp_dir(), name + '.log')
+        self.__file_path = os.path.join(UserDirectory(User(user)).get_temp_dir(), name + '.log')
         self.__file = None
 
     def get_path(self):

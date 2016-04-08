@@ -76,7 +76,7 @@ class Signal:
         :param id:不需要传入，由SignalFactory自动管理。
         """
         self._id = id
-        self._user = user.user_id
+        self._user = user
         self._strategy = strategy
         self._name = name
         self._event_update = Event.create_event_type('SignalUpdate.%s.%s.%s' % (self._user, self._strategy, self._name),

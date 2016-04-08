@@ -36,7 +36,7 @@ class FactoryWithID:
         self._id = 0
 
     def new(self, *args, **kwargs):
-        return self._class(*args, **kwargs, id=self.next())
+        return self._class(*args, id=self.next(), **kwargs)
 
     def __call__(self, *args, **kwargs):
         return self.new(*args, **kwargs)

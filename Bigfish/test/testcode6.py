@@ -1,8 +1,9 @@
-# -*- conding:utf-8 -*-
+base = 100000
+
 
 def init():
     pass
 
 
-def handle():
-    print(EMA(5))
+def handle(times=0, length=10):
+    print(MA(60))

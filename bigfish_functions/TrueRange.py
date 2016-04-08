@@ -4,4 +4,9 @@
 #offset 位移数(从前多少根bar开始) int 默认为0（当前的真实波动区间）
 
 def TrueRange(offset=0):
-    return High[offset] - Low[offset]
+    if BarNum < offset:
+        return 0
+    elif BarNum == offset:
+        return H[offset] - L[offset]
+    else:
+        return max(H[offset] - L[offset], C[offset + 1] - L[offset] , H[offset] - C[offset + 1])

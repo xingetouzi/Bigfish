@@ -25,13 +25,13 @@ def backtest(conn, *args):
         cache = StrategyPerformanceCache(user)
         cache.put_object(performance)
         cache.put('setting', pickle.dumps(backtesting.get_setting()))
-        conn.write({"stat": "OK"})
+        conn.send({"stat": "OK"})
     except SlaverThreadError as e:
         tb_message = get_user_friendly_traceback(*e.get_exc())
-        conn.write({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
+        conn.send({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
     except Exception:
         tb_message = get_user_friendly_traceback(*sys.exc_info())
-        conn.write({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
+        conn.send({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
 
 
 def run_backtest(*args, callback=None):

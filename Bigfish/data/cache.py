@@ -15,8 +15,8 @@ def singleton(cls, *args, **kw):
 @singleton
 class RedisPool:
     def __init__(self):
-        self.host = '1490r19q77.51mypc.cn'  # 花生壳免费域名
-        # self.host = '192.168.0.159'
+        # self.host = '1490r19q77.51mypc.cn'  # 花生壳免费域名
+        self.host = '139.129.19.54'
         self.port = 6379
         self.db = 0
         self.password = 'Xinger520'

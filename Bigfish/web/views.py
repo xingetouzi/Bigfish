@@ -1,18 +1,22 @@
-import tornado.web
-import tornado.gen
+import os
 import pickle
 import sys
-import os
+import datetime
+from multiprocessing import Pipe, Process
+
+import tornado.gen
+import tornado.ioloop
+import tornado.web
 
 from Bigfish.app.backtest import Backtesting
-from Bigfish.performance.performance_cache import StrategyPerformanceCache
-from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
-from Bigfish.utils.common import string_to_html
 from Bigfish.models.model import User
+from Bigfish.performance.performance_cache import StrategyPerformanceCache
 from Bigfish.store import UserDirectory
+from Bigfish.utils.common import string_to_html
+from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 
 
-def run_backtest(*args, callback=None):
+def backtest(conn, *args):
     try:
         user = args[0]
         backtesting = Backtesting(*args)
@@ -21,19 +25,29 @@ def run_backtest(*args, callback=None):
         cache = StrategyPerformanceCache(user)
         cache.put_object(performance)
         cache.put('setting', pickle.dumps(backtesting.get_setting()))
-        callback({"stat": "OK"})
+        conn.send({"stat": "OK"})
     except SlaverThreadError as e:
         tb_message = get_user_friendly_traceback(*e.get_exc())
-        callback({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
+        conn.send({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
     except Exception:
         tb_message = get_user_friendly_traceback(*sys.exc_info())
-        callback({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
+        conn.send({"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))})
+
+
+def run_backtest(*args, callback=None):
+    parent_conn, child_conn = Pipe()
+    p = Process(target=backtest, args=(child_conn,) + args)
+    p.start()
+    result = parent_conn.recv()
+    p.join()
+    callback(result)
 
 
 class BaseHandler(tornado.web.RequestHandler):
     def __init__(self, *argc, **argkw):
         super(BaseHandler, self).__init__(*argc, **argkw)
 
+    @tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
         code = self.get_argument('code', '').replace('\t', '    ')
@@ -47,8 +61,16 @@ class BaseHandler(tornado.web.RequestHandler):
         user_id = self.get_argument('user_id', None)
         if user_id:
             self.write('callback(')
-            result = yield tornado.gen.Task(run_backtest, user_id, name, code, [symbols], time_frame, start_time,
-                                            end_time, commission, slippage)
+            try:
+                result = yield tornado.gen.with_timeout(datetime.timedelta(2),
+                                                        tornado.gen.Task(run_backtest, user_id, name, code, [symbols],
+                                                                         time_frame, start_time,
+                                                                         end_time, commission, slippage),
+                                                        tornado.ioloop.IOLoop.instance())
+            except TimeoutError:
+                self.write({'stat': 'FALSE', 'error': '回测超时'})
+                self.finish()
+                return
             if result['stat'] == 'OK':
                 cache = StrategyPerformanceCache(user_id)
                 performance = cache.get_object()

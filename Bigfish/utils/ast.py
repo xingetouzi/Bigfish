@@ -103,9 +103,9 @@ class LocalsInjector(ast.NodeVisitor):
 
         def trans(return_node):
             if return_node:
-                return ast.Expr(value=ast.Yield(value=return_node.value))
+                return [ast.Expr(value=ast.Yield(value=return_node.value)), ast.Continue()]
             else:
-                return ast.Expr(value=ast.Yield(value=None))
+                return [ast.Expr(value=ast.Yield(value=None)), ast.Continue()]
 
         return ReturnTransformer(target=trans, add=True).trans(node)
 
@@ -255,7 +255,7 @@ class ReturnTransformer(ast.NodeTransformer):
     def visit_Return(self, node):
         if not self.__in_func_def:
             self.__has_return = True
-            return LocationPatcher(node).visit(self.__target(node))
+            return self.patch(node, self.__target(node))
         else:
             return node
 
@@ -266,11 +266,23 @@ class ReturnTransformer(ast.NodeTransformer):
         self.__in_func_def = old
         return result
 
+    @staticmethod
+    def patch(bench, node):
+        patcher = LocationPatcher(bench)
+        if isinstance(node, list):
+            return list(map(lambda x: patcher.visit(x), node))
+        else:
+            return patcher.visit(node)
+
     def trans(self, node):
         self.__has_return = False
         node = self.visit(node)
         if (not self.__has_return) and self.__add:
-            node.body.append(LocationPatcher(node.body[-1]).visit(self.__target(None)))
+            to_add = self.patch(node.body[-1], self.__target(None))
+            if isinstance(to_add, list):
+                node.body.extend(to_add)
+            else:
+                node.body.append(to_add)
         return node
 
 

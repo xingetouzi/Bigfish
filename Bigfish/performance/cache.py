@@ -23,8 +23,19 @@ class RedisObject:
             raise AttributeError
 
 
-class ComplexObjectRedisCache(RedisCache):
+class RedisCacheWithExpire(RedisCache):
+    _time_expire = None
+
+    def put(self, key, value):
+        super().put(key, value)
+        if self._time_expire is not None:
+            cache_key = self.get_cache_key(key)
+            self.redis.expire(cache_key, self._time_expire)
+
+
+class ComplexObjectRedisCache(RedisCacheWithExpire):
     _cls = object
+    _time_expire = 15 * 60
 
     def __init__(self, user):
         super(ComplexObjectRedisCache, self).__init__(user)
@@ -43,8 +54,9 @@ class StrategyPerformanceCache(ComplexObjectRedisCache):
     _cls = StrategyPerformance
 
 
-class StrategyPerformanceJsonCache(RedisCache):
+class StrategyPerformanceJsonCache(RedisCacheWithExpire):
     _cls = StrategyPerformance
+    _time_expire = 15 * 60
 
     def __init__(self, user):
         super().__init__(user)

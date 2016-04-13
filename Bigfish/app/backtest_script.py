@@ -5,7 +5,7 @@ import os
 
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 from Bigfish.app.backtest import Backtesting
-from Bigfish.performance.performance_cache import StrategyPerformanceJsonCache, StrategyPerformanceCache
+from Bigfish.performance.cache import StrategyPerformanceJsonCache, StrategyPerformanceCache
 from Bigfish.utils.common import string_to_html
 from Bigfish.models import User
 from Bigfish.store import UserDirectory

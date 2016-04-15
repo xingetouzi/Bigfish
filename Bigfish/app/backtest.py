@@ -98,7 +98,7 @@ class Backtesting(LoggerInterface):
         self.__strategy_engine.start()
         self.__data_generator.start()
         if refresh:
-            self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
+            self.__performance_manager = self.__strategy_engine.wait()
             self.__data_generator.stop()
             if MEMORY_DEBUG:
                 print('gb:\n%s' % sys.getsizeof(gc.garbage))  # 写日志，计算垃圾占用的内存等
@@ -111,7 +111,7 @@ class Backtesting(LoggerInterface):
                 print(gb_log)
             result = self.__performance_manager
         else:
-            result = self.__strategy_engine.wait(self.__get_performance_manager)
+            result = self.__strategy_engine.wait
         self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
         return result
 
@@ -249,55 +249,55 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode13.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode15.py', 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-02-01', '2015-03-01')
-    print(backtest.progress)
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
+    # print(backtest.progress)
     backtest.start()
     performance = backtest.get_performance()  # 获取策略的各项指标
     translator = DataframeTranslator()
     user_dir = UserDirectory(user)
     # print(user_dir.get_sys_func_list())
-    print(backtest.get_profit_records())  # 获取浮动收益曲线
+    # print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
-    print(performance._dict_name)
+    # print(performance._dict_name)
     for k, v in performance.__dict__.items():
         print("%s\n%s" % (k, v))
-        # print('trade_info:\n%s' % performance._manager.trade_info)
-        # print('trade_summary:\n%s' % performance.trade_summary)
-        # print('trade_details:\n%s' % performance.trade_details)
-        # print(translator.dumps(performance._manager.trade_info))
-        # print(translator.dumps(performance.trade_details))
-        # print('strategy_summary:\n%s' % performance.strategy_summary)
-        # print('optimize_info:\n%s' % performance.optimize_info)
-        # print('info_on_home_page\n%s' % performance.info_on_home_page())
-        # print(performance.get_factor_list())
-        # print(performance.yield_curve)
-        # print('ar:\n%s' % performance.ar)  # 年化收益率
-        # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
-        # print('volatility:\n%s' % performance.volatility)  # 波动率
-        # print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
-        # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
-        # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
-        # print(time.time() - start_time)
-        # print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
-        # print(time.time() - start_time)
-        # print(backtest.progress)
-        # print(performance.trade_details)
-        # print(Strategy.API_FUNCTION)
-        # print(Strategy.API_VARIABLES)
-        # start_time = time.time()
-        # # paras = {
-        # #     'handle': {'TakeProfit': {'start': 46, 'end': 54, 'step': 1},
-        # #                'StopLoss': {'start': 96, 'end': 104, 'step': 1}
-        # #                }
-        # # }
-        # paras = {
-        #     'handle': {'fastlength': {'start': 6, 'end': 14, 'step': 1},
-        #                'slowlength': {'start': 16, 'end': 24, 'step': 1}
-        #                }
-        # }
-        # optimize = backtest.optimize(paras, None, None)
-        # print('optimize\n%s' % optimize)
-        # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))
+    # print('trade_info:\n%s' % performance._manager.trade_info)
+    # print('trade_summary:\n%s' % performance.trade_summary)
+    # print('trade_details:\n%s' % performance.trade_details)
+    # print(translator.dumps(performance._manager.trade_info))
+    # print(translator.dumps(performance.trade_details))
+    # print('strategy_summary:\n%s' % performance.strategy_summary)
+    # print('optimize_info:\n%s' % performance.optimize_info)
+    # print('info_on_home_page\n%s' % performance.info_on_home_page())
+    # print(performance.get_factor_list())
+    # print(performance.yield_curve)
+    # print('ar:\n%s' % performance.ar)  # 年化收益率
+    # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
+    # print('volatility:\n%s' % performance.volatility)  # 波动率
+    # print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
+    # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
+    # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
+    # print(time.time() - start_time)
+    # print('output:\n%s' % get_first_n_lines(backtest.get_output(), 100))
+    # print(time.time() - start_time)
+    # print(backtest.progress)
+    # print(performance.trade_details)
+    # print(Strategy.API_FUNCTION)
+    # print(Strategy.API_VARIABLES)
+    # start_time = time.time()
+    # # paras = {
+    # #     'handle': {'TakeProfit': {'start': 46, 'end': 54, 'step': 1},
+    # #                'StopLoss': {'start': 96, 'end': 104, 'step': 1}
+    # #                }
+    # # }
+    # paras = {
+    #     'handle': {'fastlength': {'start': 6, 'end': 14, 'step': 1},
+    #                'slowlength': {'start': 16, 'end': 24, 'step': 1}
+    #                }
+    # }
+    # optimize = backtest.optimize(paras, None, None)
+    # print('optimize\n%s' % optimize)
+    # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))

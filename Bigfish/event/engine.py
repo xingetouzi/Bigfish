@@ -87,10 +87,9 @@ class EventEngine:
             except Empty:
                 time.sleep(0)
             except Exception as e:
+                self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 if THROW_ERROR:
                     raise e
-                else:
-                    self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 self.__active = False
         for file in self.__file_opened:
             if not file.closed:

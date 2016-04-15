@@ -219,7 +219,11 @@ class DataCache:
         if self.min_time_frame in ['M1', 'M5']:
             return 1
         time = tf2s(self.min_time_frame)
-        return 2 * 60 * 60 // time  # 统计频率为2H一次
+        result = 2 * 60 * 60 // time  # 统计频率为2H一次
+        if result == 0:
+            return 1
+        else:
+            return result
 
     data = property(get_data)
     symbol_pool = property(get_symbol_pool)

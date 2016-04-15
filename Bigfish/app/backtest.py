@@ -98,7 +98,7 @@ class Backtesting(LoggerInterface):
         self.__strategy_engine.start()
         self.__data_generator.start()
         if refresh:
-            self.__performance_manager = self.__strategy_engine.wait()
+            self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
             self.__data_generator.stop()
             if MEMORY_DEBUG:
                 print('gb:\n%s' % sys.getsizeof(gc.garbage))  # 写日志，计算垃圾占用的内存等
@@ -111,7 +111,7 @@ class Backtesting(LoggerInterface):
                 print(gb_log)
             result = self.__performance_manager
         else:
-            result = self.__strategy_engine.wait
+            result = self.__strategy_engine.wait()
         self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
         return result
 
@@ -249,10 +249,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode15.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode9.py', 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-12-01')
     # print(backtest.progress)
     backtest.start()
     performance = backtest.get_performance()  # 获取策略的各项指标

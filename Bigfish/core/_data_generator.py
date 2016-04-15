@@ -81,6 +81,8 @@ class DataGenerator:
             self.__handle(data)
         except Empty:
             pass
+        else:
+            self.stop()
 
     def start(self):
         self._finished = False

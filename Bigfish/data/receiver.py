@@ -40,7 +40,7 @@ class EchoClient(LineReceiver):
         # self.sendLine(self.end)
 
     def lineReceived(self, line):
-        # print("receive:", line)
+        print("receive:", line)
         pd = json.loads(line.decode("utf-8"))
         if "instrument" in pd:  # 忽略非行情消息(如登录消息,是否登录成功)
             symbol = pd["instrument"]
@@ -87,14 +87,26 @@ class EchoClientFactory(ClientFactory):
         self.done.callback(None)
 
 
-def main(reactor):
-    factory = EchoClientFactory()
-    reactor.connectTCP('112.74.195.144', 9123, factory)
-    return factory.done
+class Runnable:
 
+    def __init__(self):
+        self.factory = EchoClientFactory()
+
+    def connect(self, reactor):
+        # factory = EchoClientFactory()
+        reactor.connectTCP('112.74.195.144', 9123, self.factory)
+        return self.factory.done
+
+    def start(self):
+        task.react(self.connect)
+
+    def stop(self):
+        self.factory.stopFactory()
 
 if __name__ == '__main__':
     def handle(tick):
         print(tick)
     register_event("EUR/USD", handle)
-    task.react(main)
+    runnable = Runnable()
+    # task.react(runnable.start)
+    runnable.start()

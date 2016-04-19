@@ -6,11 +6,12 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 import time
+from dateutil.parser import parse
 from collections import defaultdict
 from weakref import proxy
 
 # 自定义模块
-from Bigfish.core import AccountManager
+from Bigfish.core import AccountManager, FDTAccountManager
 from Bigfish.event.event import *
 from Bigfish.event.engine import EventEngine
 from Bigfish.models.symbol import Forex
@@ -30,7 +31,10 @@ class StrategyEngine(object):
         """Constructor"""
         self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
-        self.__account_manager = AccountManager(self, **config)  # 账户管理
+        if is_backtest:
+            self.__account_manager = AccountManager(self, **config)  # 账户管理
+        else:
+            self.__account_manager = FDTAccountManager(self, **config)
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self)  # 数据中继站
         self.__strategys = {}  # 策略管理器
@@ -63,6 +67,12 @@ class StrategyEngine(object):
     def get_symbol_timeframe(self):
         return self.__data_cache.get_cache_info().keys()
 
+    def get_capital_cash(self):
+        return self.__account_manager.capital_cash
+
+    def get_capital_net(self):
+        return self.__account_manager.capital_net
+
     # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
     # property:
     current_time = property(get_current_time)
@@ -74,6 +84,8 @@ class StrategyEngine(object):
     strategys = property(get_strategys)
     profit_records = property(get_profit_records)
     symbol_timeframe = property(get_symbol_timeframe)
+    capital_cash = property(get_capital_cash)
+    capital_net = property(get_capital_cash)
 
     def get_base_price(self, code, time_frame):
         symbol = self.symbol_pool[code]
@@ -92,20 +104,29 @@ class StrategyEngine(object):
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
 
-    def update_records(self, positions, time, time_frame=None):
-        self.__account_manager.update_records(positions, time, time_frame=time_frame)
+    def update_net(self, positions, time, time_frame=None):
+        return self.__account_manager.update_net(positions, time, time_frame=time_frame)
 
-    def update_deal(self, deal):
-        self.__account_manager.update_deal(deal)
+    def update_cash(self, deal):
+        return self.__account_manager.update_cash(deal)
+
+    def send_order_to_broker(self, order):
+        return self.__account_manager.send_order_to_broker(order)
+
+    def order_status(self):
+        return self.__account_manager.order_status()
+
+    def position_status(self):
+        return self.__account_manager.open_positions()
 
     def open_position(self, *args, **kwargs):
-        self.__trade_manager.open_position(*args, **kwargs)
+        return self.__trade_manager.open_position(*args, **kwargs)
 
     def close_position(self, *args, **kwargs):
-        self.__trade_manager.close_position(*args, **kwargs)
+        return self.__trade_manager.close_position(*args, **kwargs)
 
     def set_capital_base(self, base):
-        self.__account_manager.set_capital_base(base)
+        self.__account_manager.capital_base = base
 
     # ----------------------------------------------------------------------
     def add_cache_info(self, *args, **kwargs):
@@ -293,7 +314,7 @@ class DataCache:
     def on_next_bar(self, event):
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
-            self._engine.update_records(self._engine.get_current_positions(), self.current_time)
+            self._engine.update_net(self._engine.get_current_positions(), self.current_time)
 
 
 class TradeManager:
@@ -369,11 +390,32 @@ class TradeManager:
             # TODO加入手续费等
             order.deal = deal.get_id()
             deal.order = order.get_id()
-            return [deal], {}
-            # TODO 市价单成交
+            order_id = order.get_id()
         else:
-            pass
-            # TODO 实盘交易
+            cash_old = self.engine.capital_cash
+            order_id = self.engine.send_order_to_broker(order)
+            if order_id != -1:
+                res = self.engine.order_status()
+                if res['ok']:
+                    order_status = res.get('orders', [])
+                    for state in order_status:
+                        if state['id'] == order_id:
+                            deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
+                            deal.type = 1 - ((order.type & 1) << 1)
+                            deal.volume = state['quantity']
+                            deal.time = parse(state['created']).timestamp()
+                            deal.price = state['avgPx']
+                            deal.symbol = order.symbol
+                            deal.order = order.get_id()
+                            cash_now = self.engine.capital_cash
+                            deal.profit = cash_now - cash_old
+                            break
+        if order_id != -1:
+            self.__update_position(deal)  # TODO 加入事件引擎，支持异步
+            self.__orders_done[order.get_id()] = order
+            return order.get_id()
+        else:
+            return -1
 
     # ----------------------------------------------------------------------
     def send_order(self, order):
@@ -392,13 +434,9 @@ class TradeManager:
                 # send_order_to_broker = async_handle(self.__event_engine, self.__update_position)
                 # (self.__send_order_to_broker)
                 # send_order_to_broker(order)
-                result = self.__send_order_to_broker(order)
-                self.__orders_done[order.get_id()] = order
-                self.__update_position(*result[0])
-                result[0].clear()  # 去掉对deal的引用
+                return self.__send_order_to_broker(order)
             else:
                 self.__orders_todo[order.get_id()] = order
-            return order.get_id()
         else:
             return -1
             # ----------------------------------------------------------------------
@@ -425,55 +463,76 @@ class TradeManager:
 
         if deal.volume == 0:
             return
-        symbol = self.engine.symbol_pool[deal.symbol]
         position_prev = self.__current_positions[deal.symbol]
         position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
         position_prev.next_id = position_now.get_id()
-        position = position_prev.type
-        # XXX常量定义改变这里的映射函数也可能改变
-        if deal.type * position >= 0:
-            deal.entry = DEAL_ENTRY_IN
-            if position == 0:  # open position
-                position_now.price_open = deal.price
-                position_now.time_open = deal.time
-                position_now.time_open_msc = deal.time_msc
-            else:  # overweight position
-                position_now.time_open = position_prev.time_open
-                position_now.time_open_msc = position_prev.time_open_msc
-            position_now.volume = deal.volume + position_prev.volume
-            position_now.type = deal.type
-            position_now.price_current = (position_prev.price_current * position_prev.volume
-                                          + deal.price * deal.volume) / position_now.volume
+        if self.__is_backtest:
+            symbol = self.engine.symbol_pool[deal.symbol]
+            position = position_prev.type
+            # XXX常量定义改变这里的映射函数也可能改变
+            if deal.type * position >= 0:
+                deal.entry = DEAL_ENTRY_IN
+                if position == 0:  # open position
+                    position_now.price_open = deal.price
+                    position_now.time_open = deal.time
+                    position_now.time_open_msc = deal.time_msc
+                else:  # overweight position
+                    position_now.time_open = position_prev.time_open
+                    position_now.time_open_msc = position_prev.time_open_msc
+                position_now.volume = deal.volume + position_prev.volume
+                position_now.type = deal.type
+                position_now.price_current = (position_prev.price_current * position_prev.volume
+                                              + deal.price * deal.volume) / position_now.volume
+            else:
+                time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
+                base_price = self.engine.get_base_price(deal.symbol, time_frame)
+                contracts = position_prev.volume - deal.volume
+                position_now.volume = abs(contracts)
+                position_now.type = position * sign(contracts)
+                if (position_now.type == position) | (position_now.type == 0):
+                    # close or underweight position
+                    deal.entry = DEAL_ENTRY_OUT
+                    deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
+                                                   commission=self.__config['commission'],
+                                                   slippage=self.__config['slippage'], base_price=base_price)
+                    if position_now.type == 0:  # 防止浮点数精度可能引起的问题
+                        position_now.price_current = 0
+                        position_now.volume = 0
+                    else:
+                        position_now.price_current = position_prev.price_current
+                    position_now.time_open = position_prev.time_open
+                    position_now.time_open_msc = position_prev.time_open_msc
+                    # XXX 反向开仓将被拆为两单
+                    """
+                elif position_now.type != position:  # reverse position
+                        deal.entry = DEAL_ENTRY_INOUT
+                    deal.profit = (deal.price - position_prev.price_current) * position * position_prev.volume
+                    position_now.price_current = deal.price
+                    position_now.time_open = deal.time
+                    position_now.time_open_msc = deal.time_msc
+                    position_now.price_open = position_now.price_current
+                    """
+
+            if deal.profit != 0:
+                self.engine.update_cash(deal)
         else:
-            time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
-            base_price = self.engine.get_base_price(deal.symbol, time_frame)
-            contracts = position_prev.volume - deal.volume
-            position_now.volume = abs(contracts)
-            position_now.type = position * sign(contracts)
-            if (position_now.type == position) | (position_now.type == 0):
-                # close or underweight position
-                deal.entry = DEAL_ENTRY_OUT
-                deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
-                                               commission=self.__config['commission'],
-                                               slippage=self.__config['slippage'], base_price=base_price)
-                if position_now.type == 0:  # 防止浮点数精度可能引起的问题
-                    position_now.price_current = 0
-                    position_now.volume = 0
+            res = self.engine.position_status()
+            if res['ok']:
+                qty = res['openPositions']['qty']
+                position_now.symbol = deal.symbol
+                position_now.price_current = qty
+                position_now.type = sign(qty)
+                position_now.volume = round(abs(qty) / 100000, 2)  # 精确到迷你手
+                position_now.price_current = qty['price']
+                if position_now.type * position_prev.type >= 0:
+                    position_now.time_open = position_prev.time_open
+                    position_now.time_open_msc = position_prev.time_open_msc
+                    position_now.price_open = position_prev.price_open
                 else:
-                    position_now.price_current = position_prev.price_current
-                position_now.time_open = position_prev.time_open
-                position_now.time_open_msc = position_prev.time_open_msc
-                # XXX 反向开仓将被拆为两单
-                """
-            elif position_now.type != position:  # reverse position
-                    deal.entry = DEAL_ENTRY_INOUT
-                deal.profit = (deal.price - position_prev.price_current) * position * position_prev.volume
-                position_now.price_current = deal.price
-                position_now.time_open = deal.time
-                position_now.time_open_msc = deal.time_msc
-                position_now.price_open = position_now.price_current
-                """
+                    position_now.price_open = qty['price']
+                    position_now.time_open = deal.time
+                    position_now.time_open_msc = deal.time_msc
         position_now.time_update = deal.time
         position_now.time_update_msc = deal.time_msc
         deal.position = position_now.get_id()
@@ -481,8 +540,6 @@ class TradeManager:
         self.__current_positions[deal.symbol] = position_now
         self.__positions[position_now.get_id()] = position_now
         self.__deals[deal.get_id()] = deal
-        if deal.profit != 0:
-            self.engine.update_deal(deal)
 
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,

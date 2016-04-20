@@ -4,7 +4,6 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-import codecs
 import gc
 import logging
 from functools import partial
@@ -55,10 +54,6 @@ class Backtesting(LoggerInterface):
                                               lambda x: self.__strategy_engine.put_event(x.to_event()),
                                               lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
         self.__initialized = True
-
-    @classmethod
-    def set_data_generator(cls, data_generator):
-        cls.dg_cls = data_generator
 
     def set_config(self, **kwargs):
         self.__config.update(kwargs)
@@ -240,6 +235,7 @@ if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
+    import codecs
 
 
     def get_first_n_lines(string, n):

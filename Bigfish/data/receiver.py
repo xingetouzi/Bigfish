@@ -50,9 +50,9 @@ class DataClient(LineReceiver):
                         del self.__tict_bar[symbol]
                         price = (pd["ask"] + pd["bid"]) / 2
                         self.__tict_bar[symbol] = {"start": bar["ctime"] +
-                                                           (pd["ctime"] - bar["ctime"]) // tick_period * tick_period,
-                                                  "ctime": pd["ctime"], "open": price, "low": price,
-                                                  "high": price, "close": price}
+                                                            (pd["ctime"] - bar["ctime"]) // tick_period * tick_period,
+                                                   "ctime": pd["ctime"], "open": price, "low": price,
+                                                   "high": price, "close": price}
                     else:
                         price = (pd["ask"] + pd["bid"]) / 2
                         bar["close"] = price
@@ -64,14 +64,51 @@ class DataClient(LineReceiver):
                 else:
                     price = (pd["ask"] + pd["bid"]) / 2
                     self.__tict_bar[symbol] = {"start": pd["ctime"], "ctime": pd["ctime"], "open": price, "low": price,
-                                              "high": price, "close": price}
+                                               "high": price, "close": price}
+
+        if line == self.end:
+            self.transport.loseConnection()
+
+
+class TickDataClient(LineReceiver):
+    end = "Bye-bye!"
+    delimiter = b"\n"
+
+    def __init__(self):
+        self.factory = None
+
+    @property
+    def _tick_event(self):
+        return self.factory._tick_event
+
+    def connectionMade(self):
+        self.sendLine(
+            ("{\"messageType\":5, \"username\":\"%s\", \"password\":\"%s\"}" % ("Admin", "Xinger520")).encode("utf-8"))
+        self.sendLine("{\"messageType\":2}".encode("utf-8"))
+        # self.sendLine(self.end)
+
+    def lineReceived(self, line):
+        # print("receive:", line)
+        pd = json.loads(line.decode("utf-8"))
+        if "instrument" in pd:  # 忽略非行情消息(如登录消息,是否登录成功)
+            symbol = pd["instrument"]
+            if symbol in self._tick_event:  # 如果注册了这个品种的数据事件
+                print(pd)
+                tick = Tick(symbol)
+                price = (pd['ask'] + pd['bid']) / 2
+                tick.highPrice = price
+                tick.lowPrice = price
+                tick.openPrice = price
+                tick.lastPrice = price
+                tick.time = pd["ctime"]
+                self._tick_event[symbol](tick)
 
         if line == self.end:
             self.transport.loseConnection()
 
 
 class DataClientFactory(ClientFactory):
-    protocol = DataClient
+    protocol = TickDataClient
 
     def __init__(self):
         self.done = Deferred()

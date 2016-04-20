@@ -4,7 +4,7 @@ Created on Thu Nov 26 10:06:21 2015
 
 @author: BurdenBear
 """
-from Bigfish.event.event import EVENT_SYMBOL_BAR_RAW, Event
+from Bigfish.event.event import EVENT_SYMBOL_BAR_RAW, Event, EVENT_SYMBOL_TICK_RAW
 from Bigfish.models.common import DictLike
 from Bigfish.utils.common import tf2s
 from datetime import datetime
@@ -71,6 +71,10 @@ class Tick:
     __slots__.extend(["askPrice%s" % (x + 1) for x in range(__DEPTH)])
     __slots__.extend(["askVolume%s" % (x + 1) for x in range(__DEPTH)])
 
+    __keys__ = __slots__ + ['datetime']
+
+    datetime = property(lambda self: datetime.fromtimestamp(self.timestamp))
+
     @classmethod
     def get_depth(cls):
         return cls.__DEPTH
@@ -100,6 +104,10 @@ class Tick:
             setattr(self, "bidVolume%s" % (depth + 1), 0)
             setattr(self, "askPrice%s" % (depth + 1), 0)
             setattr(self, "askVolume%s" % (depth + 1), 0)
+
+    def to_event(self):
+        event = Event(EVENT_SYMBOL_TICK_RAW[self.symbol], data=self)
+        return event
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ from Bigfish.event.event import *
 from Bigfish.event.engine import EventEngine
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
+from Bigfish.models.quote import Bar
 from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
 
@@ -36,7 +37,7 @@ class StrategyEngine(object):
         else:
             self.__account_manager = FDTAccountManager(self, **config)
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
-        self.__data_cache = DataCache(self)  # 数据中继站
+        self.__data_cache = DataCache(self, is_backtest)  # 数据中继站
         self.__strategys = {}  # 策略管理器
 
     def get_data(self):
@@ -117,7 +118,7 @@ class StrategyEngine(object):
         return self.__account_manager.order_status()
 
     def position_status(self):
-        return self.__account_manager.open_positions()
+        return self.__account_manager.position_status()
 
     def open_position(self, *args, **kwargs):
         return self.__trade_manager.open_position(*args, **kwargs)
@@ -209,14 +210,17 @@ class StrategyEngine(object):
 class DataCache:
     """数据缓存器"""
     CACHE_MAXLEN = 1000  # 默认的缓存长度
+    TICK_INTERVAL = 10  # Tick数据推送间隔
 
     @classmethod
     def set_default_maxlen(cls, maxlen):
         cls.CACHE_MAXLEN = maxlen
 
-    def __init__(self, engine):
+    def __init__(self, engine, is_backtest):
+        self._tick_cache = {}
         self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
         self._engine = proxy(engine)  # 避免循环引用
+        self._is_backtest = is_backtest
         self._running = False
         self._data = {}
         self._symbol_pool = {}
@@ -281,7 +285,10 @@ class DataCache:
                 maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
-            self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
+            if self._is_backtest:
+                self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
             # TODO 这里只考虑了单品种情况
             self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
         self._count = 0
@@ -297,24 +304,66 @@ class DataCache:
     def on_bar(self, event):
         if self._running:
             bar = event.content['data']
-            symbol = bar.symbol
-            time_frame = bar.time_frame
-            self.current_time = bar.close_time if not self.current_time else max(self.current_time, bar.close_time)
-            last_time = self._data[time_frame]['timestamp'][symbol][0] \
-                if self._data[time_frame]['timestamp'][symbol] else 0
-            if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
-                for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
-                    self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
-                self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
-            else:
-                for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
-                    self._data[time_frame][field][symbol][0] = getattr(bar, field)
-                self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+            self.update_bar(bar)
+
+    def update_bar(self, bar):
+        symbol = bar.symbol
+        time_frame = bar.time_frame
+        self.current_time = bar.close_time if not self.current_time else max(self.current_time, bar.close_time)
+        last_time = self._data[time_frame]['timestamp'][symbol][0] \
+            if self._data[time_frame]['timestamp'][symbol] else 0
+        if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
+            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+                self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
+            self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
+        else:
+            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+                self._data[time_frame][field][symbol][0] = getattr(bar, field)
+            self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
+    def on_tick(self, event):
+        if self._running:
+            print('run')
+            tick = event.content['data']
+            symbol = tick.symbol
+            for time_frame in {item[0]: item[1] for item in self._cache_info.keys()}:
+                bar_interval = tf2s(time_frame)
+                if symbol not in self._tick_cache:
+                    self._tick_cache = {}
+                if time_frame not in self._tick_cache[symbol]:
+                    self._tick_cache[symbol][time_frame] = {
+                        'open': tick.openPrice, 'high': tick.highPrice,
+                        'low': tick.lastPrice, 'close': tick.lastPrice,
+                        'volume': tick.volume, 'timestamp': tick.time // bar_interval * bar_interval,
+                    }
+                else:
+                    dict_ = self._tick_cache[symbol][time_frame]
+                    if tick.time - tick['timestamp'] >= self.TICK_INTERVAL:  # bar_interval 能被TICK_INTERVAL整除
+                        bar = Bar(symbol)
+                        bar.time_frame = time_frame
+                        bar.timestamp = dict_['timestamp']
+                        bar.open = dict_['open']
+                        bar.high = dict_['high']
+                        bar.low = dict_['low']
+                        bar.close = dict_['close']
+                        self.update_bar(bar)
+                    if tick.time - tick['timestamp'] >= bar_interval:
+                        self._tick_cache[symbol][time_frame] = {
+                            'open': tick.openPrice, 'high': tick.highPrice,
+                            'low': tick.lastPrice, 'close': tick.lastPrice,
+                            'volume': tick.volume, 'timestamp': tick.time // bar_interval * bar_interval,
+                        }
+                    else:
+                        dict_['low'] = min(dict_['low'], tick.lowPrice)
+                        dict_['high'] = max(dict_['high'], tick.highPrice)
+                        dict_['close'] = tick.lastPrice
+                        dict_['timestamp'] = tick.time // bar_interval * bar_interval
 
     def on_next_bar(self, event):
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
             self._engine.update_net(self._engine.get_current_positions(), self.current_time)
+        # 更新浮动盈亏
 
 
 class TradeManager:

@@ -146,7 +146,7 @@ class Strategy(LoggerInterface, HasID):
                 if value is not None:
                     globals_[name] = value
                 else:
-                    raise ValueError('全局变量%s未被赋值' % name)
+                    pass
 
         def upper_first_letter(string):
             return string[0].upper() + string[1:]
@@ -161,7 +161,7 @@ class Strategy(LoggerInterface, HasID):
         function_globals_ = {'open': self.open}  # 可动态管理的系统函数命名空间,禁用open
         # 获取并检查一些全局变量的设定
         exec(compile(code, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
-        get_global_attrs(signal_locals_)  # 弃用，暂时保留以便向下兼容
+        # get_global_attrs(signal_locals_)  # 弃用，暂时保留以便向下兼容
         set_global_attrs(signal_globals_)
         set_global_attrs(function_globals_)
         signal_globals_.update(signal_locals_)

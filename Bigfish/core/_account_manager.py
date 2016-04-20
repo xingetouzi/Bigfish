@@ -156,3 +156,6 @@ class FDTAccountManager(AccountManager):
         if self.login():
             time = parse(self._account.info['user']['lastLogin']).timestamp()
             super().update_records(time)
+
+    def position_status(self):
+        return self._account.open_positions()

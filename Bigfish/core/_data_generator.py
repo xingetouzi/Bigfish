@@ -193,7 +193,7 @@ class TickDataGenerator:
     def start(self):
         self._finished = False
         # 启动生产者
-        t1 = threading.Thread(target=self.product)
+        t1 = threading.Thread(target=self.__receiver.start)
         # t1.setDaemon(True)
         # 启动消费者
         t2 = threading.Thread(target=consume, args=(self,))
@@ -203,6 +203,7 @@ class TickDataGenerator:
 
     def stop(self):
         self._finished = True
+        self.__receiver.stop()
 
     def finish(self):
         if self.__finish is not None:

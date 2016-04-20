@@ -433,7 +433,10 @@ class StrategyPerformanceManager(PerformanceManager):
             else:
                 volume = row['volume_d']
                 while volume > 0:
-                    entry = queue.popleft()
+                    try:
+                        entry = queue.popleft()
+                    except IndexError:
+                        break
                     out.append({'x1': entry[2], 'y1': entry[1],
                                 'x2': row['trade_time'], 'y2': row['price'],
                                 'type': is_win(entry[1], row['price'], row['trade_type'])})

@@ -180,7 +180,7 @@ class StrategyPerformanceManager(PerformanceManager):
     @property
     @cache_calculator
     def is_negative(self):
-        return self._rate_of_return['R'].min() <= 0
+        return bool(self._rate_of_return['R'].min() <= 0)
 
     @property
     @cache_calculator
@@ -266,7 +266,8 @@ class StrategyPerformanceManager(PerformanceManager):
         temp['夏普比率'] = self.sharpe_ratio.total
         temp['R平方'] = self.r_square.total
         result = pd.concat([temp, self.strategy_summary['_'], self.trade_summary['total']])
-
+        result.name = '_'
+        result.index.name = 'index'
         return result
 
     @property

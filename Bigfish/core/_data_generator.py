@@ -1,6 +1,7 @@
 import threading
 import time
 from queue import Queue, Empty, Full
+import traceback
 
 import pymysql
 from Bigfish.models.quote import Bar
@@ -185,9 +186,11 @@ class TickDataGenerator:
         try:
             data = self.__dq.get(timeout=0.5)
             self.__handle(data)
+            print('consume')
         except Empty:
             pass
         except:
+            traceback.print_exc()
             self.stop()
 
     def start(self):
@@ -210,12 +213,13 @@ class TickDataGenerator:
             self.__finish()
 
     def product(self, tick):
-        while self._finished:
+        if not self._finished:
             try:
                 self.__dq.put(tick, timeout=0.5)
             except Full:
                 pass
             except:
+                traceback.print_exc()
                 self.stop()
 
     @classmethod

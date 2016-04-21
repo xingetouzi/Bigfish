@@ -285,7 +285,7 @@ class DataCache:
                 maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
-            if self._is_backtest:
+            if not self._is_backtest:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
             else:
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
@@ -323,31 +323,30 @@ class DataCache:
 
     def on_tick(self, event):
         if self._running:
-            print('run')
             tick = event.content['data']
             symbol = tick.symbol
-            for time_frame in {item[0]: item[1] for item in self._cache_info.keys()}:
+            for time_frame in {item[1] for item in self._cache_info.keys()}:
                 bar_interval = tf2s(time_frame)
                 if symbol not in self._tick_cache:
-                    self._tick_cache = {}
+                    self._tick_cache[symbol] = {}
                 if time_frame not in self._tick_cache[symbol]:
                     self._tick_cache[symbol][time_frame] = {
                         'open': tick.openPrice, 'high': tick.highPrice,
                         'low': tick.lastPrice, 'close': tick.lastPrice,
-                        'volume': tick.volume, 'timestamp': tick.time // bar_interval * bar_interval,
+                        'volume': tick.volume, 'timestamp': tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL,
                     }
                 else:
                     dict_ = self._tick_cache[symbol][time_frame]
-                    if tick.time - tick['timestamp'] >= self.TICK_INTERVAL:  # bar_interval 能被TICK_INTERVAL整除
+                    if tick.time - dict_['timestamp'] >= self.TICK_INTERVAL:  # bar_interval 能被TICK_INTERVAL整除
                         bar = Bar(symbol)
                         bar.time_frame = time_frame
-                        bar.timestamp = dict_['timestamp']
+                        bar.timestamp = dict_['timestamp'] // bar_interval * bar_interval
                         bar.open = dict_['open']
                         bar.high = dict_['high']
                         bar.low = dict_['low']
                         bar.close = dict_['close']
                         self.update_bar(bar)
-                    if tick.time - tick['timestamp'] >= bar_interval:
+                    if tick.time - dict_['timestamp'] >= bar_interval:
                         self._tick_cache[symbol][time_frame] = {
                             'open': tick.openPrice, 'high': tick.highPrice,
                             'low': tick.lastPrice, 'close': tick.lastPrice,
@@ -357,7 +356,7 @@ class DataCache:
                         dict_['low'] = min(dict_['low'], tick.lowPrice)
                         dict_['high'] = max(dict_['high'], tick.highPrice)
                         dict_['close'] = tick.lastPrice
-                        dict_['timestamp'] = tick.time // bar_interval * bar_interval
+                        dict_['timestamp'] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
 
     def on_next_bar(self, event):
         self._count += 1

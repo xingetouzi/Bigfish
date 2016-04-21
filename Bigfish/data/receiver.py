@@ -34,7 +34,7 @@ class DataClient(LineReceiver):
         # print("receive:", line)
         pd = json.loads(line.decode("utf-8"))
         if "instrument" in pd:  # 忽略非行情消息(如登录消息,是否登录成功)
-            symbol = pd["instrument"]
+            symbol = pd["instrument"].replace('/', '')
             if symbol in self._tick_event:  # 如果注册了这个品种的数据事件
                 if symbol in self.__tict_bar:
                     print(pd)
@@ -91,7 +91,7 @@ class TickDataClient(LineReceiver):
         # print("receive:", line)
         pd = json.loads(line.decode("utf-8"))
         if "instrument" in pd:  # 忽略非行情消息(如登录消息,是否登录成功)
-            symbol = pd["instrument"]
+            symbol = pd["instrument"].replace('/', '')
             if symbol in self._tick_event:  # 如果注册了这个品种的数据事件
                 print(pd)
                 tick = Tick(symbol)
@@ -123,8 +123,6 @@ class DataClientFactory(ClientFactory):
         self.done.callback(None)
 
     def register_event(self, symbol, handle):
-        if not ("/" in symbol):
-            symbol = symbol[:3] + "/" + symbol[3:]
         self._tick_event[symbol] = handle
 
     def unregister_event(self, symbol):
@@ -134,15 +132,22 @@ class DataClientFactory(ClientFactory):
 class TickDataReceiver:
     def __init__(self):
         self.factory = DataClientFactory()
+        self.__running = False
 
     def start(self):
         reactor.connectTCP('112.74.195.144', 9123, self.factory)
+        self.__running = True
         reactor.run(installSignalHandlers=0)
         return self.factory.done
 
     def stop(self):
+        if self.__running:
+            self.__running = False
+        else:
+            return
         self.factory.stopFactory()
-        reactor.stop()
+        if reactor.running:
+            reactor.stop()
 
     def register_event(self, symbol, handle):
         self.factory.register_event(symbol, handle)
@@ -161,7 +166,7 @@ if __name__ == '__main__':
 
 
     runnable = TickDataReceiver()
-    runnable.register_event("EUR/USD", handle)
+    runnable.register_event("EURUSD", handle)
     thread = threading.Thread(target=runnable.start)
     thread.start()
     time.sleep(10)

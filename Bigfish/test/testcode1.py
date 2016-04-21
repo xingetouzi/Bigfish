@@ -5,3 +5,4 @@ def init():
 
 def handle():
     print(O[0], H[0], L[0], C[0])
+    asd

@@ -64,31 +64,35 @@ class RuntimeSignal(LoggerInterface):
         :param paras:
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
-        if not self.__initialized:
-            self.init()
-        gc.collect()
-        self.__is_alive = True
-        if paras is not None:
-            self.__strategy.set_parameters(paras)
-        self.__strategy_engine.start()
-        self.__data_generator.start()
-        if refresh:
-            self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
-            self.__data_generator.stop()
-            if MEMORY_DEBUG:
-                print('gb:\n%s' % sys.getsizeof(gc.garbage))  # 写日志，计算垃圾占用的内存等
-                gb_log = {}
-                for gb in gc.garbage:
-                    type_ = type(gb)
-                    if type_ not in gb_log:
-                        gb_log[type_] = 0
-                    gb_log[type_] += sys.getsizeof(gb)
-                print(gb_log)
-            result = self.__performance_manager
-        else:
-            result = self.__strategy_engine.wait()
-        self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
-        return result
+        try:
+            if not self.__initialized:
+                self.init()
+            gc.collect()
+            self.__is_alive = True
+            if paras is not None:
+                self.__strategy.set_parameters(paras)
+            self.__strategy_engine.start()
+            self.__data_generator.start()
+            if refresh:
+                self.__performance_manager = self.__strategy_engine.wait(self.__get_performance_manager)
+                self.__data_generator.stop()
+                if MEMORY_DEBUG:
+                    print('gb:\n%s' % sys.getsizeof(gc.garbage))  # 写日志，计算垃圾占用的内存等
+                    gb_log = {}
+                    for gb in gc.garbage:
+                        type_ = type(gb)
+                        if type_ not in gb_log:
+                            gb_log[type_] = 0
+                        gb_log[type_] += sys.getsizeof(gb)
+                    print(gb_log)
+                result = self.__performance_manager
+            else:
+                result = self.__strategy_engine.wait()
+            self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
+            return result
+        except Exception as e:
+            self.stop()
+            raise e
 
     def stop(self):
         self.__is_alive = False
@@ -130,6 +134,7 @@ class RuntimeSignal(LoggerInterface):
 
     def time(self, *args):
         return self.__timer.time(*args)
+
 
 if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory

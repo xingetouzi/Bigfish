@@ -9,7 +9,7 @@
 def Highest(length, price=None, offset=0):
     if length <= 0:
         return None
-    if price == None:
+    if price is None:
         price = High
     if BarNum <= length + offset:
         return None

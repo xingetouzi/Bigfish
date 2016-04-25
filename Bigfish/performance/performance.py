@@ -155,7 +155,10 @@ class StrategyPerformanceManager(PerformanceManager):
         self._positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
                                            index=positions.keys(),
                                            columns=Position.get_keys())  # positions in dataframe format
-        self._deals_raw.sort_values('time', kind='mergesort', inplace=True)
+        self._deals_raw['number_id'] = self._deals_raw['id'].apply(lambda x: int(x.split('-')[-1]))
+        self._deals_raw.sort_values(['time', 'number_id'], kind='mergesort', inplace=True)
+        (lambda x: x.rename(pd.Series(range(1, x.shape[0] + 1), index=x.index).to_dict(), inplace=True))(
+            self._deals_raw)  # 成交重新用数字编号
         self._positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
         self._currency_symbol = currency_symbol  # 账户的结算货币类型
         self._annual_factor = 250  # 年化因子
@@ -321,7 +324,7 @@ class StrategyPerformanceManager(PerformanceManager):
     def trade_info(self):
         positions = self._positions_raw[['symbol', 'type', 'price_current', 'volume']]
         deals = self._deals_raw[
-            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'signal']]
+            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'signal', 'id']]
         trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
         # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
         if trade.empty:  # 依旧丑陋的补丁
@@ -398,10 +401,10 @@ class StrategyPerformanceManager(PerformanceManager):
     @property
     @cache_calculator
     def trade_details(self):
-        columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit']
+        columns = ['trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit', 'id']
 
         if not self.trade_info.empty:
-            trade = self.trade_info.groupby(['symbol', 'trade_number'])[columns].apply(lambda x: x.copy())
+            trade = self.trade_info.groupby(['symbol', 'trade_number', self.trade_info.index])[columns].last()
         else:  # 丑陋补丁X3
             trade = pd.DataFrame(columns=columns)
             trade.index.name = '_'
@@ -411,7 +414,8 @@ class StrategyPerformanceManager(PerformanceManager):
             partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
             .map(lambda x: x.split('+')[0])
         trade['trade_profit'] = trade['profit']
-        del trade['time'], trade['profit']
+        trade['deal_id'] = trade['id']
+        del trade['time'], trade['profit'], trade['id']
         return trade
 
     @property

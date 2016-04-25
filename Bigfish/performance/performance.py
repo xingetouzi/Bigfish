@@ -399,16 +399,14 @@ class StrategyPerformanceManager(PerformanceManager):
     @cache_calculator
     def trade_details(self):
         columns = ['symbol', 'trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit']
+
         if not self.trade_info.empty:
-            trade = (
-                lambda x: pd.DataFrame(
-                    x.pivot_table(index=[x['symbol'], 'trade_number', x.index], values=columns)))(
-                self.trade_info)
+            trade = self.trade_info.groupby(['symbol', 'trade_number'])[columns].apply(lambda x: x.copy())
         else:  # 丑陋补丁X3
             trade = pd.DataFrame(columns=columns)
             trade.index.name = '_'
         trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
-        trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头')
+        trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头' if x > 0 else '无持仓')
         trade['trade_time'] = trade['time'].map(
             partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
             .map(lambda x: x.split('+')[0])

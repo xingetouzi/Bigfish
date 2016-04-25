@@ -46,10 +46,24 @@ class AccountManager:
         return self._capital_cash
 
     def _get_capital_net(self):
+        symbol_pool = self._engine.symbol_pool
+        float_pnl = 0
+        time_frame = self._config['time_frame']
+        if not time_frame:
+            time_frame = self._config['time_frame']
+        for symbol, position in self._engine.current_positions.items():
+            price = self._engine.data[time_frame]['close'][symbol][0]
+            base_price = self._engine.get_counter_price(symbol, time_frame)
+            float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
+                                                       position.volume,
+                                                       commission=self._config['commission'],
+                                                       slippage=self._config['slippage'],
+                                                       base_price=base_price)
+        self._capital_net = self._capital_cash + float_pnl
         return self._capital_net
 
     def _get_capital_available(self):
-        self._capital_available = self._capital_net - self.capital_margin
+        self._capital_available = self.capital_net - self.capital_margin
         return self._capital_available
 
     def _get_capital_margin(self):
@@ -79,22 +93,6 @@ class AccountManager:
         if not deal.profit:
             return
         self._capital_cash += deal.profit
-
-    def update_net(self, positions, time, time_frame=None):
-        symbol_pool = self._engine.symbol_pool
-        float_pnl = 0
-        if not time_frame:
-            time_frame = self._config['time_frame']
-        for symbol, position in positions.items():
-            price = self._engine.data[time_frame]['close'][symbol][0]
-            base_price = self._engine.get_counter_price(symbol, time_frame)
-            float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
-                                                       position.volume,
-                                                       commission=self._config['commission'],
-                                                       slippage=self._config['slippage'],
-                                                       base_price=base_price)
-        self._capital_net = self._capital_cash + float_pnl
-        self.update_records(time)
 
     def update_records(self, time):
         self._records.append({'x': time,
@@ -204,9 +202,6 @@ class FDTAccountManager(AccountManager):
 
     def update_cash(self, *args, **kwargs):
         self.capital_cash
-
-    def update_net(self, *args, **kwargs):
-        self.capital_net
 
     def update_records(self, *args, **kwargs):
         if self.login():

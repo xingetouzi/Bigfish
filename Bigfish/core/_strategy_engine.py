@@ -141,8 +141,8 @@ class StrategyEngine(object):
     def get_capital(self):
         return self.__account_manager.get_api()
 
-    def update_net(self, positions, time, time_frame=None):
-        return self.__account_manager.update_net(positions, time, time_frame=time_frame)
+    def update_records(self, time):
+        return self.__account_manager.update_records(time)
 
     def update_cash(self, deal):
         return self.__account_manager.update_cash(deal)
@@ -397,7 +397,7 @@ class DataCache:
     def on_next_bar(self, event):
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
-            self._engine.update_net(self._engine.get_current_positions(), self.current_time)
+            self._engine.update_records(self.current_time)
             # 更新浮动盈亏
 
 
@@ -459,6 +459,8 @@ class TradeManager:
 
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
+        # if order.volume_initial == 0:
+            # return
         if self.__is_backtest:
             time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
             position = self.engine.current_positions[order.symbol]
@@ -617,8 +619,7 @@ class TradeManager:
                     position_now.price_open = position_now.price_current
                     """
 
-            if deal.profit != 0:
-                self.engine.update_cash(deal)
+            self.engine.update_cash(deal)
         else:
             res = self.engine.position_status()
             if res['ok']:
@@ -699,7 +700,7 @@ class TradeManager:
             time_ = time.time()
         position = self.__current_positions.get(symbol, None)
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
-        if position and position.type != direction:
+        if position and position.type * direction == -1:
             order = self.__order_factory(symbol, order_type, strategy, signal)
             order.volume_initial = position.volume
             order.time_setup = int(time_)

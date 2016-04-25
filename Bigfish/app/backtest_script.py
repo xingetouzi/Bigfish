@@ -1,6 +1,6 @@
 import sys, getopt
 import codecs
-import json, pickle
+import ujson as json, pickle
 import os
 
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback

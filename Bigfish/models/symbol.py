@@ -37,7 +37,7 @@ class Symbol:
         self.margin_rate = 0  # 交易品种保证金比例
         self.commission = 0  # 交易品种每手手续费
         self.lot_size = 1  # 交易品种一手的合约数
-        self.lever = 1  # 交易杠杆
+        self.leverage = 1  # 交易杠杆
         self.point = None
         self._big_point_value = 0
 
@@ -59,13 +59,16 @@ class Symbol:
         """
         if not lot:
             return 0
-        return (
-                   self.lot_size * self.big_point_value(**kwargs) * (
-                       point - slippage) - (commission if commission else self.commission)) * lot
+        if commission is None:
+            commission = self.commission
+        return (self.lot_size * self.big_point_value(**kwargs) * (point - slippage) - commission) * lot
 
-    def caution_money(self, point, lot=1, **kwargs):
-        # TODO 不知道手续费是最后在收益中结算还是占用了可用保证金
-        return self.lot_value(point, lot, **kwargs) / self.lever
+    def margin(self, lot, commission=None, **kwargs):
+        if not lot:
+            return 0
+        if commission is None:
+            commission = self.commission
+        return -self.lot_value(-1, lot, slippage=0, commission=commission, **kwargs) / self.leverage
 
 
 class Forex(Symbol):
@@ -81,6 +84,7 @@ class Forex(Symbol):
         self.en_name = self.code
         self.zh_name = self.ALL['zh_name'][self.code]
         self.point = self.ALL['point'][self.code]
+        self.leverage = 40
 
     def big_point_value(self, base_price=1, **kwargs):
         return base_price

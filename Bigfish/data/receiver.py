@@ -4,7 +4,7 @@ from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.internet.protocol import ClientFactory
 from twisted.protocols.basic import LineReceiver
-import json
+import ujson as json
 from Bigfish.models.quote import Tick
 
 # tick_period = dict()

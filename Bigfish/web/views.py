@@ -1,5 +1,5 @@
 import os
-import pickle, json
+import pickle, ujson as json
 import sys
 import time
 import multiprocessing as mp

@@ -25,7 +25,7 @@ SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
                }
 if CROSS_TRADE:
     SYMBOL_LIST.update({
-        "EUR/JPY": {"en_name": "EUR/JPY", "zh_name": "欧元/日元"},
+        # "EUR/JPY": {"en_name": "EUR/JPY", "zh_name": "欧元/日元"},
         # "GBP/JPY": {"en_name": "GBP/JPY", "zh_name": "英镑/日元"},
         # "AUD/JPY": {"en_name": "AUD/JPY", "zh_name": "澳元/日元"},
         # "EUR/CAD": {"en_name": "EUR/CAD", "zh_name": "欧元/加元"},

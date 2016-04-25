@@ -74,6 +74,9 @@ class StrategyEngine(object):
     def get_capital_net(self):
         return self.__account_manager.capital_net
 
+    def get_capital_available(self):
+        return self.__account_manager.capital_available
+
     # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
     # property:
     current_time = property(get_current_time)
@@ -86,16 +89,23 @@ class StrategyEngine(object):
     profit_records = property(get_profit_records)
     symbol_timeframe = property(get_symbol_timeframe)
     capital_cash = property(get_capital_cash)
-    capital_net = property(get_capital_cash)
+    capital_net = property(get_capital_net)
+    capital_available = property(get_capital_available)
 
-    def get_base_price(self, code, time_frame):
+    def get_counter_price(self, code, time_frame):
+        """
+        计算当前对应货币对的报价货币(counter currency)兑美元的价格
+        :param code: 品种代码
+        :param time_frame: 时间尺度
+        :return: 当前对应货币对的报价货币(counter currency)兑美元的价格
+        """
         symbol = self.symbol_pool[code]
         if symbol.code.endswith('USD'):  # 间接报价
             base_price = 1
         elif symbol.code.startswith('USD'):  # 直接报价
             base = symbol.code[-3:]
             base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
-        else:
+        else:  # 交叉盘
             base = symbol.code[-3:]
             if base + 'USD' in symbol.ALL.index:
                 base_price = self.data[time_frame]['close'][base + 'USD'][0]
@@ -104,6 +114,32 @@ class StrategyEngine(object):
             else:
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
+
+    def get_base_price(self, code, time_frame):
+        """
+        计算当前对应货币对的基准货币(base currency)兑美元的价格
+        :param code: 品种代码
+        :param time_frame: 时间尺度
+        :return: 当前对应货币对的报价货币(base currency)兑美元的价格
+        """
+        symbol = self.symbol_pool[code]
+        if symbol.code.startswith('USD'):  # 间接报价
+            base_price = 1
+        elif symbol.code.endswith('USD'):  # 直接报价
+            base = symbol.code[:3]
+            base_price = self.data[time_frame]['close'][base + 'USD'][0]
+        else:  # 交叉盘
+            base = symbol.code[:3]
+            if base + 'USD' in symbol.ALL.index:
+                base_price = self.data[time_frame]['close'][base + 'USD'][0]
+            elif 'USD' + base in symbol.ALL.index:
+                base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+            else:
+                raise ValueError('找不到基准报价:%s' % base)
+        return base_price
+
+    def get_capital(self):
+        return self.__account_manager.get_api()
 
     def update_net(self, positions, time, time_frame=None):
         return self.__account_manager.update_net(positions, time, time_frame=time_frame)
@@ -362,7 +398,7 @@ class DataCache:
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
             self._engine.update_net(self._engine.get_current_positions(), self.current_time)
-        # 更新浮动盈亏
+            # 更新浮动盈亏
 
 
 class TradeManager:
@@ -425,20 +461,39 @@ class TradeManager:
     def __send_order_to_broker(self, order):
         if self.__is_backtest:
             time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
-            time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
-            order.time_done = int(time_)
-            order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
-            order.volume_current = order.volume_initial
-            deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
-            deal.volume = order.volume_current
-            deal.time = order.time_done
-            deal.time_msc = order.time_done_msc
-            deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-            deal.price = self.engine.data[time_frame]["close"][order.symbol][0]
-            # TODO加入手续费等
-            order.deal = deal.get_id()
-            deal.order = order.get_id()
-            order_id = order.get_id()
+            position = self.engine.current_positions[order.symbol]
+            symbol = self.engine.symbol_pool[order.symbol]
+            volume = order.volume_initial
+            margin = 0
+            if position.type * (1 - (order.type << 1)) < 0:
+                if symbol.code.startswith('USD'):  # 间接报价
+                    base_price = 1
+                elif symbol.code.endswith('USD'):  # 直接报价
+                    base_price = position.price_current
+                margin -= symbol.margin(min(position.volume, volume), commission=self.__config['commission'],
+                                        base_price=base_price)
+                volume -= position.volume
+            if volume > 0:
+                margin += symbol.margin(volume, commission=self.__config['commission'],
+                                        base_price=self.engine.get_base_price(order.symbol, time_frame))
+            if self.engine.capital_available - margin >= 0:
+                time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
+                order.time_done = int(time_)
+                order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
+                order.volume_current = order.volume_initial
+                deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
+                deal.volume = order.volume_current
+                deal.time = order.time_done
+                deal.time_msc = order.time_done_msc
+                deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
+                deal.price = self.engine.data[time_frame]["close"][order.symbol][0]
+                # TODO加入手续费等
+                order.deal = deal.get_id()
+                deal.order = order.get_id()
+                order_id = order.get_id()
+            else:
+                print('下单失败,保证金不足')
+                return -1
         else:
             cash_old = self.engine.capital_cash
             order_id = self.engine.send_order_to_broker(order)
@@ -534,7 +589,7 @@ class TradeManager:
                                               + deal.price * deal.volume) / position_now.volume
             else:
                 time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
-                base_price = self.engine.get_base_price(deal.symbol, time_frame)
+                base_price = self.engine.get_counter_price(deal.symbol, time_frame)
                 contracts = position_prev.volume - deal.volume
                 position_now.volume = abs(contracts)
                 position_now.type = position * sign(contracts)

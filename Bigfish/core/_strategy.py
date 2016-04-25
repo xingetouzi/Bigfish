@@ -71,7 +71,7 @@ class Strategy(LoggerInterface, HasID):
                       'Positions': self.engine.current_positions, 'Data': self.engine.data,
                       'Context': self.__context, 'Export': partial(export, strategy=self), 'Put': self.put_context,
                       'Get': self.get_context, 'print': self.__printer.print,
-                      'Points': self.__points,
+                      'Points': self.__points, 'Cap': self.engine.get_capital(),
                       'signals': self.signals, 'system_functions': self.system_functions}
         # 将策略容器与对应代码文件关联
         self.bind_code_to_strategy(self.code)

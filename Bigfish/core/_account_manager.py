@@ -23,6 +23,8 @@ class AccountManager:
         self._capital_base = None
         self._capital_net = None
         self._capital_cash = None
+        self._capital_available = None
+        self._capital_margin = None
         self._currency = currency
 
         self._records = []
@@ -46,19 +48,32 @@ class AccountManager:
     def _get_capital_net(self):
         return self._capital_net
 
+    def _get_capital_available(self):
+        self._capital_available = self._capital_net - self.capital_margin
+        return self._capital_available
+
+    def _get_capital_margin(self):
+        self._capital_margin = 0
+        symbol_pool = self._engine.symbol_pool
+        for symbol, positions in self._engine.current_positions.items():
+            if symbol.startswith('USD'):
+                self._capital_margin += positions.volume * 100000 / symbol_pool[symbol].leverage
+            elif symbol.endswith('USD'):
+                self._capital_margin += positions.volume * 100000 * positions.price_current / symbol_pool[
+                    symbol].leverage
+        return self._capital_margin
+
     capital_base = property(_get_capital_base, _set_capital_base)
     capital_cash = property(_get_capital_cash)
     capital_net = property(_get_capital_net)
+    capital_available = property(_get_capital_available)
+    capital_margin = property(_get_capital_margin)
 
     def initialize(self):
         self._capital_base = None
         self._capital_net = self.capital_base
         self._capital_cash = self.capital_base
         self._records.clear()
-
-    def is_margin_enough(self, price):
-        """判断账户保证金是否足够"""
-        return self._capital_cash >= price
 
     def update_cash(self, deal):
         if not deal.profit:
@@ -72,7 +87,7 @@ class AccountManager:
             time_frame = self._config['time_frame']
         for symbol, position in positions.items():
             price = self._engine.data[time_frame]['close'][symbol][0]
-            base_price = self._engine.get_base_price(symbol, time_frame)
+            base_price = self._engine.get_counter_price(symbol, time_frame)
             float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
                                                        position.volume,
                                                        commission=self._config['commission'],
@@ -88,6 +103,33 @@ class AccountManager:
 
     def get_profit_records(self):
         return self._records
+
+    def get_api(self):
+        class Capital:
+            def __init__(self, manager):
+                self.__manager = proxy(manager)
+
+            @property
+            def base(self):
+                return self.__manager.capital_base
+
+            @property
+            def net(self):
+                return self.__manager.capital_net
+
+            @property
+            def cash(self):
+                return self.__manager.capital_cash
+
+            @property
+            def available(self):
+                return self.__manager.capital_available
+
+            @property
+            def margin(self):
+                return self.__manager.capital_margin
+
+        return Capital(self)
 
 
 class FDTAccountManager(AccountManager):
@@ -117,6 +159,20 @@ class FDTAccountManager(AccountManager):
         else:
             raise RuntimeError('账户验证失败')
         return self._capital_cash
+
+    def _get_capital_available(self):
+        if self.login():
+            self._capital_available = self._account.info['accounts']['cashAvailable']
+        else:
+            raise RuntimeError('账户验证失败')
+        return self._capital_available
+
+    def _get_capital_margin(self):
+        if self.login():
+            self._capital_margin = self._account.info['accounts']['marginHeld']
+        else:
+            raise RuntimeError('账户验证失败')
+        return self._capital_margin
 
     def _get_capital_net(self):
         if self.login():

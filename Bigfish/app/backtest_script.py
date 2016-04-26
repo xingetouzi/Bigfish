@@ -1,11 +1,11 @@
 import sys, getopt
 import codecs
-import json, pickle
+import ujson as json, pickle
 import os
 
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 from Bigfish.app.backtest import Backtesting
-from Bigfish.performance.cache import StrategyPerformanceJsonCache, StrategyPerformanceCache
+from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.utils.common import string_to_html
 from Bigfish.models import User
 from Bigfish.store import UserDirectory
@@ -28,7 +28,7 @@ def get_output(user, name):
 
 
 def run_backtest(user, name, file, symbols, time_frame, start_time, end_time, commission, slippage):
-    cache = StrategyPerformanceCache(user)  # TODO 修改为JSON
+    cache = StrategyPerformanceJsonCache(user)  # TODO 修改为JSON
     try:
         with codecs.open(file, 'r', 'utf-8') as f:
             code = f.read()
@@ -36,10 +36,10 @@ def run_backtest(user, name, file, symbols, time_frame, start_time, end_time, co
         backtesting = Backtesting(user, name, code, symbols, time_frame, start_time, end_time, commission, slippage)
         backtesting.start()
         performance = backtesting.get_performance()
-        cache.put_object(performance)
-        cache.put('setting', pickle.dumps(backtesting.get_setting()))  # TODO 修改为JSON
+        cache.put_performance(performance)
+        cache.put('setting', json.dumps(backtesting.get_setting()))  # TODO 修改为JSON
         output = get_output(user, name)
-        result = {'stat': 'OK', 'result': performance.yield_curve, 'output': string_to_html(output),
+        result = {'stat': 'OK', 'result': performance.yield_curve,
                   'performance': performance.info_on_home_page}
     except SlaverThreadError as e:
         tb_message = get_user_friendly_traceback(*e.get_exc())
@@ -48,6 +48,8 @@ def run_backtest(user, name, file, symbols, time_frame, start_time, end_time, co
         tb_message = get_user_friendly_traceback(*sys.exc_info())
         result = {"stat": "FALSE", "error": string_to_html('\n'.join(tb_message))}
     finally:
+        output = get_output(user, name)
+        result['output'] = string_to_html(output)
         cache.put('response', json.dumps(result))
 
 

@@ -67,6 +67,10 @@ EVENT_BAR = Event.create_event_type('Bar').get_id()  # 特定交易物的数据�
 EVENT_SYMBOL_BAR_RAW = {
     symbol: {time_frame: Event.create_event_type('BarRaw.%s.%s' % (symbol, time_frame)).get_id() for time_frame in
              _TIME_FRAME} for symbol in SYMBOLS}
+# 特定品种Tick数据更新事件,content：{'data': tick}为行情数据对象。
+EVENT_SYMBOL_TICK_RAW = {
+    symbol: Event.create_event_type('TickRaw.%s' % symbol).get_id() for symbol in SYMBOLS
+}
 # 特定品种数据更新事件,这个事件看似与之前的数据重合，但是通过数据中继站，可以对BarUpdate事件产生的频率进行控制,content:{'data':bar,'completed':True or False}
 EVENT_SYMBOL_BAR_UPDATE = {
     symbol: {time_frame: Event.create_event_type('BarUpdate.%s.%s' % (symbol, time_frame), priority=1).get_id() for

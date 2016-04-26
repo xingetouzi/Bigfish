@@ -1,8 +1,6 @@
-base = 100000
-
 def init():
     pass
 
 def handle():
-    return
-    print('haha')
+    highest = Highest(96,H,1)
+    lowest = Lowest(96,L,1)

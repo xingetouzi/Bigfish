@@ -1,5 +1,6 @@
 import pickle
-import json
+import ujson as json
+import pandas as pd
 
 from Bigfish.data.cache import RedisCache
 from Bigfish.performance.performance import StrategyPerformance
@@ -64,12 +65,14 @@ class StrategyPerformanceJsonCache(RedisCacheWithExpire):
             {'height': 'auto', 'width': '98%', 'pageSize': 20, 'where': 'f_getWhere()'})
 
     def put_performance(self, performance):
-        for key in performance.__dict__.items():
+        for key, value in performance.__dict__.items():
             cache_key = ':'.join([self._cls.__name__, key])
-            if key in ['info_on_home_page', 'yield_curve']:
-                context = getattr(performance, key)
+            if isinstance(value, pd.DataFrame):
+                context = self._translator.dumps(value)
+            elif isinstance(value, pd.Series):
+                context = self._translator.dumps(pd.DataFrame(value))
             else:
-                context = self._translator.dumps(getattr(performance, key))
+                context = value
             self.put(cache_key, json.dumps(context))
 
     def get_performance(self):

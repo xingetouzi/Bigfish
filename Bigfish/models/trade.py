@@ -5,7 +5,7 @@ Created on Fri Nov 27 09:59:13 2015
 @author: BurdenBear
 """
 
-from Bigfish.models.common import DictLike, FactoryWithID
+from Bigfish.models.common import DictLike, FactoryWithTimestampPrefixID
 
 """所有的数据结构都继承HasID，通过ID来访问，以便于以后在数据库中存储"""
 
@@ -62,8 +62,12 @@ class Position(DictLike):
         return self.id
 
 
-class PositionFactory(FactoryWithID):
+class PositionFactory(FactoryWithTimestampPrefixID):
     _class = Position
+
+    def __init__(self, prefix='', timestamp=False):
+        super().__init__(prefix, timestamp=timestamp)
+
 
 # ENUM_ORDER_STATE
 ORDER_STATE_STARTED = 0  # Order checked, but not yet accepted by broker
@@ -134,8 +138,11 @@ class Order(DictLike):
         return self.id
 
 
-class OrderFactory(FactoryWithID):
+class OrderFactory(FactoryWithTimestampPrefixID):
     _class = Order
+
+    def __init__(self, prefix='', timestamp=False):
+        super().__init__(prefix, timestamp=timestamp)
 
 
 # ENUM_DEAL_TYPE
@@ -172,5 +179,8 @@ class Deal(DictLike):
         return self.id
 
 
-class DealFactory(FactoryWithID):
+class DealFactory(FactoryWithTimestampPrefixID):
     _class = Deal
+
+    def __init__(self, prefix='', timestamp=False):
+        super().__init__(prefix, timestamp=timestamp)

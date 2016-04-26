@@ -6,7 +6,7 @@
 __all__ = ["MEMORY_DEBUG", "DATABASE", "ASYNC", "MODULES_IMPORT", "SYMBOL_LIST", "CROSS_TRADE", "SYMBOL_LIST"]
 
 MEMORY_DEBUG = False  # 是否开启内存检测模式
-THROW_ERROR = True  # 是否正常抛出异常，True为正常抛出，False以日志的方式将异常记录下来
+THROW_ERROR = False  # 是否正常抛出异常，True为正常抛出，False以日志的方式将异常记录下来
 DATABASE = "mysql"  # 数据库
 ASYNC = False  # 数据拉取方式
 _system_model = {"array", "bisect", "cmath", "collections", "copy", "datetime", "functools", "heapq", "itertools",
@@ -25,7 +25,7 @@ SYMBOL_LIST = {"EUR/USD": {"en_name": "EUR/USD", "zh_name": "欧元/美元"},
                }
 if CROSS_TRADE:
     SYMBOL_LIST.update({
-        "EUR/JPY": {"en_name": "EUR/JPY", "zh_name": "欧元/日元"},
+        # "EUR/JPY": {"en_name": "EUR/JPY", "zh_name": "欧元/日元"},
         # "GBP/JPY": {"en_name": "GBP/JPY", "zh_name": "英镑/日元"},
         # "AUD/JPY": {"en_name": "AUD/JPY", "zh_name": "澳元/日元"},
         # "EUR/CAD": {"en_name": "EUR/CAD", "zh_name": "欧元/加元"},

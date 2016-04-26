@@ -5,7 +5,7 @@ import operator
 import time
 import logging
 import pandas as pd
-import json
+import ujson as json
 import traceback
 from multiprocessing import Pool
 

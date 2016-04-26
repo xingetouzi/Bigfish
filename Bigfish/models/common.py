@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import copy
 from collections import deque, UserList
+from datetime import datetime
 
 
 class DictLike:
@@ -10,6 +11,12 @@ class DictLike:
         cls = self.__class__.__name__
         return ({slot.replace('__', ''): getattr(self, slot.replace('__', '_%s__' % cls))
                  for slot in self.get_keys()})
+
+    def from_dict(self, dict_):
+        obj = self.__class__()
+        for slot in self.get_keys():
+            setattr(obj, slot, dict_[slot])
+        return obj
 
     @classmethod
     def get_keys(cls):
@@ -36,10 +43,41 @@ class FactoryWithID:
         self._id = 0
 
     def new(self, *args, **kwargs):
-        return self._class(*args, id=self.next(), **kwargs)
+        return self._class(*args, id=str(self.next()), **kwargs)
 
     def __call__(self, *args, **kwargs):
         return self.new(*args, **kwargs)
+
+
+class FactoryWithPrefixID(FactoryWithID):
+    _class = None
+
+    def _get_prefix(self):
+        raise not NotImplementedError
+
+    def get_prefix(self):
+        return self._get_prefix()
+
+    prefix = property(get_prefix)
+
+    def new(self, *args, **kwargs):
+        id_ = self.prefix + '-' + str(self.next()) if self.prefix else str(self.next())
+        return self._class(*args, id=id_, **kwargs)
+
+
+class FactoryWithTimestampPrefixID(FactoryWithPrefixID):
+    _class = None
+
+    def __init__(self, prefix='', timestamp=False):
+        super().__init__()
+        self._prefix = prefix
+        self._timestamp = timestamp
+
+    def _get_prefix(self):
+        if self._timestamp:
+            return self._prefix + '-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+        else:
+            return self._prefix
 
 
 class FactoryWithList(FactoryWithID):

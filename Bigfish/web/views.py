@@ -1,5 +1,5 @@
 import os
-import pickle, json
+import pickle, ujson as json
 import sys
 import time
 import multiprocessing as mp
@@ -11,7 +11,7 @@ import tornado.web
 
 from Bigfish.app.backtest import Backtesting
 from Bigfish.models.model import User
-from Bigfish.performance.cache import StrategyPerformanceCache
+from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory
 from Bigfish.utils.common import string_to_html
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
@@ -23,8 +23,8 @@ def backtest(conn, *args):
         backtesting = Backtesting(*args)
         backtesting.start()
         performance = backtesting.get_performance()
-        cache = StrategyPerformanceCache(user)
-        cache.put_object(performance)
+        cache = StrategyPerformanceJsonCache(user)
+        cache.put_performance(performance)
         cache.put('setting', json.dumps(backtesting.get_setting()))
         conn.put({"stat": "OK"})
     except SlaverThreadError as e:
@@ -76,12 +76,14 @@ class BaseHandler(tornado.web.RequestHandler):
                 self.finish()
                 return
             if result['stat'] == 'OK':
-                cache = StrategyPerformanceCache(user_id)
-                performance = cache.get_object()
+                cache = StrategyPerformanceJsonCache(user_id)
+                performance = cache.get_performance()
                 output = self.get_output(user_id, name)
                 self.write({'stat': 'OK', 'result': performance.yield_curve, 'output': string_to_html(output),
                             'performance': performance.info_on_home_page})
             else:
+                output = self.get_output(user_id, name)
+                result['output'] = string_to_html(output)
                 self.write(result)
             self.write(')')
         self.flush()

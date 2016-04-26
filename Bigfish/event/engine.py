@@ -3,7 +3,7 @@
 # 系统模块
 from queue import Empty, PriorityQueue as Queue
 from functools import wraps, partial
-from threading import Thread, Event as ThreadEvent
+from threading import Thread, Lock
 import sys
 import time
 # 自定义模块
@@ -55,12 +55,12 @@ class EventEngine:
         """初始化事件引擎"""
         # 事件队列
         self.__queue = None
+        self.__count_lock = Lock()
         self.__count = 0  # 计数器，用于辅助实现优先级队列
         self.__file_opened = []
         # 事件引擎开关
         self.__active = False
         self.__finished = False
-        self.__is_empty = ThreadEvent()
         self.__thread = None
         self.__exc_type = None
         self.__exc_value = None
@@ -91,6 +91,7 @@ class EventEngine:
                 if THROW_ERROR:
                     raise e
                 self.__active = False
+                self.stop()
         for file in self.__file_opened:
             if not file.closed:
                 file.flush()
@@ -199,7 +200,9 @@ class EventEngine:
     def put(self, event):
         """向事件队列中存入事件"""
         if self.__active:
+            self.__count_lock.acquire()
             self.__count += 1
+            self.__count_lock.release()
             self.__queue.put((-event.priority, self.__count, event))
 
     # ----------------------------------------------------------------------

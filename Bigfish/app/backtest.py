@@ -4,7 +4,6 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-import codecs
 import gc
 import logging
 from functools import partial
@@ -55,10 +54,6 @@ class Backtesting(LoggerInterface):
                                               lambda x: self.__strategy_engine.put_event(x.to_event()),
                                               lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
         self.__initialized = True
-
-    @classmethod
-    def set_data_generator(cls, data_generator):
-        cls.dg_cls = data_generator
 
     def set_config(self, **kwargs):
         self.__config.update(kwargs)
@@ -240,6 +235,7 @@ if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
+    import codecs
 
 
     def get_first_n_lines(string, n):
@@ -249,10 +245,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode9.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-12-01')
+    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
     # print(backtest.progress)
     backtest.start()
     performance = backtest.get_performance()  # 获取策略的各项指标
@@ -262,11 +258,11 @@ if __name__ == '__main__':
     # print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     # print(performance._dict_name)
-    for k, v in performance.__dict__.items():
-        print("%s\n%s" % (k, v))
+    # for k, v in performance.__dict__.items():
+    #     print("%s\n%s" % (k, v))
     # print('trade_info:\n%s' % performance._manager.trade_info)
     # print('trade_summary:\n%s' % performance.trade_summary)
-    # print('trade_details:\n%s' % performance.trade_details)
+    print('trade_details:\n%s' % performance.trade_details)
     # print(translator.dumps(performance._manager.trade_info))
     # print(translator.dumps(performance.trade_details))
     # print('strategy_summary:\n%s' % performance.strategy_summary)

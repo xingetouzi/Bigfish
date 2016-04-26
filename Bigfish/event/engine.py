@@ -90,6 +90,7 @@ class EventEngine:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
                 if THROW_ERROR:
                     raise e
+                self.__active = False
                 self.stop()
         for file in self.__file_opened:
             if not file.closed:

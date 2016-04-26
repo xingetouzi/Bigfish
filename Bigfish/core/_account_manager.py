@@ -94,10 +94,12 @@ class AccountManager:
             return
         self._capital_cash += deal.profit
 
-    def update_records(self, time):
-        self._records.append({'x': time,
-                              'y': float(
-                                  '%.2f' % ((self.capital_net / self.capital_base - 1) * 100))})
+    def update_records(self, time, update=True):
+        data = {'x': time, 'y': float('%.2f' % ((self.capital_net / self.capital_base - 1) * 100))}
+        if update:
+            self._records.append(data)  # TODO _records移入StrategyEngine 中去
+        else:
+            return data
 
     def get_profit_records(self):
         return self._records

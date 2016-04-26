@@ -37,7 +37,6 @@ class DataClient(LineReceiver):
             symbol = pd["instrument"].replace('/', '')
             if symbol in self._tick_event:  # 如果注册了这个品种的数据事件
                 if symbol in self.__tict_bar:
-                    print(pd)
                     bar = self.__tict_bar[symbol]
                     if pd["ctime"] - bar["start"] >= tick_period:
                         tick = Tick(symbol)
@@ -93,7 +92,6 @@ class TickDataClient(LineReceiver):
         if "instrument" in pd:  # 忽略非行情消息(如登录消息,是否登录成功)
             symbol = pd["instrument"].replace('/', '')
             if symbol in self._tick_event:  # 如果注册了这个品种的数据事件
-                print(pd)
                 tick = Tick(symbol)
                 price = (pd['ask'] + pd['bid']) / 2
                 tick.highPrice = price

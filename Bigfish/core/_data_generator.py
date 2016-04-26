@@ -186,7 +186,6 @@ class TickDataGenerator:
         try:
             data = self.__dq.get(timeout=0.5)
             self.__handle(data)
-            print('consume')
         except Empty:
             pass
         except:

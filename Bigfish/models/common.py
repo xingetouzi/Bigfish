@@ -12,6 +12,12 @@ class DictLike:
         return ({slot.replace('__', ''): getattr(self, slot.replace('__', '_%s__' % cls))
                  for slot in self.get_keys()})
 
+    def from_dict(self, dict_):
+        obj = self.__class__()
+        for slot in self.get_keys():
+            setattr(obj, slot, dict_[slot])
+        return obj
+
     @classmethod
     def get_keys(cls):
         return list(map(lambda x: x.replace('__', ''), cls.__slots__))

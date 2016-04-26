@@ -11,6 +11,7 @@ from collections import defaultdict
 from weakref import proxy
 
 # 自定义模块
+from Bigfish.data.mongo_utils import MongoUser
 from Bigfish.core import AccountManager, FDTAccountManager
 from Bigfish.event.event import *
 from Bigfish.event.engine import EventEngine
@@ -36,6 +37,7 @@ class StrategyEngine(object):
             self.__account_manager = AccountManager(self, **config)  # 账户管理
         else:
             self.__account_manager = FDTAccountManager(self, **config)
+            self.mongo_user = MongoUser(self.__config['user'])
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self, is_backtest)  # 数据中继站
         self.__strategys = {}  # 策略管理器
@@ -280,6 +282,8 @@ class DataCache:
     # TODO 根据总回测时间区间去计算浮动收益的统计频率
     @property
     def float_pnl_frequency(self):
+        if not self._is_backtest:
+            return 1
         if self.min_time_frame in ['M1', 'M5']:
             return 1
         time = tf2s(self.min_time_frame)
@@ -397,8 +401,13 @@ class DataCache:
     def on_next_bar(self, event):
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
-            self._engine.update_records(self.current_time)
-            # 更新浮动盈亏
+            if self._is_backtest:
+                self._engine.update_records(self.current_time)
+            else:
+                pnl = self._engine.update_records(time.time())
+                self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
+
+                # 更新浮动盈亏
 
 
 class TradeManager:
@@ -460,7 +469,9 @@ class TradeManager:
     # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
         # if order.volume_initial == 0:
-            # return
+        # return
+        if order.volume_initial <= 0:
+            return -1
         if self.__is_backtest:
             time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
             position = self.engine.current_positions[order.symbol]
@@ -566,8 +577,6 @@ class TradeManager:
             else:
                 return -1
 
-        if deal.volume == 0:
-            return
         position_prev = self.__current_positions[deal.symbol]
         position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
@@ -618,7 +627,6 @@ class TradeManager:
                     position_now.time_open_msc = deal.time_msc
                     position_now.price_open = position_now.price_current
                     """
-
             self.engine.update_cash(deal)
         else:
             res = self.engine.position_status()
@@ -642,8 +650,12 @@ class TradeManager:
         deal.position = position_now.get_id()
         position_now.deal = deal.get_id()
         self.__current_positions[deal.symbol] = position_now
-        self.__positions[position_now.get_id()] = position_now
-        self.__deals[deal.get_id()] = deal
+        if self.__is_backtest:
+            self.__positions[position_now.get_id()] = position_now
+            self.__deals[deal.get_id()] = deal
+        else:
+            self.engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
+            self.engine.mongo_user.collection['deals'].insert_one(deal.to_dict())
 
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
@@ -660,6 +672,7 @@ class TradeManager:
         :param direction: 下单指令的方向(多头或者空头)
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
+        volume = round(volume, 2)
         if volume == 0 or not direction:  # direction 对应多空头，1为多头，-1为空头
             return -1
         position = self.__current_positions.get(symbol, None)
@@ -692,14 +705,17 @@ class TradeManager:
         :param direction: 下单指令的方向(多头或者空头)
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
-
+        volume = round(volume, 2)  # 精确到mini手
+        # 计算下单时间
         if self.__is_backtest:
             time_frame = self.engine.strategys[strategy].signals[signal].get_time_frame()
             time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
         else:
             time_ = time.time()
+        # 反向开仓先进行平仓处理
         position = self.__current_positions.get(symbol, None)
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
+
         if position and position.type * direction == -1:
             order = self.__order_factory(symbol, order_type, strategy, signal)
             order.volume_initial = position.volume
@@ -707,6 +723,7 @@ class TradeManager:
             order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
             # TODO 这里应该要支持事务性的下单操作
             self.send_order(order)
+        # 正向开仓
         if volume == 0:
             return -1
         order = self.__order_factory(symbol, order_type, strategy, signal)

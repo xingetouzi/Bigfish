@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode1.py', 'r', 'utf-8') as f:
+    with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
     backtest = RuntimeSignal(user, 'test', code, ['EURUSD'], 'M15')

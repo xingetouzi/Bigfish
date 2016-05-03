@@ -4,8 +4,10 @@ Created on Wed Nov 25 20:46:00 2015
 
 @author: BurdenBear
 """
+from functools import wraps
 from dateutil.parser import parse
 from weakref import proxy
+
 from Bigfish.models.base import Currency
 from Bigfish.fdt.account import FDTAccount
 from Bigfish.models.trade import *
@@ -26,26 +28,28 @@ class AccountManager:
         self._capital_available = None
         self._capital_margin = None
         self._currency = currency
-
-        self._records = []
         self.initialize()
 
-    def _get_capital_base(self):
+    @property
+    def capital_base(self):
         if self._capital_base is None:
             self._capital_base = self._config.get('base', BASE_DEFAULT)
         return self._capital_base
 
-    def _set_capital_base(self, capital_base):
+    @capital_base.setter
+    def capital_base(self, capital_base):
         if isinstance(capital_base, int) and capital_base > 0:
             self._capital_base = capital_base
             self.initialize()
         else:
             raise (ValueError("不合法的base值%s" % capital_base))
 
-    def _get_capital_cash(self):
+    @property
+    def capital_cash(self):
         return self._capital_cash
 
-    def _get_capital_net(self):
+    @property
+    def capital_net(self):
         symbol_pool = self._engine.symbol_pool
         float_pnl = 0
         time_frame = self._config['time_frame']
@@ -62,11 +66,13 @@ class AccountManager:
         self._capital_net = self._capital_cash + float_pnl
         return self._capital_net
 
-    def _get_capital_available(self):
+    @property
+    def capital_available(self):
         self._capital_available = self.capital_net - self.capital_margin
         return self._capital_available
 
-    def _get_capital_margin(self):
+    @property
+    def capital_margin(self):
         self._capital_margin = 0
         symbol_pool = self._engine.symbol_pool
         for symbol, positions in self._engine.current_positions.items():
@@ -77,32 +83,18 @@ class AccountManager:
                     symbol].leverage
         return self._capital_margin
 
-    capital_base = property(_get_capital_base, _set_capital_base)
-    capital_cash = property(_get_capital_cash)
-    capital_net = property(_get_capital_net)
-    capital_available = property(_get_capital_available)
-    capital_margin = property(_get_capital_margin)
-
     def initialize(self):
         self._capital_base = None
         self._capital_net = self.capital_base
         self._capital_cash = self.capital_base
-        self._records.clear()
 
     def update_cash(self, deal):
         if not deal.profit:
             return
         self._capital_cash += deal.profit
 
-    def update_records(self, time, update=True):
-        data = {'x': time, 'y': float('%.2f' % ((self.capital_net / self.capital_base - 1) * 100))}
-        if update:
-            self._records.append(data)  # TODO _records移入StrategyEngine 中去
-        else:
-            return data
-
-    def get_profit_records(self):
-        return self._records
+    def profit_record(self, time):
+        return {'x': time, 'y': float('%.2f' % ((self.capital_net / self.capital_base - 1) * 100))}
 
     def get_api(self):
         class Capital:
@@ -132,57 +124,68 @@ class AccountManager:
         return Capital(self)
 
 
+def with_login(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if self.login():
+            return func(self, *args, **kwargs)
+        else:
+            raise RuntimeError('账户验证失败')
+
+    return wrapper
+
+
 class FDTAccountManager(AccountManager):
     def __init__(self, *args, **kwargs):
-        self._username = kwargs.pop('username', None)
+        self._username = kwargs.pop('account', None)
         self._password = kwargs.pop('password', None)
+        if self._username is not None and self._password is not None:
+            self._account = FDTAccount(self._username, self._password)
         super().__init__(*args, **kwargs)
-        self._account = FDTAccount(self._username, self._password)
 
     def set_account(self, username, password):
         self._username = username
         self._password = password
 
-    def _get_capital_base(self):
-        if self.login():
-            self._capital_base = self._account.info['accounts']['cashDeposited']
-        else:
-            raise RuntimeError('账户验证失败')
+    @property
+    def fx_account(self):
+        for account in self._account.info['accounts']:
+            if 'FX' in account['id']:
+                return account
+
+    @property
+    @with_login
+    def capital_base(self):
+        self._capital_base = self.fx_account['cashDeposited']
         return self._capital_base
 
-    def _set_capital_base(self, capital_base):
+    @capital_base.setter
+    def capital_base(self, capital_base):
         pass
 
-    def _get_capital_cash(self):
-        if self.login():
-            self._capital_cash = self._account.info['accounts']['cash']
-        else:
-            raise RuntimeError('账户验证失败')
+    @property
+    @with_login
+    def capital_cash(self):
+        self._capital_cash = self.fx_account['cash']
         return self._capital_cash
 
-    def _get_capital_available(self):
-        if self.login():
-            self._capital_available = self._account.info['accounts']['cashAvailable']
-        else:
-            raise RuntimeError('账户验证失败')
+    @property
+    @with_login
+    def capital_available(self):
+        self._capital_available = self.fx_account['cashAvailable']
         return self._capital_available
 
-    def _get_capital_margin(self):
-        if self.login():
-            self._capital_margin = self._account.info['accounts']['marginHeld']
-        else:
-            raise RuntimeError('账户验证失败')
+    @property
+    @with_login
+    def capital_margin(self):
+        self._capital_margin = self.fx_account['marginHeld']
         return self._capital_margin
 
-    def _get_capital_net(self):
-        if self.login():
-            self._capital_net = self._account.info['account']['cash']
-            res = self._account.open_positions()
-            if res['ok']:
-                for position in res['openPositions']:
-                    self._capital_net += position['acPnL'] - 2  # XXX 每笔两元手续费
-        else:
-            raise RuntimeError('账户验证失败')
+    @property
+    @with_login
+    def capital_net(self):
+        fx_account = self.fx_account
+        self._capital_net = fx_account['cash'] + fx_account['urPnL']
         return self._capital_net
 
     def login(self):
@@ -205,10 +208,21 @@ class FDTAccountManager(AccountManager):
     def update_cash(self, *args, **kwargs):
         self.capital_cash
 
-    def update_records(self, *args, **kwargs):
-        if self.login():
-            time = parse(self._account.info['user']['lastLogin']).timestamp()
-            super().update_records(time)
+    @with_login
+    def profit_record(self):
+        time = parse(self._account.info['user']['lastLogin']).timestamp()
+        return super().profit_record(time)
 
-    def position_status(self):
-        return self._account.open_positions()
+    def position_status(self, symbol=None):
+        res = self._account.open_positions()
+        if res['ok']:
+            positions = res['openPositions']
+            if symbol is None:
+                return positions
+            else:
+                for position in positions:
+                    if position['symbol'] == symbol:
+                        return position
+                return None
+        else:
+            return None

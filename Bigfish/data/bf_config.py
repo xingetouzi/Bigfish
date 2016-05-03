@@ -9,7 +9,7 @@ class BfConfig:
     """
 
     def __init__(self, user='', name='', symbols=[], time_frame='', start_time=None, end_time=None, capital_base=100000,
-                 commission=0, slippage=0):
+                 commission=0, slippage=0, account=None, password=None):
         self.user = user
         self.name = name
         self.capital_base = capital_base
@@ -19,6 +19,8 @@ class BfConfig:
         self.end_time = end_time
         self.commission = commission
         self.slippage = slippage
+        self.account = account
+        self.password = password
 
     def __getitem__(self, item):
         try:

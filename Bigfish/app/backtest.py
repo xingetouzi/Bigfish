@@ -26,8 +26,8 @@ if MEMORY_DEBUG:
 
 
 class Backtesting(LoggerInterface):
-    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None, commission=0,
-                 slippage=0):
+    def __init__(self, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None, end_time=None,
+                 commission=0, slippage=0):
         super().__init__()
         self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
                          'start_time': start_time, 'end_time': end_time, 'commission': commission,
@@ -57,6 +57,9 @@ class Backtesting(LoggerInterface):
 
     def set_config(self, **kwargs):
         self.__config.update(kwargs)
+
+    def set_code(self, code):
+        self.__code = code
 
     def set_logger(self, logger):
         self._logger = logger
@@ -247,15 +250,20 @@ if __name__ == '__main__':
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'testcode9.py')
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
-    user = '10032'
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
+    user = '10032'  # 用户名
+    name = 'test'  # 策略名
+    backtest = Backtesting()
+    backtest.set_code(code)
+    config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M15', start_time='2015-01-01',
+                  end_time='2015-03-01')
+    backtest.set_config(**config)
     # print(backtest.progress)
     backtest.start()
     performance = backtest.get_performance()  # 获取策略的各项指标
-    translator = DataframeTranslator()
-    user_dir = UserDirectory(user)
+    # translator = DataframeTranslator()
+    # user_dir = UserDirectory(user)
     # print(user_dir.get_sys_func_list())
-    # print(backtest.get_profit_records())  # 获取浮动收益曲线
+    print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     # print(performance._dict_name)
     # for k, v in performance.__dict__.items():

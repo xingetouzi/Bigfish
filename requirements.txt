@@ -1,3 +1,4 @@
+ujson
 tornado
 twisted
 memory_profiler

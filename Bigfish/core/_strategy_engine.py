@@ -41,6 +41,11 @@ class StrategyEngine(object):
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self, is_backtest)  # 数据中继站
         self.__strategys = {}  # 策略管理器
+        self.__profit_records = []  # 保存账户净值的列表
+
+    def set_account(self, account):
+        assert isinstance(account, AccountManager)
+        self.__account_manager = account
 
     def get_data(self):
         return self.__data_cache.data
@@ -65,7 +70,7 @@ class StrategyEngine(object):
 
     def get_profit_records(self):
         """获取平仓收益记录"""
-        return self.__account_manager.get_profit_records()
+        return self.__profit_records
 
     def get_symbol_timeframe(self):
         return self.__data_cache.get_cache_info().keys()
@@ -143,8 +148,8 @@ class StrategyEngine(object):
     def get_capital(self):
         return self.__account_manager.get_api()
 
-    def update_records(self, time):
-        return self.__account_manager.update_records(time)
+    def profit_record(self, *args, **kwargs):
+        return self.__account_manager.profit_record(*args, **kwargs)
 
     def update_cash(self, deal):
         return self.__account_manager.update_cash(deal)
@@ -155,8 +160,8 @@ class StrategyEngine(object):
     def order_status(self):
         return self.__account_manager.order_status()
 
-    def position_status(self):
-        return self.__account_manager.position_status()
+    def position_status(self, *args, **kwargs):
+        return self.__account_manager.position_status(*args, **kwargs)
 
     def open_position(self, *args, **kwargs):
         return self.__trade_manager.open_position(*args, **kwargs)
@@ -208,6 +213,7 @@ class StrategyEngine(object):
         """启动所有策略"""
         for strategy in self.__strategys.values():
             strategy.start()
+        self.__profit_records.clear()
         self.__data_cache.start()
         self.__trade_manager.init()
         self.__event_engine.start()
@@ -228,7 +234,6 @@ class StrategyEngine(object):
     def _recycle(self):
         self.__data_cache.stop()
         self.__trade_manager.recycle()
-        # self.__account_manager.initialize()
 
     def wait(self, call_back=None, finished=True, *args, **kwargs):
         """等待所有事件处理完毕
@@ -399,15 +404,15 @@ class DataCache:
                         dict_['timestamp'] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
 
     def on_next_bar(self, event):
+        # 更新浮动盈亏
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
             if self._is_backtest:
-                self._engine.update_records(self.current_time)
+                pnl = self._engine.profit_record(self.current_time)
+                self._engine.profit_records.append(pnl)
             else:
-                pnl = self._engine.update_records(time.time())
+                pnl = self._engine.profit_record()
                 self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
-
-                # 更新浮动盈亏
 
 
 class TradeManager:
@@ -417,9 +422,16 @@ class TradeManager:
         self.engine = proxy(engine)
         self.__is_backtest = is_backtest  # 是否为回测
         self.__config = config
-        self.__position_factory = PositionFactory()
-        self.__order_factory = OrderFactory()
-        self.__deal_factory = DealFactory()
+        if self.__is_backtest:
+            self.__position_factory = PositionFactory()
+            self.__order_factory = OrderFactory()
+            self.__deal_factory = DealFactory()
+        else:
+            # 暂时只用account当前缀，下单时间和策略，信号的信息有了，只有对应实盘账户信息没有
+            prefix = '-'.join([self.__config['account']])
+            self.__position_factory = PositionFactory(prefix + '-P', timestamp=True)
+            self.__order_factory = OrderFactory(prefix + '-O', timestamp=True)
+            self.__deal_factory = DealFactory(prefix + '-D', timestamp=True)
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
@@ -518,7 +530,7 @@ class TradeManager:
                         if state['id'] == order_id:
                             deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
                             deal.type = 1 - ((order.type & 1) << 1)
-                            deal.volume = state['quantity']
+                            deal.volume = round(state['quantity'] / 100000, 2)  # 换算成手，精确到mini手
                             deal.time = parse(state['created']).timestamp()
                             deal.price = state['avgPx']
                             deal.symbol = order.symbol
@@ -629,22 +641,29 @@ class TradeManager:
                     """
             self.engine.update_cash(deal)
         else:
-            res = self.engine.position_status()
-            if res['ok']:
-                qty = res['openPositions']['qty']
-                position_now.symbol = deal.symbol
-                position_now.price_current = qty
-                position_now.type = sign(qty)
-                position_now.volume = round(abs(qty) / 100000, 2)  # 精确到迷你手
-                position_now.price_current = qty['price']
-                if position_now.type * position_prev.type >= 0:
-                    position_now.time_open = position_prev.time_open
-                    position_now.time_open_msc = position_prev.time_open_msc
-                    position_now.price_open = position_prev.price_open
-                else:
-                    position_now.price_open = qty['price']
-                    position_now.time_open = deal.time
-                    position_now.time_open_msc = deal.time_msc
+            res = self.engine.position_status(deal.symbol)
+            if res is not None:
+                qty = res['qty']
+                price = res['price']
+            else:
+                qty = 0
+                price = 0
+            position_now.symbol = deal.symbol
+            position_now.type = sign(qty)
+            position_now.volume = round(abs(qty) / 100000, 2)  # 精确到迷你手
+            position_now.price_current = price
+            if position_prev.type * deal.type >= 0:
+                deal.entry = DEAL_ENTRY_IN
+            else:
+                deal.entry = DEAL_ENTRY_OUT
+            if position_now.type * position_prev.type >= 0:
+                position_now.time_open = position_prev.time_open
+                position_now.time_open_msc = position_prev.time_open_msc
+                position_now.price_open = position_prev.price_open
+            else:
+                position_now.time_open = deal.time
+                position_now.time_open_msc = deal.time_msc
+                position_now.price_open = price
         position_now.time_update = deal.time
         position_now.time_update_msc = deal.time_msc
         deal.position = position_now.get_id()

@@ -9,7 +9,7 @@ from weakref import WeakKeyDictionary, proxy
 import numpy as np
 import pandas as pd
 import pytz
-import tushare
+# import tushare
 from pandas.tseries.offsets import MonthBegin
 
 from Bigfish.models.quote import Bar
@@ -146,10 +146,8 @@ class StrategyPerformanceManager(PerformanceManager):
     _column_names['M'] = (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
         {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})
 
-    def __init__(self, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, **config):
+    def __init__(self, deals, positions, currency_symbol='$', capital_base=100000):
         super(StrategyPerformanceManager, self).__init__(StrategyPerformance)
-        self._config = config
-        self._symbols_pool = symbols_pool
         self._deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
                                        columns=Deal.get_keys())  # deals in dataframe format
         self._positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
@@ -593,9 +591,11 @@ class StrategyPerformanceManagerOffline(StrategyPerformanceManager):
 
     def __init__(self, quotes, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, period=86400,
                  num=20, **config):  # 1day = 86400seconds
-        super(StrategyPerformanceManagerOffline, self).__init__(deals, positions, symbols_pool,
+        super(StrategyPerformanceManagerOffline, self).__init__(deals, positions,
                                                                 currency_symbol=currency_symbol,
-                                                                capital_base=capital_base, **config)
+                                                                capital_base=capital_base)
+        self._symbols_pool = symbols_pool
+        self._config = config
         if quotes is not None:
             self._quotes_raw = quotes
         else:
@@ -653,15 +653,12 @@ class StrategyPerformanceManagerOffline(StrategyPerformanceManager):
 
 
 class StrategyPerformanceManagerOnline(StrategyPerformanceManager):
-    def __init__(self, yield_raw, deals, positions, symbols_pool, currency_symbol='$', capital_base=100000, **config):
-        super(StrategyPerformanceManagerOnline, self).__init__(deals, positions, symbols_pool,
+    def __init__(self, yield_raw, deals, positions, currency_symbol='$', capital_base=100000):
+        super(StrategyPerformanceManagerOnline, self).__init__(deals, positions,
                                                                currency_symbol=currency_symbol,
-                                                               capital_base=capital_base, **config)
-        self._config = config
-        self._symbols_pool = symbols_pool
+                                                               capital_base=capital_base)
         self._precision = 4
         self._yield_raw = yield_raw
-        self._quotes_raw = None  # 计算完毕折后就可以释放资源了
 
     # @profile
     @property

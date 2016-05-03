@@ -122,9 +122,7 @@ class Backtesting(LoggerInterface):
             raise ValueError('please run the backtest first')
         return StrategyPerformanceManagerOnline(self.__strategy_engine.get_profit_records(),
                                                 self.__strategy_engine.get_deals(),
-                                                self.__strategy_engine.get_positions(),
-                                                self.__strategy_engine.symbol_pool,
-                                                **self.__config)
+                                                self.__strategy_engine.get_positions())
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()
@@ -235,6 +233,7 @@ if __name__ == '__main__':
     from Bigfish.store.directory import UserDirectory
     from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
+    import os
     import codecs
 
 
@@ -245,7 +244,8 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'testcode9.py')
+    with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'
     backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')

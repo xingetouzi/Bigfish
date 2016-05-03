@@ -21,10 +21,10 @@ if MEMORY_DEBUG:
 
 
 class RuntimeSignal(LoggerInterface):
-    def __init__(self, user, name, code, symbols=None, time_frame=None):
+    def __init__(self):
         super().__init__()
-        self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame}
-        self.__code = code
+        self.__config = {}
+        self.__code = None
         self.__strategy = None
         self.__strategy_engine = None
         self.__data_generator = None
@@ -32,6 +32,7 @@ class RuntimeSignal(LoggerInterface):
         self._logger = None
         self.__performance_manager = None
         self.__timer = Timer()
+        self._login = False
         self.__is_alive = False
         self.__initialized = False
 
@@ -40,7 +41,8 @@ class RuntimeSignal(LoggerInterface):
             return True
         bf_config = BfConfig(**self.__config)
         self.__strategy_engine = StrategyEngine(is_backtest=False, **self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, logger=self._logger, **self.__config)
+        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, logger=self._logger,
+                                   **self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = TickDataGenerator(bf_config,
                                                   lambda x: self.__strategy_engine.put_event(x.to_event()),
@@ -50,8 +52,21 @@ class RuntimeSignal(LoggerInterface):
     def set_config(self, **kwargs):
         self.__config.update(kwargs)
 
+    def login(self):
+        if not self._login:
+            self._login = False
+
     def set_logger(self, logger):
         self._logger = logger
+
+    @property
+    def code(self):
+        return self.__code
+
+    @code.setter
+    def code(self, code):
+        if self.__code is None:
+            self.__code = code
 
     @property
     def is_finished(self):
@@ -106,9 +121,7 @@ class RuntimeSignal(LoggerInterface):
             raise ValueError('please run the backtest first')
         return StrategyPerformanceManagerOnline(self.__strategy_engine.get_profit_records(),
                                                 self.__strategy_engine.get_deals(),
-                                                self.__strategy_engine.get_positions(),
-                                                self.__strategy_engine.symbol_pool,
-                                                **self.__config)
+                                                self.__strategy_engine.get_positions())
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()
@@ -137,8 +150,6 @@ class RuntimeSignal(LoggerInterface):
 
 
 if __name__ == '__main__':
-    from Bigfish.store.directory import UserDirectory
-    from Bigfish.utils.ligerUI_util import DataframeTranslator
     import codecs
     import time
 
@@ -152,10 +163,10 @@ if __name__ == '__main__':
     start_time = time.time()
     with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
         code = f.read()
-    user = '10032'
-    backtest = RuntimeSignal(user, 'test', code, ['EURUSD'], 'M15')
+    config = dict(user='10032', name='test', account="mb000004296",
+                  password="Morrisonwudi520", time_frame='M15', symbols=['EURUSD'])
+    signal = RuntimeSignal()
+    signal.code = code
+    signal.set_config(**config)
     # print(backtest.progress)
-    backtest.start()
-    performance = backtest.get_performance()  # 获取策略的各项指标
-    translator = DataframeTranslator()
-    user_dir = UserDirectory(user)
+    signal.start()

@@ -59,7 +59,7 @@ class Backtesting(LoggerInterface):
         self.__config.update(kwargs)
 
     def set_code(self, code):
-        self.__code = code
+        self.__code = code.replace('\t', '    ')
 
     def set_logger(self, logger):
         self._logger = logger

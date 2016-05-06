@@ -183,11 +183,19 @@ class RedisCache:
 
 
 if __name__ == '__main__':
-    from Bigfish.models.model import User
-
-    r = RedisCache(User("10086"))
+    r = RedisCache("10086")
     d = {"a": "123", "b": "456"}
-    r.put('test', d)
-    print(r.redis.hgetall("test"))
+    r.put("test", d)
+    print(r.hgetall("test"))
     # r.put_list("abc", [{"a":"123", "b":"456"}, {"a":"789", "b":"678"}])
     r.remove_keys("abc", "a", "b")
+
+
+class RedisCacheWithExpire(RedisCache):
+    _time_expire = None
+
+    def put(self, key, value):
+        super().put(key, value)
+        if self._time_expire is not None:
+            cache_key = self.get_cache_key(key)
+            self.redis.expire(cache_key, self._time_expire)

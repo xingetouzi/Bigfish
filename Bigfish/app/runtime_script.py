@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     if DEBUG:
         user = '10032'
-        code = r"E:\Users\BurdenBear\Documents\Github\Bigfish\Bigfish\test\testcode9.py"
+        file = r"E:\Users\BurdenBear\Documents\Github\Bigfish\Bigfish\test\testcode9.py"
         symbol = "EURUSD"
         time_frame = "M15"
     else:

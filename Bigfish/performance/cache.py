@@ -1,8 +1,9 @@
 import pickle
 import ujson as json
+
 import pandas as pd
 
-from Bigfish.data.cache import RedisCache
+from Bigfish.data.cache import RedisCacheWithExpire
 from Bigfish.performance.performance import StrategyPerformance
 from Bigfish.utils.ligerUI_util import DataframeTranslator
 
@@ -22,16 +23,6 @@ class RedisObject:
                 return json.loads(self._cache.get(':'.join([self._prefix, item]), decode=True))
         else:
             raise AttributeError
-
-
-class RedisCacheWithExpire(RedisCache):
-    _time_expire = None
-
-    def put(self, key, value):
-        super().put(key, value)
-        if self._time_expire is not None:
-            cache_key = self.get_cache_key(key)
-            self.redis.expire(cache_key, self._time_expire)
 
 
 class ComplexObjectRedisCache(RedisCacheWithExpire):

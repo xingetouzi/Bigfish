@@ -1,14 +1,16 @@
 # -*- coding:utf-8 -*-
-import traceback
 
 def init():
     pass
 
 
-def handle(MaxLen=60 * 24 * 4 + 1):
-    # print(MA(60 * 24 * 4))
+def handle():
     print(MarketPosition, Pos.volume, Cap.margin, Cap.available)
+    if Pos.volume >= 0.1:
+        BuyToCover(Symbol, Pos.volume)
     if BarNum % 6 != 0:
-        SellShort(Symbol, 1)
+        SellShort(Symbol, 0.01)
+        SellShort(Symbol, 0.01)
+        SellShort(Symbol, 0.01)
     # else:
         # BuyToCover(Symbol, Pos.volume)

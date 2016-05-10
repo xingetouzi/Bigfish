@@ -6,14 +6,15 @@ from functools import wraps, partial
 from threading import Thread, Lock
 import sys
 import time
+import traceback
 # 自定义模块
 from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event, EVENT_FINISH, EVENT_EXIT
 from Bigfish.utils.error import SlaverThreadError
-from Bigfish.config import THROW_ERROR
+from Bigfish.utils.log import LoggerInterface
 
 
 ########################################################################
-class EventEngine:
+class EventEngine(LoggerInterface):
     """
     事件驱动引擎
 
@@ -54,6 +55,7 @@ class EventEngine:
     def __init__(self):
         """初始化事件引擎"""
         # 事件队列
+        super().__init__()
         self.__queue = None
         self.__count_lock = Lock()
         self.__count = 0  # 计数器，用于辅助实现优先级队列
@@ -80,6 +82,7 @@ class EventEngine:
     # ----------------------------------------------------------------------
     def __run(self):
         """引擎运行"""
+        self.logger.debug("事件引擎开始运行")
         while self.__active:
             try:
                 *_, event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
@@ -88,8 +91,7 @@ class EventEngine:
                 time.sleep(0)
             except Exception as e:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()
-                if THROW_ERROR:
-                    raise e
+                self.logger.error("\n" + traceback.format_exc())
                 self.__active = False
                 self.stop()
         for file in self.__file_opened:
@@ -97,6 +99,7 @@ class EventEngine:
                 file.flush()
                 file.close()
         self.__file_opened.clear()
+        self.logger.debug("事件引擎停止运行")
 
     # ----------------------------------------------------------------------
     def __process(self, event):

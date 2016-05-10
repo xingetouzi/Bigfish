@@ -6,11 +6,14 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 import time
+from queue import PriorityQueue
 from dateutil.parser import parse
 from collections import defaultdict
 from weakref import proxy
 
 # 自定义模块
+from Bigfish.models.trade import OrderDirection
+from Bigfish.models.base import TradingMode
 from Bigfish.data.mongo_utils import MongoUser
 from Bigfish.core import AccountManager, FDTAccountManager
 from Bigfish.event.event import *
@@ -20,17 +23,19 @@ from Bigfish.models.trade import *
 from Bigfish.models.quote import Bar
 from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
+from Bigfish.utils.log import LoggerInterface
 
 
 # %% 策略引擎语句块
 ########################################################################
-class StrategyEngine(object):
+class StrategyEngine(LoggerInterface):
     """策略引擎"""
     CACHE_MAXLEN = 10000
 
     # ----------------------------------------------------------------------
     def __init__(self, is_backtest=False, **config):
         """Constructor"""
+        super().__init__()
         self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
         if is_backtest:
@@ -39,7 +44,11 @@ class StrategyEngine(object):
             self.__account_manager = FDTAccountManager(self, **config)
             self.mongo_user = MongoUser(self.__config['user'])
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
-        self.__data_cache = DataCache(self, is_backtest)  # 数据中继站
+        self.__data_cache = DataCache(self, is_backtest, self.__config.get('trading_mode', TradingMode.on_bar))  # 数据中继站
+        self._logger_child = {self.__event_engine: "EventEngine",
+                              self.__trade_manager: "TradeManager",
+                              self.__data_cache: "DataCache",
+                              self.__account_manager: "AccountManager"}
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
 
@@ -151,8 +160,12 @@ class StrategyEngine(object):
     def profit_record(self, *args, **kwargs):
         return self.__account_manager.profit_record(*args, **kwargs)
 
+    # TODO 此方法将弃用或被重命名
     def update_cash(self, deal):
         return self.__account_manager.update_cash(deal)
+
+    def realize_order(self):
+        self.__trade_manager.realize_order()
 
     def send_order_to_broker(self, order):
         return self.__account_manager.send_order_to_broker(order)
@@ -250,7 +263,7 @@ class StrategyEngine(object):
         return result
 
 
-class DataCache:
+class DataCache(LoggerInterface):
     """数据缓存器"""
     CACHE_MAXLEN = 1000  # 默认的缓存长度
     TICK_INTERVAL = 10  # Tick数据推送间隔
@@ -259,11 +272,13 @@ class DataCache:
     def set_default_maxlen(cls, maxlen):
         cls.CACHE_MAXLEN = maxlen
 
-    def __init__(self, engine, is_backtest):
+    def __init__(self, engine, is_backtest, trading_mode):
+        super().__init__()
         self._tick_cache = {}
         self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
         self._engine = proxy(engine)  # 避免循环引用
         self._is_backtest = is_backtest
+        self._trading_mode = trading_mode
         self._running = False
         self._data = {}
         self._symbol_pool = {}
@@ -335,7 +350,10 @@ class DataCache:
             else:
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
             # TODO 这里只考虑了单品种情况
-            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
+            if self._trading_mode == TradingMode.on_tick:
+                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][timeframe], self.on_next_bar)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
         self._count = 0
 
     def start(self):
@@ -413,12 +431,14 @@ class DataCache:
             else:
                 pnl = self._engine.profit_record()
                 self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
+        self._engine.realize_order()
 
 
-class TradeManager:
+class TradeManager(LoggerInterface):
     """负责保存交易信息，管理订单相关事件"""
 
     def __init__(self, engine, is_backtest=True, **config):
+        super().__init__()
         self.engine = proxy(engine)
         self.__is_backtest = is_backtest  # 是否为回测
         self.__config = config
@@ -432,6 +452,14 @@ class TradeManager:
             self.__position_factory = PositionFactory(prefix + '-P', timestamp=True)
             self.__order_factory = OrderFactory(prefix + '-O', timestamp=True)
             self.__deal_factory = DealFactory(prefix + '-D', timestamp=True)
+
+        class OrdersUr:
+            def __init__(self):
+                self.queue = defaultdict(PriorityQueue)  #
+                self.flag = set()
+                self.count = 0
+
+        self.__orders_ur = defaultdict(OrdersUr)  # orders unrealized 还未被处理的订单请求
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
@@ -539,10 +567,12 @@ class TradeManager:
                             deal.profit = cash_now - cash_old
                             break
         if order_id != -1:
+            self.logger.info("编号<%s>下单成功,订单ID:%s" % (order.id, order_id))
             self.__update_position(deal)  # TODO 加入事件引擎，支持异步
             self.__orders_done[order.get_id()] = order
             return order.get_id()
         else:
+            self.logger.info("编号<%s>下单失败,订单ID:%s" % (order.id, order_id))
             return -1
 
     # ----------------------------------------------------------------------
@@ -676,6 +706,73 @@ class TradeManager:
             self.engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
             self.engine.mongo_user.collection['deals'].insert_one(deal.to_dict())
 
+    def realize_order(self):
+        def get_order_info(orders_ur, direction):
+            if orders_ur.queue[direction].empty():
+                return None
+            return orders_ur.queue[direction].get()
+
+        def commit_order(direction, symbol, order_info):
+            if direction == OrderDirection.long_entry:
+                self.open_position(symbol, *order_info, direction=1)
+            elif direction == OrderDirection.short_entry:
+                self.open_position(symbol, *order_info, direction=-1)
+            elif direction == OrderDirection.long_exit:
+                self.open_position(symbol, *order_info, direction=1)
+            elif direction == OrderDirection.short_exit:
+                self.open_position(symbol, *order_info, direction=-1)
+
+        def choose_from_two_direction(orders_ur, direction_a, direction_b):
+            info_a = get_order_info(orders_ur, direction_a)
+            info_b = get_order_info(orders_ur, direction_b)
+            if info_a is None and info_b is None:
+                return False
+            elif info_a is None:
+                commit_order(direction_b, symbol, info_b[4:])
+            elif info_b is None:
+                commit_order(direction_a, symbol, info_a[4:])
+            elif info_a < info_b:
+                commit_order(direction_a, symbol, info_a[4:])
+                orders_ur.queue[direction_b].put(info_b)
+            else:
+                commit_order(direction_b, symbol, info_b[4:])
+                orders_ur.queue[direction_a].put(info_a)
+            return True
+
+        # TODO 相同方向最多进场数
+        for symbol, orders_ur in self.__orders_ur.items():
+            while not True:
+                # TODO 同步仓位机制
+                position = self.current_positions[symbol]
+                if position.type == POSITION_TYPE_BUY:
+                    info = get_order_info(orders_ur, OrderDirection.short_entry)
+                    if info is not None:
+                        commit_order(OrderDirection.short_entry, symbol, info[4:])
+                    elif not choose_from_two_direction(orders_ur, OrderDirection.long_entry, OrderDirection.long_exit):
+                        break
+                elif position.type == POSITION_TYPE_SELL:
+                    info = get_order_info(orders_ur, OrderDirection.long_entry)
+                    if info is not None:
+                        commit_order(OrderDirection.long_entry, symbol, info[4:])
+                    elif not choose_from_two_direction(orders_ur, OrderDirection.short_entry,
+                                                       OrderDirection.short_exit):
+                        break
+                elif position.type == POSITION_TYPE_NONE:
+                    if not choose_from_two_direction(orders_ur, OrderDirection.long_entry, OrderDirection.short_entry):
+                        break
+        self.__orders_ur.clear()
+
+    def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None, line=None,
+                    offset=None, direction=None):
+        if symbol not in self.__config['symbols']:
+            self.logger.warning("订单品种<%s>不在当前交易品种中")
+        orders_ur = self.__orders_ur[symbol]
+        if (line, offset) not in orders_ur.flag:
+            orders_ur.count += 1
+            orders_ur.flag.add((line, offset))
+            orders_ur.queue[direction].put(
+                (orders_ur.count, line, offset, volume, price, stop, limit, strategy, signal))
+
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                        direction=0):
@@ -691,7 +788,7 @@ class TradeManager:
         :param direction: 下单指令的方向(多头或者空头)
         :return: 如果为0，表示下单失败，否则返回所下订单的ID
         """
-        volume = round(volume, 2)
+        volume = round(volume, 2)  # 精确到mini手
         if volume == 0 or not direction:  # direction 对应多空头，1为多头，-1为空头
             return -1
         position = self.__current_positions.get(symbol, None)

@@ -5,29 +5,24 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 import gc
-import logging
-from functools import partial
-
-import numpy as np
-import pandas as pd
 
 from Bigfish.config import *
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
+from Bigfish.data.bf_config import BfConfig
+from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.common import get_datetime
 from Bigfish.utils.log import LoggerInterface
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.utils.timer import Timer
-from Bigfish.data.bf_config import BfConfig
-from Bigfish.event.event import Event, EVENT_FINISH
 
 if MEMORY_DEBUG:
     import sys
 
 
 class Backtesting(LoggerInterface):
-    def __init__(self, user, name, code, symbols=None, time_frame=None, start_time=None, end_time=None, commission=0,
-                 slippage=0):
+    def __init__(self, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None, end_time=None,
+                 commission=0, slippage=0):
         super().__init__()
         self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
                          'start_time': start_time, 'end_time': end_time, 'commission': commission,
@@ -37,29 +32,37 @@ class Backtesting(LoggerInterface):
         self.__strategy_engine = None
         self.__data_generator = None
         self.__strategy_parameters = None
-        self._logger = None
         self.__performance_manager = None
         self.__timer = Timer()
         self.__is_alive = False
         self.__initialized = False
+        self._logger_name = "Backtesting"
 
     def init(self):
         if self.__initialized:
-            return True
+            return None
         bf_config = BfConfig(**self.__config)
         self.__strategy_engine = StrategyEngine(is_backtest=True, **self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, logger=self._logger, **self.__config)
+        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, **self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)
         self.__data_generator = DataGenerator(bf_config,
                                               lambda x: self.__strategy_engine.put_event(x.to_event()),
                                               lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
+        self._logger_child = {self.__strategy_engine: "StrategyEngine",
+                              self.__strategy: "Strategy",
+                              self.__data_generator: "DataGenerator"}
+        self.logger_name = 'Backtesting'
+        if DEBUG:
+            self.logger.setLevel(logging.DEBUG)
+        else:
+            self.logger.setLevel(logging.INFO)
         self.__initialized = True
 
     def set_config(self, **kwargs):
         self.__config.update(kwargs)
 
-    def set_logger(self, logger):
-        self._logger = logger
+    def set_code(self, code):
+        self.__code = code.replace('\t', '    ')
 
     @property
     def is_finished(self):
@@ -67,7 +70,7 @@ class Backtesting(LoggerInterface):
 
     @property
     def progress(self):
-        if not self.__initialized:
+        if not self.__is_alive:
             return 0
         et = get_datetime(self.__config['end_time']).timestamp()
         st = get_datetime(self.__config['start_time']).timestamp()
@@ -84,8 +87,8 @@ class Backtesting(LoggerInterface):
         :param paras:
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
-        if not self.__initialized:
-            self.init()
+        self.logger.info("<%s>策略运算开始" % self.__config['name'])
+        self.init()
         gc.collect()
         self.__is_alive = True
         if paras is not None:
@@ -107,7 +110,7 @@ class Backtesting(LoggerInterface):
             result = self.__performance_manager
         else:
             result = self.__strategy_engine.wait()
-        self.log(self.__timer.time("策略运算完成，耗时:{0}"), logging.INFO)
+        self.logger.info(self.__timer.time("<%s>策略运算完成，耗时:{0}" % self.__config['name']))
         return result
 
     def stop(self):
@@ -138,103 +141,16 @@ class Backtesting(LoggerInterface):
         setting.pop('user')
         return setting
 
-    @staticmethod
-    def get_optimize_goals():
-        return {'net_profit': '净利'}
-
-    @staticmethod
-    def get_optimize_types():
-        return {'enumerate': '枚举', 'genetic': '遗传'}
-
-    def get_parameters(self):
-        if self.__strategy_parameters is None:
-            temp = self.__strategy.get_parameters()
-            for handle_name in temp.keys():
-                for para_name, values in temp[handle_name].items():
-                    temp[handle_name][para_name] = {'default': values, 'type': str(type(values))}
-            self.__strategy_parameters = temp
-        return self.__strategy_parameters
-
-    def _enumerate_optimize(self, ranges, goal, num):
-        stack = []
-        range_length = []
-        parameters = {}
-        result = []
-        head_index = []
-
-        def get_range(range_info):
-            return np.arange(range_info['start'], range_info['end'] + range_info['step'], range_info['step'])
-
-        for handle, paras in ranges.items():
-            parameters[handle] = {}
-            for para, value in paras.items():
-                range_value = get_range(value)
-                stack.append({'handle': handle, 'para': para, 'range': range_value})
-                head_index.append('%s(%s)' % (para, handle))
-                range_length.append(len(range_value))
-        n = len(stack)
-        index = [-1] * n
-        head = [0] * n
-
-        def set_paras(n, handle=None, para=None, range=None):
-            nonlocal parameters, head, index
-            parameters[handle][para] = head[n] = range[index[n]]
-
-        i = 0
-        finished = False
-        while 1:
-            index[i] += 1
-            while index[i] >= range_length[i]:
-                if i == 0:
-                    finished = True
-                    break
-                index[i] = -1
-                i -= 1
-                index[i] += 1
-            if finished:
-                break
-            set_paras(i, **stack[i])
-            if i == n - 1:
-                performance_manager = self.start(parameters, refresh=False)
-                head = pd.Series(head, index=head_index)
-                optimize_info = performance_manager.get_performance().optimize_info.copy()
-                target = optimize_info[goal]
-                del optimize_info[goal]
-                result.append(pd.concat([head, pd.Series([target], index=[goal]), optimize_info]))
-            else:
-                i += 1
-        self.__data_generator.stop()  # 释放数据资源
-        output = pd.DataFrame(result).sort_values(goal, ascending=False)
-        result.clear()  # 释放资源
-        output.index.name = '_'
-        output = output.iloc[:num]
-        return output
-
-    def _genetic_optimize(self, ranges, goal):
-        pass
-
-    def optimize(self, ranges, type, goal, num=50):
-        if not ranges:
-            return
-        if type is None:
-            type = "enumerate"
-        # TODO 不要使用硬编码
-        if goal is None:
-            goal = "净利($)"
-        goal = "净利($)"
-        optimizer = getattr(self, '_%s_optimize' % type)
-        return optimizer(ranges, goal, num)
-
     def time(self, *args):
         return self.__timer.time(*args)
 
 
 if __name__ == '__main__':
-    from Bigfish.store.directory import UserDirectory
-    from Bigfish.utils.ligerUI_util import DataframeTranslator
     import time
     import os
     import codecs
+    import logging
+    import sys
 
 
     def get_first_n_lines(string, n):
@@ -243,19 +159,35 @@ if __name__ == '__main__':
         return '\n'.join(lines[:n])
 
 
+    def set_handle(logger):
+        console = logging.StreamHandler(stream=sys.stdout)
+        console.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s %(filename)-20s[line:%(lineno)-3d] %(levelname)-8s %(message)s')
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+        return console
+
+
     start_time = time.time()
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'testcode9.py')
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
-    user = '10032'
-    backtest = Backtesting(user, 'test', code, ['EURUSD'], 'M15', '2015-01-01', '2015-03-01')
+    user = '10032'  # 用户名
+    name = 'test'  # 策略名
+    backtest = Backtesting()
+    backtest.set_code(code)
+    config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M15', start_time='2015-01-01',
+                  end_time='2015-03-01')
+    backtest.set_config(**config)
+    backtest.init()
+    handle = set_handle(backtest.logger)
     # print(backtest.progress)
     backtest.start()
     performance = backtest.get_performance()  # 获取策略的各项指标
-    translator = DataframeTranslator()
-    user_dir = UserDirectory(user)
+    # translator = DataframeTranslator()
+    # user_dir = UserDirectory(user)
     # print(user_dir.get_sys_func_list())
-    # print(backtest.get_profit_records())  # 获取浮动收益曲线
+    print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     # print(performance._dict_name)
     # for k, v in performance.__dict__.items():

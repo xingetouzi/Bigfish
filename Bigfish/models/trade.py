@@ -6,6 +6,7 @@ Created on Fri Nov 27 09:59:13 2015
 """
 
 from Bigfish.models.common import DictLike, FactoryWithTimestampPrefixID
+from enum import Enum
 
 """所有的数据结构都继承HasID，通过ID来访问，以便于以后在数据库中存储"""
 
@@ -67,6 +68,13 @@ class PositionFactory(FactoryWithTimestampPrefixID):
 
     def __init__(self, prefix='', timestamp=False):
         super().__init__(prefix, timestamp=timestamp)
+
+
+class OrderDirection(Enum):
+    long_entry = 0
+    short_entry = 1
+    long_exit = 2
+    short_exit = 3
 
 
 # ENUM_ORDER_STATE

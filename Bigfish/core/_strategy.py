@@ -32,7 +32,7 @@ class Strategy(LoggerInterface, HasID):
 
     # ----------------------------------------------------------------------
     def __init__(self, engine, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None,
-                 end_time=None, logger=None, **kwargs):
+                 end_time=None, **kwargs):
         """Constructor"""
         super().__init__()
         self.__id = self.next_auto_inc()
@@ -45,10 +45,6 @@ class Strategy(LoggerInterface, HasID):
         self.symbols = symbols
         self.start_time = start_time
         self.end_time = end_time
-        if logger:
-            self._logger = logger
-        else:
-            pass  # TODO 默认的日志行为
         self.max_length = 0
         self.capital_base = 100000
         self.handlers = {}
@@ -56,7 +52,6 @@ class Strategy(LoggerInterface, HasID):
         self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
-        self.__logger = logger
         self.__printer = FilePrinter(user, name, self.engine)
         self.__context = {}
         self.__points = {}
@@ -290,7 +285,7 @@ class Strategy(LoggerInterface, HasID):
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
             self.signals[key].set_generator(signal_locals_[key])
-        self.log("<%s>策略添加成功" % self.name, logging.INFO)
+        self.logger.info("<%s>策略添加成功" % self.name)
         return True
 
     # ----------------------------------------------------------------------
@@ -307,7 +302,7 @@ class Strategy(LoggerInterface, HasID):
         for function in self.system_functions.values():
             function.start()
         self.__printer.start()
-        self.log("<%s>策略开始运行" % self.name, logging.INFO)
+        self.logger.info("<%s>策略开始运行" % self.name)
 
     # ----------------------------------------------------------------------
     def stop(self):
@@ -321,4 +316,4 @@ class Strategy(LoggerInterface, HasID):
         for function in self.system_functions.values():
             function.stop()
         self.__printer.stop()
-        self.log("<%s>策略停止运行" % self.name, logging.INFO)
+        self.logger.info("<%s>策略停止运行" % self.name)

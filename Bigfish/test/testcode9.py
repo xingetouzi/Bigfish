@@ -12,5 +12,5 @@ def handle(TakeProfit=50, StopLoss=100):
     elif MarketPosition>0 and Close[0]>EntryPrice+TakeProfit*Point:
         print(Close[0],EntryPrice)
         Sell(Symbol,1) # 平多仓
-    elif  MarketPosition>0 and Close[0]<EntryPrice-StopLoss*Point:
+    elif MarketPosition>0 and Close[0]<EntryPrice-StopLoss*Point:
         Sell(Symbol,1) # 平多仓

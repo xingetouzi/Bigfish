@@ -8,6 +8,7 @@ from functools import wraps
 from dateutil.parser import parse
 from weakref import proxy
 
+from Bigfish.utils.log import LoggerInterface
 from Bigfish.models.base import Currency
 from Bigfish.fdt.account import FDTAccount
 from Bigfish.models.trade import *
@@ -16,10 +17,11 @@ BASE_DEFAULT = 100000
 
 
 ###################################################################
-class AccountManager:
+class AccountManager(LoggerInterface):
     """交易账户对象"""
 
     def __init__(self, engine, currency=Currency("USD"), **config):
+        super().__init__()
         self._engine = proxy(engine)
         self._config = config
         self._capital_base = None

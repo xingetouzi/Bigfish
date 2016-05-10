@@ -7,21 +7,33 @@ Created on Mon Nov  2 19:07:00 2015
 import os
 import logging
 from functools import partial
+from weakref import WeakKeyDictionary
 
 from contextlib import redirect_stdout
 from Bigfish.store.directory import UserDirectory
 from Bigfish.models.model import User
 
+import logging
+
 
 class LoggerInterface:
     def __init__(self):
-        self._logger = None
+        self._logger_name = ''
+        self._logger_child = WeakKeyDictionary()
 
-    def log(self, message, lvl=logging.NOTSET):
-        if self._logger:
-            self._logger.log(lvl, message)
-        else:
-            print("[日志优先级{0}]{1}".format(lvl, message))
+    @property
+    def logger_name(self):
+        return self._logger_name
+
+    @logger_name.setter
+    def logger_name(self, name):
+        self._logger_name = name
+        for key, value in self._logger_child.items():
+            key.logger_name = name + '.' + value
+
+    @property
+    def logger(self):
+        return logging.getLogger(self.logger_name)
 
 
 class Printer:

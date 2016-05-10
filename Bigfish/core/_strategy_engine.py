@@ -11,6 +11,7 @@ from collections import defaultdict
 from weakref import proxy
 
 # 自定义模块
+from Bigfish.models.trade import OrderDirection
 from Bigfish.data.mongo_utils import MongoUser
 from Bigfish.core import AccountManager, FDTAccountManager
 from Bigfish.event.event import *
@@ -20,17 +21,19 @@ from Bigfish.models.trade import *
 from Bigfish.models.quote import Bar
 from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
+from Bigfish.utils.log import LoggerInterface
 
 
 # %% 策略引擎语句块
 ########################################################################
-class StrategyEngine(object):
+class StrategyEngine(LoggerInterface):
     """策略引擎"""
     CACHE_MAXLEN = 10000
 
     # ----------------------------------------------------------------------
     def __init__(self, is_backtest=False, **config):
         """Constructor"""
+        super().__init__()
         self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
         if is_backtest:
@@ -40,6 +43,10 @@ class StrategyEngine(object):
             self.mongo_user = MongoUser(self.__config['user'])
         self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
         self.__data_cache = DataCache(self, is_backtest)  # 数据中继站
+        self._logger_child = {self.__event_engine: "EventEngine",
+                              self.__trade_manager: "TradeManager",
+                              self.__data_cache: "DataCache",
+                              self.__account_manager: "AccountManager"}
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
 
@@ -250,7 +257,7 @@ class StrategyEngine(object):
         return result
 
 
-class DataCache:
+class DataCache(LoggerInterface):
     """数据缓存器"""
     CACHE_MAXLEN = 1000  # 默认的缓存长度
     TICK_INTERVAL = 10  # Tick数据推送间隔
@@ -260,6 +267,7 @@ class DataCache:
         cls.CACHE_MAXLEN = maxlen
 
     def __init__(self, engine, is_backtest):
+        super().__init__()
         self._tick_cache = {}
         self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
         self._engine = proxy(engine)  # 避免循环引用
@@ -415,10 +423,11 @@ class DataCache:
                 self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
 
 
-class TradeManager:
+class TradeManager(LoggerInterface):
     """负责保存交易信息，管理订单相关事件"""
 
     def __init__(self, engine, is_backtest=True, **config):
+        super().__init__()
         self.engine = proxy(engine)
         self.__is_backtest = is_backtest  # 是否为回测
         self.__config = config
@@ -432,6 +441,7 @@ class TradeManager:
             self.__position_factory = PositionFactory(prefix + '-P', timestamp=True)
             self.__order_factory = OrderFactory(prefix + '-O', timestamp=True)
             self.__deal_factory = DealFactory(prefix + '-D', timestamp=True)
+        self.__orders_ur = defaultdict(list)  # orders unrealized 还未被处理的订单请求
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
@@ -539,10 +549,12 @@ class TradeManager:
                             deal.profit = cash_now - cash_old
                             break
         if order_id != -1:
+            self.logger.info("编号<%s>下单成功,订单ID:%s" % (order.id, order_id))
             self.__update_position(deal)  # TODO 加入事件引擎，支持异步
             self.__orders_done[order.get_id()] = order
             return order.get_id()
         else:
+            self.logger.info("编号<%s>下单失败,订单ID:%s" % (order.id, order_id))
             return -1
 
     # ----------------------------------------------------------------------
@@ -675,6 +687,12 @@ class TradeManager:
         else:
             self.engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
             self.engine.mongo_user.collection['deals'].insert_one(deal.to_dict())
+
+    def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None, line=None,
+                    offset=None, direction=None):
+        if symbol not in self.__config['symbols']:
+            pass
+        self.__orders_ur[direction].appends((line, offset, volume, price, stop, strategy, signal))
 
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,

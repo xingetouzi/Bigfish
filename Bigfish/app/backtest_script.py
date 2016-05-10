@@ -1,14 +1,15 @@
-import sys, getopt
 import codecs
-import ujson as json, pickle
+import getopt
 import os
+import sys
+import ujson as json
 
-from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 from Bigfish.app.backtest import Backtesting
-from Bigfish.performance.cache import StrategyPerformanceJsonCache
-from Bigfish.utils.common import string_to_html
 from Bigfish.models import User
+from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory
+from Bigfish.utils.common import string_to_html
+from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 
 DEBUG = False
 
@@ -27,13 +28,14 @@ def get_output(user, name):
     return output
 
 
-def run_backtest(user, name, file, symbols, time_frame, start_time, end_time, commission, slippage):
+def run_backtest(file, config):
     cache = StrategyPerformanceJsonCache(user)  # TODO 修改为JSON
     try:
         with codecs.open(file, 'r', 'utf-8') as f:
             code = f.read()
             f.close()
-        backtesting = Backtesting(user, name, code, symbols, time_frame, start_time, end_time, commission, slippage)
+        backtesting = Backtesting(**config)
+        backtesting.set_code(code)
         backtesting.start()
         performance = backtesting.get_performance()
         cache.put_performance(performance)
@@ -95,5 +97,6 @@ if __name__ == '__main__':
             commission = float(value)
         elif op == '-n':
             name = value
-
-    run_backtest(user, name, code, [symbol], time_frame, start_time, end_time, commission, slippage)
+    config = dict(user=user, name=name, symbols=[symbol], time_frame=time_frame, start_time=start_time,
+                  end_time=end_time, comission=commission, slippage=slippage)
+    run_backtest(code, config)

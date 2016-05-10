@@ -113,6 +113,8 @@ class RedisCache:
 
     def get(self, key, decode=True):
         result = self.redis.get(self.get_cache_key(key))
+        if result is None:
+            return None
         if decode:
             return result.decode("utf-8")
         else:

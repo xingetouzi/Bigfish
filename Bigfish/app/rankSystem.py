@@ -5,18 +5,23 @@
 import traceback
 import pymysql
 import os
-import codecs
+import numpy as np
+#import codecs
 import operator
 from Bigfish.app import backtest as bt
 from Bigfish.store.connection import conn
 
-
+####################################文件路径设置
 strategyPath="G:/参赛策略"
-scorePath="G:/回测成绩"
-userInfoPath="G:/用户信息"
+scorePath="G:/回测成绩/回测成绩.csv"
+rankPath="G:/回测成绩/选手排名.csv"
+userInfoPath="G:/用户信息/用户信息.csv"
+####################################中间存储方案 ！！无需改动
 stperiod={"EURUSD":[],"GBPUSD":[],"USDCAD":[],"USDJPY":[],"USDCHF":[],"AUDUSD":[]}
 enperiod={"EURUSD":[],"GBPUSD":[],"USDCAD":[],"USDJPY":[],"USDCHF":[],"AUDUSD":[]}
 userInfo={}
+
+
 
 def setTestPeriod():
     """
@@ -150,18 +155,18 @@ def userInfoDownload():
     cur.execute("select * from user")
     row=cur.fetchall()
     for line in row:
-        outFilePath=userInfoPath+"/"+"用户信息.csv"
+        outFilePath=userInfoPath
         output= open(outFilePath,"a")
         output.write("%s,%s,%s,%s,%s\n"% (line["id"],line["nickname"],line["email"],line["fdt_id"],line["phone"]))
         output.close()
 
 def getUserInfo():
     """
-    获取用户信息并输出到文件
+    获取用户信息
     :return:
     """
     global userInfo,userInfoPath
-    inFilePath=userInfoPath+"/"+"用户信息.csv"
+    inFilePath=userInfoPath
     input=open(inFilePath,"r")
     row = input.readlines()#读取文件
     for line in row:
@@ -188,7 +193,7 @@ def getInfo(info):
 
 def getScore(filePath,symbol,timeframe,start,end):
     """
-    回测&评定绩效
+    回测&评定得分
     :param filePath:
     :return:
     """
@@ -234,53 +239,101 @@ def getScore(filePath,symbol,timeframe,start,end):
         return(-99999)
     else:
         print("得分：",mark,"\n")
-        return(mark)
+        if np.isnan(mark):
+            return(0)
+        else:
+            return(mark)
 
-def getPerfomance():
+def getPerfomance(codeInfo):
     """
-    计算所有选手成绩
+    获得策略表现
     """
-    global strategyPath,scorePath,stperiod,enperiod,userInfo
+    global strategyPath,stperiod,enperiod,userInfo
 
-    score=[]#记录选手得分
+    info=codeInfo.replace(".py","")
+    name,symbol,timeframe,strategy_id,user_id=getInfo(info)
+    nickname=userInfo[user_id]["nickname"]
+    fdt_id=userInfo[user_id]["fdt_id"]
+    email=userInfo[user_id]["email"]
+    phone=userInfo[user_id]["phone"]
+    filePath=strategyPath+"/"+codeInfo
+
+    #五点取样，测评该策略分数
+    mark=0
+    for i in range(len(stperiod[symbol])):
+        start=stperiod[symbol][i]
+        end=enperiod[symbol][i]
+        mark+=0.2*getScore(filePath,symbol,timeframe,start,end)
+    return nickname,mark,name,symbol,timeframe,fdt_id,email,phone
+
+def getRank(scorePath):
+    """
+    计算所有选手排名并输出
+    """
+    global rankPath
+
+    input=open(scorePath,"r")
+    content=input.readlines()
+    score=[]
     count=0
-
-    list=os.listdir(strategyPath)
-    for line in list:
+    for line in content:
         score.append({})
-        info=line.replace(".py","")
-        name,symbol,timeframe,strategy_id,user_id=getInfo(info)
-        score[count]["name"]=name
-        score[count]["symbol"]=symbol
-        score[count]["timeframe"]=timeframe
-        score[count]["strategy_id"]=strategy_id
-        score[count]["user_id"]=user_id
-        score[count]["nickname"]=userInfo[user_id]["nickname"]
-        score[count]["fdt_id"]=userInfo[user_id]["fdt_id"]
-        score[count]["email"]=userInfo[user_id]["email"]
-        score[count]["phone"]=userInfo[user_id]["phone"]
-        filePath=strategyPath+"/"+line
-
-        #五点取样，测评该策略分数
-        mark=0
-        for i in range(len(stperiod[symbol])):
-            start=stperiod[symbol][i]
-            end=enperiod[symbol][i]
-            mark+=0.2*getScore(filePath,symbol,timeframe,start,end)
-        score[count]["mark"]=mark
-
+        score[count]["nickname"],score[count]["mark"],score[count]["name"],score[count]["symbol"],score[count]["timeframe"],score[count]["fdt_id"],score[count]["email"],score[count]["phone"]=line.split(",")
         count+=1
 
     #按得分排序并输出到文件
     score.sort(key=operator.itemgetter("mark"),reverse=True)  #默认为升序， reverse=True为降序
-    output=open(scorePath+"/成绩排名.csv","a")
+    output=open(rankPath,"a")
     output.write("nickname,mark,strategy_name,symbol,timeframe,fdt_id,email,phone\n")
     for rank in score:
         output.write("%s,%s,%s,%s,%s,%s,%s,%s"%(rank["nickname"],rank["mark"],rank["name"],rank["symbol"],rank["timeframe"],rank["fdt_id"],rank["email"],rank["phone"]))
+    input.close()
     output.close()
 
-#codeDownload()
-# userInfoDownload()
-setTestPeriod()
-getUserInfo()
-getPerfomance()
+def main():
+    """
+    一键完成策略测试到成绩输出
+    :return:
+    """
+    global strategyPath,scorePath
+    #输出用户的成绩
+    list=os.listdir(strategyPath)
+    for line in list:
+        output=open(scorePath,"a")
+        nickname,mark,name,symbol,timeframe,fdt_id,email,phone=getPerfomance(line) #获得策略表现详情
+        output.write("%s,%s,%s,%s,%s,%s,%s,%s"%(nickname,mark,name,symbol,timeframe,fdt_id,email,phone))
+        output.close()
+    getRank(scorePath) #成绩排序
+
+def singleTest(codeInfo):
+    global scorePath
+
+    nickname,mark,name,symbol,timeframe,fdt_id,email,phone=getPerfomance(codeInfo)
+    print(nickname,mark,name,symbol,timeframe,fdt_id,email,phone)
+
+    """
+    ##输出到文件
+    output=open(scorePath,"a")
+    output.write("%s,%s,%s,%s,%s,%s,%s,%s"%(nickname,mark,name,symbol,timeframe,fdt_id,email,phone))
+    output.close()
+    getRank(scorePath) #成绩排序
+    """
+
+###################################执行方法
+############下载
+# codeDownload() #策略脚本下载 ！只需下载一次
+# userInfoDownload() #用户信息下载 ！只需下载一次
+###########初始化
+setTestPeriod() #必须
+getUserInfo() #必须
+
+###########执行方案
+#Plan A
+main() #一键完成策略测试到成绩输出
+#getRank(scorePath) #成绩排序
+
+"""
+#Plan B
+codeInfo="螳螂捕蝉 黄雀在后 戒骄戒躁 冷静思考_EURUSD_M15&91&aec2b8fa0b454ac8860bd9cb51deb91b.py"
+singleTest(codeInfo)#单个测试
+"""

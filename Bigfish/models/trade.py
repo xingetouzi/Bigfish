@@ -72,7 +72,7 @@ class PositionFactory(FactoryWithTimestampPrefixID):
 
 class OrderDirection(Enum):
     long_entry = 0
-    Short_entry = 1
+    short_entry = 1
     long_exit = 2
     short_exit = 3
 

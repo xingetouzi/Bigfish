@@ -418,16 +418,17 @@ class DataCache(LoggerInterface):
                         bar.low = dict_['low']
                         bar.close = dict_['close']
                         self.update_bar(bar)
-                        dict_["open"] = tick.openPrice,
-                        dict_["high"] = tick.highPrice,
-                        dict_["low"] = tick.lowPrice,
-                        dict_["close"] = tick.lastPrice,
-                        dict_["volume"] = tick.volume,
-                        dict_["timestamp"] = tick.time // bar_interval * bar_interval,
+                        dict_["open"] = tick.openPrice
+                        dict_["high"] = tick.highPrice
+                        dict_["low"] = tick.lowPrice
+                        dict_["close"] = tick.lastPrice
+                        dict_["volume"] = tick.volume
+                        dict_["timestamp"] = tick.time // bar_interval * bar_interval
                     else:
                         dict_['low'] = min(dict_['low'], tick.lowPrice)
                         dict_['high'] = max(dict_['high'], tick.highPrice)
                         dict_['close'] = tick.lastPrice
+                        dict_["volume"] += tick.volume
                         dict_['timestamp'] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
 
     def on_next_bar(self, event):

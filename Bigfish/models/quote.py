@@ -61,7 +61,7 @@ class Bar(DictLike):
         return cls.__keys__
 
 
-class Tick:
+class Tick(DictLike):
     """Tick数据对象"""
     __DEPTH = 5
     __slots__ = ["symbol", "openPrice", "highPrice", "lowPrice", "lastPrice", "volume", "openInterest",

@@ -154,7 +154,7 @@ if __name__ == '__main__':
     with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
         code = f.read()
     config = dict(user='10032', name='test', account="mb000004296",
-                  password="Morrisonwudi520", time_frame='M15', symbols=['EURUSD'])
+                  password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'])
     signal = RuntimeSignal()
     signal.code = code
     signal.set_config(**config)

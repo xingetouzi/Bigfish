@@ -251,11 +251,9 @@ class ReturnTransformer(ast.NodeTransformer):
         self.__in_func_def = False  # 用于处理是否在嵌套定义的函数当中
         self.__target = target
         self.__add = add
-        self.__has_return = False
 
     def visit_Return(self, node):
         if not self.__in_func_def:
-            self.__has_return = True
             return self.patch(node, self.__target(node))
         else:
             return node
@@ -276,9 +274,8 @@ class ReturnTransformer(ast.NodeTransformer):
             return patcher.visit(node)
 
     def trans(self, node):
-        self.__has_return = False
         node = self.visit(node)
-        if (not self.__has_return) and self.__add:
+        if self.__add:
             to_add = self.patch(node.body[-1], self.__target(None))
             if isinstance(to_add, list):
                 node.body.extend(to_add)

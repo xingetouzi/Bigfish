@@ -5,7 +5,7 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 import gc
-
+import logging
 from Bigfish.config import *
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
 from Bigfish.data.bf_config import BfConfig
@@ -149,7 +149,6 @@ if __name__ == '__main__':
     import time
     import os
     import codecs
-    import logging
     import sys
 
 
@@ -169,7 +168,9 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'IKH_testCase.py')
+    file = "testcode6.py"
+    file = 'IKH_testCase.py'
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'  # 用户名
@@ -177,7 +178,7 @@ if __name__ == '__main__':
     backtest = Backtesting()
     backtest.set_code(code)
     config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M1', start_time='2015-01-01',
-                  end_time='2015-01-03')
+                  end_time='2015-03-01')
     backtest.set_config(**config)
     backtest.init()
     handle = set_handle(backtest.logger)
@@ -187,7 +188,7 @@ if __name__ == '__main__':
     # translator = DataframeTranslator()
     # user_dir = UserDirectory(user)
     # print(user_dir.get_sys_func_list())
-    print(backtest.get_profit_records())  # 获取浮动收益曲线
+    # print(backtest.get_profit_records())  # 获取浮动收益曲线
     # print(backtest.get_parameters())  # 获取策略中的参数（用于优化）
     # print(performance._dict_name)
     # for k, v in performance.__dict__.items():

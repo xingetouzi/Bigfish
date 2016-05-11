@@ -10,6 +10,7 @@ import codecs
 
 from Bigfish.store.code_manage import get_sys_func_list, get_sys_func_dir
 from Bigfish.config import MODULES_IMPORT
+from Bigfish.models.base import TradingCommands
 
 
 class LocationPatcher(ast.NodeTransformer):
@@ -293,3 +294,16 @@ def wrap_with_module(nodes):
         return ast.Module(body=[nodes])
     except Exception as e:
         raise e
+
+
+class TradingCommandsTransformer(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and isinstance(node.func.ctx, ast.Load):
+            if node.keywords:
+                parser = LocationPatcher(node.keywords[-1])
+            else:
+                parser = LocationPatcher(node)
+            if node.func.id in map(lambda x: x.value, list(TradingCommands)):
+                node.keywords.append(parser.visit(ast.keyword(arg='lineno', value=ast.Num(n=node.lineno))))
+                node.keywords.append(parser.visit(ast.keyword(arg='col_offset', value=ast.Num(n=node.col_offset))))
+        return node

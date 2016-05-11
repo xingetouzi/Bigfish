@@ -169,15 +169,15 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'testcode9.py')
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', 'IKH_testCase.py')
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
     user = '10032'  # 用户名
     name = 'test'  # 策略名
     backtest = Backtesting()
     backtest.set_code(code)
-    config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M15', start_time='2015-01-01',
-                  end_time='2015-03-01')
+    config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M1', start_time='2015-01-01',
+                  end_time='2015-01-03')
     backtest.set_config(**config)
     backtest.init()
     handle = set_handle(backtest.logger)

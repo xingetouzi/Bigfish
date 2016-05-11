@@ -6,13 +6,12 @@ Created on Wed Nov 25 21:09:47 2015
 @author: BurdenBear
 """
 import time
-from queue import PriorityQueue
-from dateutil.parser import parse
 from collections import defaultdict
+from queue import PriorityQueue
 from weakref import proxy
 
+from dateutil.parser import parse
 # 自定义模块
-from Bigfish.models.trade import OrderDirection
 from Bigfish.models.base import TradingMode
 from Bigfish.data.mongo_utils import MongoUser
 from Bigfish.core import AccountManager, FDTAccountManager
@@ -175,6 +174,9 @@ class StrategyEngine(LoggerInterface):
 
     def position_status(self, *args, **kwargs):
         return self.__account_manager.position_status(*args, **kwargs)
+
+    def place_order(self, *args, **kwargs):
+        return self.__trade_manager.place_order(*args, **kwargs)
 
     def open_position(self, *args, **kwargs):
         return self.__trade_manager.open_position(*args, **kwargs)
@@ -345,6 +347,8 @@ class DataCache(LoggerInterface):
                 maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
+            if self._trading_mode == TradingMode.on_tick:
+                self._data[timeframe]['tick_open'][symbol] = 0  # 用于on_tick模式回测的模拟成交的价格记录
             if not self._is_backtest:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
             else:
@@ -364,11 +368,6 @@ class DataCache(LoggerInterface):
         self._running = False
         self._data.clear()
 
-    def on_bar(self, event):
-        if self._running:
-            bar = event.content['data']
-            self.update_bar(bar)
-
     def update_bar(self, bar):
         symbol = bar.symbol
         time_frame = bar.time_frame
@@ -380,9 +379,19 @@ class DataCache(LoggerInterface):
                 self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
         else:
-            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+            if self._trading_mode == TradingMode.on_tick:
+                self._data[time_frame]["tick_open"][symbol] = bar.open
+            self._data[time_frame]["high"][symbol][0] = max(self._data[time_frame]["high"][symbol][0], bar.high)
+            self._data[time_frame]["low"][symbol][0] = min(self._data[time_frame]["low"][symbol][0], bar.low)
+            self._data[time_frame]["volume"][symbol][0] += bar.volume
+            for field in ["datetime", "timestamp"]:
                 self._data[time_frame][field][symbol][0] = getattr(bar, field)
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
+    def on_bar(self, event):
+        if self._running:
+            bar = event.content['data']
+            self.update_bar(bar)
 
     def on_tick(self, event):
         if self._running:
@@ -409,12 +418,12 @@ class DataCache(LoggerInterface):
                         bar.low = dict_['low']
                         bar.close = dict_['close']
                         self.update_bar(bar)
-                    if tick.time - dict_['timestamp'] >= bar_interval:
-                        self._tick_cache[symbol][time_frame] = {
-                            'open': tick.openPrice, 'high': tick.highPrice,
-                            'low': tick.lastPrice, 'close': tick.lastPrice,
-                            'volume': tick.volume, 'timestamp': tick.time // bar_interval * bar_interval,
-                        }
+                        dict_["open"] = tick.openPrice,
+                        dict_["high"] = tick.highPrice,
+                        dict_["low"] = tick.lowPrice,
+                        dict_["close"] = tick.lastPrice,
+                        dict_["volume"] = tick.volume,
+                        dict_["timestamp"] = tick.time // bar_interval * bar_interval,
                     else:
                         dict_['low'] = min(dict_['low'], tick.lowPrice)
                         dict_['high'] = max(dict_['high'], tick.highPrice)
@@ -530,7 +539,7 @@ class TradeManager(LoggerInterface):
                 margin += symbol.margin(volume, commission=self.__config['commission'],
                                         base_price=self.engine.get_base_price(order.symbol, time_frame))
             if self.engine.capital_available - margin >= 0:
-                time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0] + tf2s(time_frame)
+                time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0]
                 order.time_done = int(time_)
                 order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
                 order.volume_current = order.volume_initial
@@ -539,7 +548,10 @@ class TradeManager(LoggerInterface):
                 deal.time = order.time_done
                 deal.time_msc = order.time_done_msc
                 deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-                deal.price = self.engine.data[time_frame]["close"][order.symbol][0]
+                if self.__config.get("trading_mode", TradingMode.on_bar) == TradingMode.on_tick:
+                    deal.price = self.engine.data[time_frame]["tick_open"][order.symbol]  # 以next tick open 成交
+                else:
+                    deal.price = self.engine.data[time_frame]["open"][order.symbol][0]  # 以next bar open 成交
                 # TODO加入手续费等
                 order.deal = deal.get_id()
                 deal.order = order.get_id()
@@ -718,9 +730,9 @@ class TradeManager(LoggerInterface):
             elif direction == OrderDirection.short_entry:
                 self.open_position(symbol, *order_info, direction=-1)
             elif direction == OrderDirection.long_exit:
-                self.open_position(symbol, *order_info, direction=1)
+                self.close_position(symbol, *order_info, direction=1)
             elif direction == OrderDirection.short_exit:
-                self.open_position(symbol, *order_info, direction=-1)
+                self.close_position(symbol, *order_info, direction=-1)
 
         def choose_from_two_direction(orders_ur, direction_a, direction_b):
             info_a = get_order_info(orders_ur, direction_a)
@@ -728,32 +740,32 @@ class TradeManager(LoggerInterface):
             if info_a is None and info_b is None:
                 return False
             elif info_a is None:
-                commit_order(direction_b, symbol, info_b[4:])
+                commit_order(direction_b, symbol, info_b[3:])
             elif info_b is None:
-                commit_order(direction_a, symbol, info_a[4:])
+                commit_order(direction_a, symbol, info_a[3:])
             elif info_a < info_b:
-                commit_order(direction_a, symbol, info_a[4:])
+                commit_order(direction_a, symbol, info_a[3:])
                 orders_ur.queue[direction_b].put(info_b)
             else:
-                commit_order(direction_b, symbol, info_b[4:])
+                commit_order(direction_b, symbol, info_b[3:])
                 orders_ur.queue[direction_a].put(info_a)
             return True
 
         # TODO 相同方向最多进场数
         for symbol, orders_ur in self.__orders_ur.items():
-            while not True:
+            while True:
                 # TODO 同步仓位机制
                 position = self.current_positions[symbol]
                 if position.type == POSITION_TYPE_BUY:
                     info = get_order_info(orders_ur, OrderDirection.short_entry)
                     if info is not None:
-                        commit_order(OrderDirection.short_entry, symbol, info[4:])
+                        commit_order(OrderDirection.short_entry, symbol, info[3:])
                     elif not choose_from_two_direction(orders_ur, OrderDirection.long_entry, OrderDirection.long_exit):
                         break
                 elif position.type == POSITION_TYPE_SELL:
                     info = get_order_info(orders_ur, OrderDirection.long_entry)
                     if info is not None:
-                        commit_order(OrderDirection.long_entry, symbol, info[4:])
+                        commit_order(OrderDirection.long_entry, symbol, info[3:])
                     elif not choose_from_two_direction(orders_ur, OrderDirection.short_entry,
                                                        OrderDirection.short_exit):
                         break
@@ -762,16 +774,17 @@ class TradeManager(LoggerInterface):
                         break
         self.__orders_ur.clear()
 
-    def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None, line=None,
-                    offset=None, direction=None):
+    def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
+                    lineno=None,
+                    col_offset=None, direction=None):
         if symbol not in self.__config['symbols']:
             self.logger.warning("订单品种<%s>不在当前交易品种中")
         orders_ur = self.__orders_ur[symbol]
-        if (line, offset) not in orders_ur.flag:
+        if (lineno, col_offset) not in orders_ur.flag:
             orders_ur.count += 1
-            orders_ur.flag.add((line, offset))
+            orders_ur.flag.add((lineno, col_offset))
             orders_ur.queue[direction].put(
-                (orders_ur.count, line, offset, volume, price, stop, limit, strategy, signal))
+                (orders_ur.count, lineno, col_offset, volume, price, stop, limit, strategy, signal))
 
     # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,

@@ -10,6 +10,7 @@ import codecs
 
 from Bigfish.store.code_manage import get_sys_func_list, get_sys_func_dir
 from Bigfish.config import MODULES_IMPORT
+from Bigfish.models.base import TradingCommands
 
 
 class LocationPatcher(ast.NodeTransformer):
@@ -250,11 +251,9 @@ class ReturnTransformer(ast.NodeTransformer):
         self.__in_func_def = False  # 用于处理是否在嵌套定义的函数当中
         self.__target = target
         self.__add = add
-        self.__has_return = False
 
     def visit_Return(self, node):
         if not self.__in_func_def:
-            self.__has_return = True
             return self.patch(node, self.__target(node))
         else:
             return node
@@ -275,9 +274,8 @@ class ReturnTransformer(ast.NodeTransformer):
             return patcher.visit(node)
 
     def trans(self, node):
-        self.__has_return = False
         node = self.visit(node)
-        if (not self.__has_return) and self.__add:
+        if self.__add:
             to_add = self.patch(node.body[-1], self.__target(None))
             if isinstance(to_add, list):
                 node.body.extend(to_add)
@@ -293,3 +291,13 @@ def wrap_with_module(nodes):
         return ast.Module(body=[nodes])
     except Exception as e:
         raise e
+
+
+class TradingCommandsTransformer(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and isinstance(node.func.ctx, ast.Load):
+            if node.func.id in map(lambda x: x.value, list(TradingCommands)):
+                parser = LocationPatcher(node)
+                node.keywords.append(parser.visit(ast.keyword(arg='lineno', value=ast.Num(n=node.lineno))))
+                node.keywords.append(parser.visit(ast.keyword(arg='col_offset', value=ast.Num(n=node.col_offset))))
+        return node

@@ -16,9 +16,10 @@ from Bigfish.store.directory import UserDirectory
 from Bigfish.utils.export import export, SeriesFunction
 from Bigfish.event.handle import SignalFactory
 from Bigfish.utils.ast import LocalsInjector, SeriesExporter, SystemFunctionsDetector, ImportInspector, \
-    InitTransformer, wrap_with_module
+    InitTransformer, wrap_with_module, TradingCommandsTransformer
 from Bigfish.utils.common import check_time_frame
 from Bigfish.models.common import HasID
+from Bigfish.models.trade import OrderDirection
 from Bigfish.store.code_manage import get_sys_func_list
 
 
@@ -59,10 +60,13 @@ class Strategy(LoggerInterface, HasID):
         self.trading = False
         # 在字典中保存Open,High,Low,Close,Volumn，CurrentBar，MarketPosition，
         # 手动为exec语句提供globals命名空间
-        self.__glb = {'Buy': partial(self.engine.open_position, strategy=self.__id, direction=1),
-                      'Sell': partial(self.engine.close_position, strategy=self.__id, direction=1),
-                      'SellShort': partial(self.engine.open_position, strategy=self.__id, direction=-1),
-                      'BuyToCover': partial(self.engine.close_position, strategy=self.__id, direction=-1),
+        self.__glb = {'Buy': partial(self.engine.place_order, strategy=self.__id, direction=OrderDirection.long_entry),
+                      'Sell': partial(self.engine.place_order, strategy=self.__id,
+                                      direction=OrderDirection.long_exit),
+                      'SellShort': partial(self.engine.place_order, strategy=self.__id,
+                                           direction=OrderDirection.short_entry),
+                      'BuyToCover': partial(self.engine.place_order, strategy=self.__id,
+                                            direction=OrderDirection.short_exit),
                       'Positions': self.engine.current_positions, 'Data': self.engine.data,
                       'Context': self.__context, 'Export': partial(export, strategy=self), 'Put': self.put_context,
                       'Get': self.get_context, 'print': self.__printer.print,
@@ -282,6 +286,7 @@ class Strategy(LoggerInterface, HasID):
         signal_injector = LocalsInjector(signal_to_inject_init, signal_to_inject_loop)
         signal_injector.visit(ast_)
         ast_ = series_exporter.visit(ast_)
+        ast_ = TradingCommandsTransformer().visit(ast_)  # 给买卖语句表上行列号
         exec(compile(ast_, "[Strategy:%s]" % self.name, mode="exec"), signal_globals_, signal_locals_)
         for key in signal_to_inject_init.keys():
             self.signals[key].set_generator(signal_locals_[key])

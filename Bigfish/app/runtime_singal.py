@@ -5,6 +5,7 @@ Created on Wed Nov 25 20:41:04 2015
 @author: BurdenBear
 """
 import traceback
+import logging
 
 from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
 from Bigfish.data.bf_config import BfConfig
@@ -131,9 +132,9 @@ class RuntimeSignal(LoggerInterface):
 if __name__ == '__main__':
     import codecs
     import time
-    import logging
-    import sys
 
+    import sys
+    import os
 
     def get_first_n_lines(string, n):
         lines = string.splitlines()
@@ -151,10 +152,12 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    with codecs.open('../test/testcode10.py', 'r', 'utf-8') as f:
+    file = "testcode10.py"
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
+    with codecs.open('../test/', 'r', 'utf-8') as f:
         code = f.read()
-    config = dict(user='10032', name='test', account="mb000004296",
-                  password="Morrisonwudi520", time_frame='M15', symbols=['EURUSD'])
+    config = dict(user='10032', name=file.split(".")[0], account="mb000004296",
+                  password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'])
     signal = RuntimeSignal()
     signal.code = code
     signal.set_config(**config)

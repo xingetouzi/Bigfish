@@ -10,7 +10,7 @@ MEMORY_DEBUG = False  # 是否开启内存检测模式
 DATABASE = "mysql"  # 数据库
 ASYNC = False  # 数据拉取方式
 _system_model = {"array", "bisect", "cmath", "collections", "copy", "datetime", "functools", "heapq", "itertools",
-                 "json", "math", "operator", "random", "re", "string", "time", "xml", "traceback"}
+                 "json", "math", "operator", "random", "re", "string", "time", "xml", "traceback", "logging"}
 _third_party_model = {"cvxopt", "dateutil", "hmmlearn", "numpy", "pandas", "pkkalman", "pytz", "scipy", "sklearn",
                       "statsmodels", 'talib'}
 MODULES_IMPORT = _system_model | _third_party_model  # 允许在策略代码中导入的模块列表

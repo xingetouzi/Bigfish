@@ -98,5 +98,5 @@ if __name__ == '__main__':
         elif op == '-n':
             name = value
     config = dict(user=user, name=name, symbols=[symbol], time_frame=time_frame, start_time=start_time,
-                  end_time=end_time, comission=commission, slippage=slippage)
+                  end_time=end_time, commission=commission, slippage=slippage)
     run_backtest(code, config)

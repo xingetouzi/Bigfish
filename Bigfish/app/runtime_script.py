@@ -1,4 +1,7 @@
 from Bigfish.app.runtime_singal import RuntimeSignal
+from Bigfish.models.model import User
+from Bigfish.store.directory import UserDirectory
+
 
 DEBUG = False
 
@@ -38,8 +41,8 @@ if __name__ == '__main__':
         from logging.handlers import RotatingFileHandler
 
 
-        def set_handle(logger, root=log_dir, user=config.get("user", "non-existent user")):
-            path = os.path.join(root, user + ".log")
+        def set_handle(logger, user=config.get("user", "non-existent user")):
+            path = os.path.join(UserDirectory(User(user)).get_temp_dir(), "runtime.log")
             rt_handler = RotatingFileHandler(path, maxBytes=10 * 1024 * 1024, backupCount=5)
             rt_handler.setLevel(logging.DEBUG)
             formatter = logging.Formatter('%(asctime)s %(filename)-20s[line:%(lineno)-3d] %(levelname)-8s %(message)s')

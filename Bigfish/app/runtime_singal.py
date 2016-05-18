@@ -8,7 +8,7 @@ import traceback
 import logging
 
 from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
-from Bigfish.data.bf_config import BfConfig
+from Bigfish.models.base import BfConfig, RunningMode, TradingMode
 from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.log import LoggerInterface
@@ -19,7 +19,7 @@ from Bigfish.config import DEBUG
 class RuntimeSignal(LoggerInterface):
     def __init__(self):
         super().__init__()
-        self.__config = {}
+        self.__config = None
         self.__code = None
         self.__strategy = None
         self.__strategy_engine = None
@@ -32,11 +32,11 @@ class RuntimeSignal(LoggerInterface):
     def init(self):
         if self.__initialized:
             return True
-        bf_config = BfConfig(**self.__config)
-        self.__strategy_engine = StrategyEngine(is_backtest=False, **self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, **self.__config)
+        assert isinstance(config, BfConfig)  # 判断初始化前是否设置好了基本参数
+        self.__strategy_engine = StrategyEngine(self.__config)
+        self.__strategy = Strategy(self.__strategy_engine, self.__code, self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = TickDataGenerator(bf_config,
+        self.__data_generator = TickDataGenerator(self.__config,
                                                   lambda x: self.__strategy_engine.put_event(x.to_event()),
                                                   lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
         self._logger_child = {self.__strategy_engine: "StrategyEngine",
@@ -49,8 +49,13 @@ class RuntimeSignal(LoggerInterface):
             self.logger.setLevel(logging.INFO)
         self.__initialized = True
 
-    def set_config(self, **kwargs):
-        self.__config.update(kwargs)
+    def set_config(self, config):
+        assert isinstance(config, BfConfig)
+        self.__config = config
+        self.__config.running_mode = RunningMode.runtime
+
+    def get_config(self, name):
+        return getattr(self.__config, name)
 
     @property
     def code(self):
@@ -58,8 +63,14 @@ class RuntimeSignal(LoggerInterface):
 
     @code.setter
     def code(self, code):
-        if self.__code is None:
-            self.__code = code
+        assert isinstance(code, str)
+        self.__code = code.replace('\t', '    ')
+
+    def register_event(self, event_type, func):
+        if self.__initialized:
+            self.__strategy_engine.register_event(event_type, func)
+        else:
+            self.logger.warning("无效的事件注册，原因：未初始化")
 
     @property
     def is_finished(self):
@@ -116,8 +127,7 @@ class RuntimeSignal(LoggerInterface):
         return self.__strategy.get_output()
 
     def get_setting(self):
-        setting = self.__config.copy()
-        return setting
+        return self.__config.to_dict()
 
     def get_parameters(self):
         if self.__strategy_parameters is None:
@@ -135,6 +145,7 @@ if __name__ == '__main__':
 
     import sys
     import os
+
 
     def get_first_n_lines(string, n):
         lines = string.splitlines()
@@ -154,13 +165,14 @@ if __name__ == '__main__':
     start_time = time.time()
     file = "testcode10.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
-    with codecs.open('../test/', 'r', 'utf-8') as f:
+    with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
-    config = dict(user='10032', name=file.split(".")[0], account="mb000004296",
-                  password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'])
+    config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
+                      password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
+                      trading_mode=TradingMode.on_bar)
     signal = RuntimeSignal()
     signal.code = code
-    signal.set_config(**config)
+    signal.set_config(config)
     signal.init()
     set_handle(signal.logger)
     signal.start()

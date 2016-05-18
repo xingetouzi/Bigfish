@@ -8,26 +8,23 @@ import gc
 import logging
 from Bigfish.config import *
 from Bigfish.core import DataGenerator, StrategyEngine, Strategy
-from Bigfish.data.bf_config import BfConfig
 from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.common import get_datetime
 from Bigfish.utils.log import LoggerInterface
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.utils.timer import Timer
+from Bigfish.models.base import RunningMode, TradingMode, BfConfig
 
 if MEMORY_DEBUG:
     import sys
 
 
 class Backtesting(LoggerInterface):
-    def __init__(self, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None, end_time=None,
-                 commission=0, slippage=0):
+    def __init__(self):
         super().__init__()
-        self.__config = {'user': user, 'name': name, 'symbols': symbols, 'time_frame': time_frame,
-                         'start_time': start_time, 'end_time': end_time, 'commission': commission,
-                         'slippage': slippage}
-        self.__code = code
+        self.__config = None
+        self.__code = None
         self.__strategy = None
         self.__strategy_engine = None
         self.__data_generator = None
@@ -41,11 +38,11 @@ class Backtesting(LoggerInterface):
     def init(self):
         if self.__initialized:
             return None
-        bf_config = BfConfig(**self.__config)
-        self.__strategy_engine = StrategyEngine(is_backtest=True, **self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, code=self.__code, **self.__config)
+        assert isinstance(self.__config, BfConfig)  # 判断初始化前是否设置好了基本参数
+        self.__strategy_engine = StrategyEngine(self.__config)
+        self.__strategy = Strategy(self.__strategy_engine, self.__code, self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = DataGenerator(bf_config,
+        self.__data_generator = DataGenerator(self.__config,
                                               lambda x: self.__strategy_engine.put_event(x.to_event()),
                                               lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
         self._logger_child = {self.__strategy_engine: "StrategyEngine",
@@ -58,10 +55,13 @@ class Backtesting(LoggerInterface):
             self.logger.setLevel(logging.INFO)
         self.__initialized = True
 
-    def set_config(self, **kwargs):
-        self.__config.update(kwargs)
+    def set_config(self, config):
+        assert isinstance(config, BfConfig)
+        self.__config = config
+        self.__config.running_mode = RunningMode.backtest
 
     def set_code(self, code):
+        assert isinstance(code, str)
         self.__code = code.replace('\t', '    ')
 
     @property
@@ -137,9 +137,7 @@ class Backtesting(LoggerInterface):
         return self.__strategy.get_output()
 
     def get_setting(self):
-        setting = self.__config.copy()
-        setting.pop('user')
-        return setting
+        return self.__config.to_dict()
 
     def time(self, *args):
         return self.__timer.time(*args)
@@ -168,8 +166,8 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode6.py"
-    file = 'IKH_testCase.py'
+    file = "testcode9.py"
+    # file = 'IKH_testCase.py'
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -177,9 +175,9 @@ if __name__ == '__main__':
     name = 'test'  # 策略名
     backtest = Backtesting()
     backtest.set_code(code)
-    config = dict(user=user, name='test', symbols=['EURUSD'], time_frame='M1', start_time='2015-01-01',
-                  end_time='2015-03-01')
-    backtest.set_config(**config)
+    config = BfConfig(user=user, name='test', symbols=['EURUSD'], time_frame='M15', start_time='2015-01-01',
+                      end_time='2015-03-01', trading_mode=TradingMode.on_tick)
+    backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)
     # print(backtest.progress)
@@ -205,7 +203,7 @@ if __name__ == '__main__':
     # print(performance.yield_curve)
     # print('ar:\n%s' % performance.ar)  # 年化收益率
     # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
-    # print('volatility:\n%s' % performance.volatility)  # 波动率
+    print('volatility:\n%s' % performance.volatility)  # 波动率
     # print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位

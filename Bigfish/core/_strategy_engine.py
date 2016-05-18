@@ -21,6 +21,7 @@ from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
 from Bigfish.models.quote import Bar
 from Bigfish.models.common import Deque as deque
+from Bigfish.models.base import RunningMode
 from Bigfish.utils.common import tf2s
 from Bigfish.utils.log import LoggerInterface
 
@@ -32,24 +33,42 @@ class StrategyEngine(LoggerInterface):
     CACHE_MAXLEN = 10000
 
     # ----------------------------------------------------------------------
-    def __init__(self, is_backtest=False, **config):
+    def __init__(self, config):
         """Constructor"""
         super().__init__()
         self.__config = config
         self.__event_engine = EventEngine()  # 事件处理引擎
-        if is_backtest:
-            self.__account_manager = AccountManager(self, **config)  # 账户管理
+        if self.running_mode == RunningMode.backtest:
+            self.__account_manager = AccountManager(self, config)  # 账户管理
         else:
-            self.__account_manager = FDTAccountManager(self, **config)
+            self.__account_manager = FDTAccountManager(self, config)
             self.mongo_user = MongoUser(self.__config['user'])
-        self.__trade_manager = TradeManager(self, is_backtest, **config)  # 交易管理器
-        self.__data_cache = DataCache(self, is_backtest, self.__config.get('trading_mode', TradingMode.on_bar))  # 数据中继站
+        self.__trade_manager = TradeManager(self, config)  # 交易管理器
+        self.__data_cache = DataCache(self, config)  # 数据中继站
         self._logger_child = {self.__event_engine: "EventEngine",
                               self.__trade_manager: "TradeManager",
                               self.__data_cache: "DataCache",
                               self.__account_manager: "AccountManager"}
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
+
+    @property
+    def running_mode(self):
+        return self.__config.running_mode
+
+    @running_mode.setter
+    def running_mode(self, value):
+        assert isinstance(value, RunningMode)
+        self.__config.running_mode = value
+
+    @property
+    def trading_mode(self):
+        return self.__config.trading_mode
+
+    @trading_mode.setter
+    def trading_mode(self, value):
+        assert isinstance(value, TradingMode)
+        self.__config.trading_mode = value
 
     def set_account(self, account):
         assert isinstance(account, AccountManager)
@@ -184,9 +203,6 @@ class StrategyEngine(LoggerInterface):
     def close_position(self, *args, **kwargs):
         return self.__trade_manager.close_position(*args, **kwargs)
 
-    def set_capital_base(self, base):
-        self.__account_manager.capital_base = base
-
     # ----------------------------------------------------------------------
     def add_cache_info(self, *args, **kwargs):
         self.__data_cache.add_cache_info(*args, **kwargs)
@@ -274,13 +290,13 @@ class DataCache(LoggerInterface):
     def set_default_maxlen(cls, maxlen):
         cls.CACHE_MAXLEN = maxlen
 
-    def __init__(self, engine, is_backtest, trading_mode):
+    def __init__(self, engine, config):
         super().__init__()
+
+        self._engine = proxy(engine)  # 避免循环引用
+        self._config = config
         self._tick_cache = {}
         self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
-        self._engine = proxy(engine)  # 避免循环引用
-        self._is_backtest = is_backtest
-        self._trading_mode = trading_mode
         self._running = False
         self._data = {}
         self._symbol_pool = {}
@@ -304,7 +320,7 @@ class DataCache(LoggerInterface):
     # TODO 根据总回测时间区间去计算浮动收益的统计频率
     @property
     def float_pnl_frequency(self):
-        if not self._is_backtest:
+        if self._config.running_mode == RunningMode.runtime:
             return 1
         if self.min_time_frame in ['M1', 'M5']:
             return 1
@@ -347,17 +363,16 @@ class DataCache(LoggerInterface):
                 maxlen = self.CACHE_MAXLEN
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
-            if self._trading_mode == TradingMode.on_tick:
+            if self._config.trading_mode == TradingMode.on_tick:
                 self._data[timeframe]['tick_open'][symbol] = 0  # 用于on_tick模式回测的模拟成交的价格记录
-            if not self._is_backtest:
+            if self._config.running_mode == RunningMode.runtime:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
             else:
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
             # TODO 这里只考虑了单品种情况
-            if self._trading_mode == TradingMode.on_tick:
+            if self._config.trading_mode == TradingMode.on_tick:
                 self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][timeframe], self.on_next_bar)
-            else:
-                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
+            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
         self._count = 0
 
     def start(self):
@@ -374,13 +389,13 @@ class DataCache(LoggerInterface):
         self.current_time = bar.close_time if not self.current_time else max(self.current_time, bar.close_time)
         last_time = self._data[time_frame]['timestamp'][symbol][0] \
             if self._data[time_frame]['timestamp'][symbol] else 0
+        if self._config.trading_mode == TradingMode.on_tick:
+                self._data[time_frame]["tick_open"][symbol] = bar.open
         if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
         else:
-            if self._trading_mode == TradingMode.on_tick:
-                self._data[time_frame]["tick_open"][symbol] = bar.open
             self._data[time_frame]["high"][symbol][0] = max(self._data[time_frame]["high"][symbol][0], bar.high)
             self._data[time_frame]["low"][symbol][0] = min(self._data[time_frame]["low"][symbol][0], bar.low)
             self._data[time_frame]["volume"][symbol][0] += bar.volume
@@ -435,7 +450,8 @@ class DataCache(LoggerInterface):
         # 更新浮动盈亏
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
-            if self._is_backtest:
+            if self._config.running_mode == RunningMode.backtest:
+
                 pnl = self._engine.profit_record(self.current_time)
                 self._engine.profit_records.append(pnl)
             else:
@@ -447,12 +463,11 @@ class DataCache(LoggerInterface):
 class TradeManager(LoggerInterface):
     """负责保存交易信息，管理订单相关事件"""
 
-    def __init__(self, engine, is_backtest=True, **config):
+    def __init__(self, engine, config):
         super().__init__()
         self.engine = proxy(engine)
-        self.__is_backtest = is_backtest  # 是否为回测
         self.__config = config
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             self.__position_factory = PositionFactory()
             self.__order_factory = OrderFactory()
             self.__deal_factory = DealFactory()
@@ -522,7 +537,7 @@ class TradeManager(LoggerInterface):
         # return
         if order.volume_initial <= 0:
             return -1
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
             position = self.engine.current_positions[order.symbol]
             symbol = self.engine.symbol_pool[order.symbol]
@@ -549,7 +564,7 @@ class TradeManager(LoggerInterface):
                 deal.time = order.time_done
                 deal.time_msc = order.time_done_msc
                 deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-                if self.__config.get("trading_mode", TradingMode.on_bar) == TradingMode.on_tick:
+                if self.__config.trading_mode == TradingMode.on_tick:
                     deal.price = self.engine.data[time_frame]["tick_open"][order.symbol]  # 以next tick open 成交
                 else:
                     deal.price = self.engine.data[time_frame]["open"][order.symbol][0]  # 以next bar open 成交
@@ -636,7 +651,7 @@ class TradeManager(LoggerInterface):
         position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
         position_prev.next_id = position_now.get_id()
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             symbol = self.engine.symbol_pool[deal.symbol]
             position = position_prev.type
             # XXX常量定义改变这里的映射函数也可能改变
@@ -712,7 +727,7 @@ class TradeManager(LoggerInterface):
         deal.position = position_now.get_id()
         position_now.deal = deal.get_id()
         self.__current_positions[deal.symbol] = position_now
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             self.__positions[position_now.get_id()] = position_now
             self.__deals[deal.get_id()] = deal
         else:
@@ -811,7 +826,7 @@ class TradeManager(LoggerInterface):
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
         order = self.__order_factory(symbol, order_type, strategy, signal)
         order.volume_initial = volume
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             time_frame = self.engine.strategys[strategy].signals[signal].time_frame
             time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
         else:
@@ -837,7 +852,7 @@ class TradeManager(LoggerInterface):
         """
         volume = round(volume, 2)  # 精确到mini手
         # 计算下单时间
-        if self.__is_backtest:
+        if self.__config.running_mode == RunningMode.backtest:
             time_frame = self.engine.strategys[strategy].signals[signal].get_time_frame()
             time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
         else:

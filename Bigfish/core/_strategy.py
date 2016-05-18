@@ -32,28 +32,27 @@ class Strategy(LoggerInterface, HasID):
                      'Symbol', 'BarNum', 'MarketPosition', 'Positions', 'Pos', 'CurrentContracts', 'Point']
 
     # ----------------------------------------------------------------------
-    def __init__(self, engine, user=None, name=None, code=None, symbols=None, time_frame=None, start_time=None,
-                 end_time=None, **kwargs):
+    def __init__(self, engine, code, config):
         """Constructor"""
         super().__init__()
         self.__id = self.next_auto_inc()
-        self.user = user
-        self.user_dir = UserDirectory(User(user))
-        self.name = name
+        self.user = config.user
+        self.user_dir = UserDirectory(User(config.user))
+        self.name = config.name
         self.code = code
         self.engine = proxy(engine)
-        self.time_frame = time_frame
-        self.symbols = symbols
-        self.start_time = start_time
-        self.end_time = end_time
+        self.time_frame = config.time_frame
+        self.symbols = config.symbols
+        self.start_time = config.start_time
+        self.end_time = config.end_time
+        self.capital_base = config.capital_base
         self.max_length = 0
-        self.capital_base = 100000
         self.handlers = {}
         self.signal_factory = SignalFactory()
         self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
-        self.__printer = FilePrinter(user, name, self.engine)
+        self.__printer = FilePrinter(config.user, config.name, self.engine)
         self.__context = {}
         self.__points = {}
         # 是否完成了初始化
@@ -166,7 +165,6 @@ class Strategy(LoggerInterface, HasID):
         signal_globals_.update(signal_locals_)
         signal_globals_.update(self.__glb)
         function_globals_.update(self.__glb)
-        self.engine.set_capital_base(self.capital_base)
         self.engine.start_time = self.start_time
         self.engine.end_time = self.end_time
         check_time_frame(self.time_frame)

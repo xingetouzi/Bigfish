@@ -20,7 +20,7 @@ BASE_DEFAULT = 100000
 class AccountManager(LoggerInterface):
     """交易账户对象"""
 
-    def __init__(self, engine, currency=Currency("USD"), **config):
+    def __init__(self, engine, config, currency=Currency("USD")):
         super().__init__()
         self._engine = proxy(engine)
         self._config = config
@@ -35,7 +35,7 @@ class AccountManager(LoggerInterface):
     @property
     def capital_base(self):
         if self._capital_base is None:
-            self._capital_base = self._config.get('base', BASE_DEFAULT)
+            self._capital_base = self._config.capital_base
         return self._capital_base
 
     @capital_base.setter
@@ -138,16 +138,18 @@ def with_login(func):
 
 
 class FDTAccountManager(AccountManager):
-    def __init__(self, *args, **kwargs):
-        self._username = kwargs.pop('account', None)
-        self._password = kwargs.pop('password', None)
+    def __init__(self, engine, config):
+        self._username = config.account
+        self._password = config.password
         if self._username is not None and self._password is not None:
             self._account = FDTAccount(self._username, self._password)
-        super().__init__(*args, **kwargs)
+        super().__init__(engine, config)
 
     def set_account(self, username, password):
         self._username = username
         self._password = password
+        self._account = FDTAccount(self._username, self._password)
+        self.initialize()
 
     @property
     def fx_account(self):

@@ -168,7 +168,6 @@ class TickDataGenerator(LoggerInterface):
         finish: 数据结束的回调方法
         maxsize: 缓存大小,默认500
         """
-        # assert isinstance(config, Config)
         super().__init__()
         self.__check_tf(config.time_frame)
         self.__maxsize = maxsize

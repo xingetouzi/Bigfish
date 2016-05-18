@@ -28,7 +28,6 @@ def backtest(conn, *args):
         backtesting = Backtesting()
         backtesting.set_code(code)
         backtesting.set_config(config)
-        print(config)
         backtesting.start()
         performance = backtesting.get_performance()
         cache = StrategyPerformanceJsonCache(user)

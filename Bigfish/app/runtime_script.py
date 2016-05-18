@@ -8,6 +8,7 @@ from logging.handlers import RotatingFileHandler
 from Bigfish.app.runtime_singal import RuntimeSignal
 from Bigfish.models.model import User
 from Bigfish.store.directory import UserDirectory
+from Bigfish.models.base import BfConfig
 
 
 def main():
@@ -31,7 +32,7 @@ def main():
     if code:
         signal = RuntimeSignal()
         signal.code = code
-        signal.set_config(**config)
+        signal.set_config(BfConfig(**config))
         signal.init()
         set_handle(signal.logger)
         signal.start()

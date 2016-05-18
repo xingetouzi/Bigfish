@@ -34,8 +34,8 @@ class BfConfig:
     """
 
     def __init__(self, user='', name='', symbols=[], time_frame='', start_time=None, end_time=None, capital_base=100000,
-                 commission=0, slippage=0, account=None, password=None, running_mode=RunningMode.backtest,
-                 trading_mode=TradingMode.on_bar):
+                 commission=0, slippage=0, account=None, password=None, running_mode=RunningMode.backtest.value,
+                 trading_mode=TradingMode.on_bar.value):
         self.user = user
         self.name = name
         self.capital_base = capital_base
@@ -47,8 +47,8 @@ class BfConfig:
         self.slippage = slippage
         self.account = account
         self.password = password
-        self.running_mode = running_mode
-        self.trading_mode = trading_mode
+        self.running_mode = RunningMode(running_mode)
+        self.trading_mode = TradingMode(trading_mode)
 
     def __getitem__(self, item):
         try:

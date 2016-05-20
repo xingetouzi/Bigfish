@@ -8,7 +8,8 @@ import traceback
 import logging
 
 from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
-from Bigfish.models.base import BfConfig, RunningMode, TradingMode
+from Bigfish.models.base import RunningMode, TradingMode
+from Bigfish.models.config import BfConfig
 from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.log import LoggerInterface
@@ -169,7 +170,7 @@ if __name__ == '__main__':
         code = f.read()
     config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
                       password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
-                      trading_mode=TradingMode.on_bar)
+                      trading_mode=TradingMode.on_tick)
     signal = RuntimeSignal()
     signal.code = code
     signal.set_config(config)

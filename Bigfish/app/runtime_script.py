@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 from Bigfish.app.runtime_singal import RuntimeSignal
 from Bigfish.models.model import User
 from Bigfish.store.directory import UserDirectory
-from Bigfish.models.base import BfConfig
+from Bigfish.models.config import BfConfig
 
 
 def main():

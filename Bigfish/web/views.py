@@ -10,7 +10,8 @@ import tornado.ioloop
 import tornado.web
 
 from Bigfish.app.backtest import Backtesting
-from Bigfish.models.base import TradingMode, BfConfig
+from Bigfish.models.base import TradingMode
+from Bigfish.models.config import BfConfig
 from Bigfish.models.model import User
 from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory

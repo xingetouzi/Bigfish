@@ -14,7 +14,8 @@ from Bigfish.utils.common import get_datetime
 from Bigfish.utils.log import LoggerInterface
 from Bigfish.utils.memory_profiler import profile
 from Bigfish.utils.timer import Timer
-from Bigfish.models.base import RunningMode, TradingMode, BfConfig
+from Bigfish.models.base import RunningMode, TradingMode
+from Bigfish.models.config import BfConfig
 
 if MEMORY_DEBUG:
     import sys

@@ -33,7 +33,7 @@ class RuntimeSignal(LoggerInterface):
     def init(self):
         if self.__initialized:
             return True
-        assert isinstance(config, BfConfig)  # 判断初始化前是否设置好了基本参数
+        assert isinstance(self.__config, BfConfig)  # 判断初始化前是否设置好了基本参数
         self.__strategy_engine = StrategyEngine(self.__config)
         self.__strategy = Strategy(self.__strategy_engine, self.__code, self.__config)
         self.__strategy_engine.add_strategy(self.__strategy)

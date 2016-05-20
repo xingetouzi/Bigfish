@@ -9,18 +9,28 @@ class RuntimePerformance:
         self._mongo_user = MongoUser(user)
         self._performance = None
         self._performance_manager = None
+        self._positions = None
+        self._deals = None
+        self._profit_records = None
 
     @property
     def positions(self):
-        return {item.id: item for item in map(Position.from_dict, self._mongo_user.collection.positions.find())}
+        if self._positions is None:
+            self._positions = {item.id: item for item in
+                               map(Position.from_dict, self._mongo_user.collection.positions.find())}
+        return self._positions
 
     @property
     def deals(self):
-        return {item.id: item for item in map(Deal.from_dict, self._mongo_user.collection.deals.find())}
+        if self._deals is None:
+            self._deals = {item.id: item for item in map(Deal.from_dict, self._mongo_user.collection.deals.find())}
+        return self._deals
 
     @property
     def profit_records(self):
-        return list(self._mongo_user.collection.PnLs.find())
+        if self._profit_records is None:
+            self._profit_records = list(self._mongo_user.collection.PnLs.find())
+        return  self._profit_records
 
     @property
     def performance(self):
@@ -29,6 +39,10 @@ class RuntimePerformance:
                                                                          self.positions)
             self._performance = self._performance_manager.get_performance()
         return self._performance
+
+    @property
+    def empty(self):
+        return not (self.positions and self.deals and self.profit_records)
 
 
 if __name__ == '__main__':

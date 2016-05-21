@@ -1,6 +1,24 @@
+import pandas as pd
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.models.trade import Position, Deal
 from Bigfish.data.mongo_utils import MongoUser
+from Bigfish.utils.ligerUI_util import DataframeTranslator
+
+
+class PerformanceAfterTranslate:
+    def __init__(self, performance):
+        self._performance = performance
+        self._translator = DataframeTranslator(
+            {'height': 'auto', 'width': '98%', 'pageSize': 20, 'where': 'f_getWhere()'})
+
+    def __getattr__(self, item):
+        result = getattr(self._performance, item)
+        if isinstance(result, pd.DataFrame):
+            return self._translator.dumps(result)
+        elif isinstance(result, pd.Series):
+            return self._translator.dumps(pd.DataFrame(result))
+        else:
+            return result
 
 
 class RuntimePerformance:
@@ -30,7 +48,7 @@ class RuntimePerformance:
     def profit_records(self):
         if self._profit_records is None:
             self._profit_records = list(self._mongo_user.collection.PnLs.find())
-        return  self._profit_records
+        return self._profit_records
 
     @property
     def performance(self):

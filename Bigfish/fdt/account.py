@@ -54,6 +54,10 @@ class FDTAccount:
         data = {"token": self.token}
         return post(op_url, data)
 
+    def account_info(self):
+        self.login()
+        return self.info['accounts']
+
     def cancel_order(self):
         co_url = fdt_url + "/CancelOrder"
         data = {"token": self.token}

@@ -35,19 +35,21 @@ class RuntimePerformance:
     def positions(self):
         if self._positions is None:
             self._positions = {item.id: item for item in
-                               map(Position.from_dict, self._mongo_user.collection.positions.find())}
+                               map(Position.from_dict,
+                                   self._mongo_user.collection.positions.find(projection={"_id": False}))}
         return self._positions
 
     @property
     def deals(self):
         if self._deals is None:
-            self._deals = {item.id: item for item in map(Deal.from_dict, self._mongo_user.collection.deals.find())}
+            self._deals = {item.id: item for item in
+                           map(Deal.from_dict, self._mongo_user.collection.deals.find(projection={"_id": False}))}
         return self._deals
 
     @property
     def profit_records(self):
         if self._profit_records is None:
-            self._profit_records = list(self._mongo_user.collection.PnLs.find())
+            self._profit_records = list(self._mongo_user.collection.PnLs.find(projection={"_id": False}))
         return self._profit_records
 
     @property

@@ -62,8 +62,13 @@ class RuntimePerformance:
 
     @property
     def empty(self):
-        return not (self.positions and self.deals and self.profit_records)
-
+        if self._mongo_user.collection.PnLs.count() == 0:
+            return True
+        if self._mongo_user.collection.positions.count() == 0:
+            return True
+        if self._mongo_user.collection.deals.count() == 0:
+            return True
+        return False
 
 if __name__ == '__main__':
     user = '10032'

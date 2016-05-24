@@ -5,9 +5,9 @@ Created on Fri Nov 27 22:42:54 2015
 @author: BurdenBear
 """
 from collections import OrderedDict
-
 from Bigfish.event.event import EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLETED, Event
-from Bigfish.models.common import FactoryWithList
+from Bigfish.models.common import FactoryWithID
+from Bigfish.models.enviroment import APIInterface, Globals
 
 
 class EventsPacker:
@@ -65,7 +65,7 @@ class SymbolBarCompletedEventsPacker(EventsPacker):
         super(SymbolBarCompletedEventsPacker, self).__init__(engine, events, out, type)
 
 
-class Signal:
+class Signal(APIInterface):
     def __init__(self, engine, user, strategy, name, symbols, time_frame, id=None):
         """
         信号对象，每一个信号即为策略代码中不以init为名的任意最外层函数，订阅某些品种的行情数据，运行于特定时间框架下。
@@ -75,6 +75,7 @@ class Signal:
         :param time_frame:所订阅行情数据的事件框架
         :param id:不需要传入，由SignalFactory自动管理。
         """
+        APIInterface.__init__(self)
         self._id = id
         self._user = user
         self._strategy = strategy
@@ -82,7 +83,7 @@ class Signal:
         self._event_update = Event.create_event_type('SignalUpdate.%s.%s.%s' % (self._user, self._strategy, self._name),
                                                      priority=1).get_id()
         self._event_completed = Event.create_event_type(
-            'SignalCompleted.%s.%s.%s' % (self._user, self._strategy, self._name), priority=2).get_id()
+                'SignalCompleted.%s.%s.%s' % (self._user, self._strategy, self._name), priority=2).get_id()
         self._update = SymbolBarUpdateEventsPacker(engine, symbols, time_frame, self._event_update)
         self._completed = SymbolBarCompletedEventsPacker(engine, symbols, time_frame, self._event_completed)
         self._parameters = OrderedDict()
@@ -156,6 +157,9 @@ class Signal:
             self._engine.unregister_event(self._event_update, self._handler.send)
             self._engine.unregister_event(self._event_completed, self._handler.send)
 
+    def get_APIs(self, **kwargs) -> Globals:
+        var = {"BarNum": self.get_bar_num}
+        return Globals({}, var)
 
-class SignalFactory(FactoryWithList):
+class SignalFactory(FactoryWithID):
     _class = Signal

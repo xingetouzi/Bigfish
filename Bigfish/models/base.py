@@ -58,14 +58,6 @@ class Runnable:
             self._running = False
 
 
-class APIInterface:
-    def __init__(self):
-        pass
-
-    def get_APIs(self, **kwargs):
-        raise NotImplementedError
-
-
 class Currency:
     """货币对象"""
 

@@ -1,129 +1,143 @@
-# -*- coding: utf-8 -*-
-
-"""
-Created on Wed Nov 25 21:09:47 2015
-
-@author: BurdenBear
-"""
 import time
+from weakref import proxy
 from collections import defaultdict
 from queue import PriorityQueue
-from weakref import proxy
-
 from dateutil.parser import parse
-# 自定义模块
-from Bigfish.models.base import TradingMode, RunningMode
-from Bigfish.data.mongo_utils import MongoUser
-from Bigfish.core import AccountManager, FDTAccountManager
-from Bigfish.event.event import *
-from Bigfish.event.engine import EventEngine
+from functools import partial
+from Bigfish.event.event import EVENT_SYMBOL_TICK_RAW, EVENT_SYMBOL_BAR_RAW, EVENT_SYMBOL_BAR_UPDATE, \
+    EVENT_SYMBOL_BAR_COMPLETED, Event, EVENT_LOG
+from Bigfish.models.base import Runnable, APIInterface, RunningMode, TradingMode
+from Bigfish.models.common import Deque as deque
+from Bigfish.models.config import ConfigInterface
+from Bigfish.models.quote import Bar
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
-from Bigfish.models.quote import Bar
-from Bigfish.models.common import Deque as deque
 from Bigfish.utils.common import tf2s
 from Bigfish.utils.log import LoggerInterface
+from Bigfish.core import AccountManager, FDTAccountManager
+from Bigfish.event.engine import EventEngine
+from Bigfish.data.mongo_utils import MongoUser
 
 
-# %% 策略引擎语句块
-########################################################################
-class StrategyEngine(LoggerInterface):
-    """策略引擎"""
-    CACHE_MAXLEN = 10000
+class CacheInfo:
+    """
+    用于记录行情数据品种，书简尺度，缓存最大长度等信息的对象
+    """
+    CACHE_MAXLEN = 1000  # 默认的缓存长度
 
-    # ----------------------------------------------------------------------
-    def __init__(self, config):
-        """Constructor"""
-        super().__init__()
-        self.__config = config
-        self.__event_engine = EventEngine()  # 事件处理引擎
-        if self.running_mode == RunningMode.backtest:
-            self.__account_manager = AccountManager(self, config)  # 账户管理
+    def __init__(self, symbol, time_frame, length=CACHE_MAXLEN):
+        self.__symbol = symbol
+        self.__time_frame = time_frame
+        self.length = length
+
+    @property
+    def symbol(self):
+        return self.__symbol
+
+    @property
+    def time_frame(self):
+        return self.__time_frame
+
+    @property
+    def key(self):
+        return self.symbol, self.time_frame
+
+
+class QuotationData:
+    """
+    行情数据
+    """
+
+    def __init__(self, cache_info):
+        self.info = cache_info
+        self.open = deque(maxlen=self.info.length)
+        self.high = deque(maxlen=self.info.length)
+        self.low = deque(maxlen=self.info.length)
+        self.close = deque(maxlen=self.info.length)
+        self.volume = deque(maxlen=self.info.length)
+        self.datetime = deque(maxlen=self.info.length)
+        self.timestamp = deque(maxlen=self.info.length)
+        self.tick_open = None
+
+
+class QuotationDataView:
+    def __init__(self):
+        self.__info = {}
+        self.__data = {}
+
+    def get_keys(self):
+        return self.__data.keys()
+
+    def set(self, cache_info):
+        self.__info[cache_info.key] = cache_info
+
+    def update(self, cache_info):
+        if self.__info.get(cache_info.key, None) is None or cache_info.length > self.__info[cache_info.key].length:
+            self.__info[cache_info.key] = cache_info
+
+    def create(self, symbol, time_frame):
+        if self.__info.get((symbol, time_frame), None) is not None:
+            self.__data[(symbol, time_frame)] = QuotationData(self.__info[(symbol, time_frame)])
+
+    def find(self, symbol, time_frame) -> QuotationData:
+        return self.__data[(symbol, time_frame)]
+
+    def create_all(self):
+        for symbol, time_frame in self.__info.keys():
+            self.create(symbol, time_frame)
+
+    def clear(self):
+        self.__data.clear()
+        self.__info.clear()
+
+
+class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface):
+    TICK_INTERVAL = 10  # Tick数据推送间隔
+
+    def __init__(self, engine, parent=None):
+        LoggerInterface.__init__(self)
+        Runnable.__init__(self)
+        APIInterface.__init__(self)
+        ConfigInterface.__init__(self, parent=parent)
+        self._engine = proxy(engine)  # 避免循环引用
+        self._tick_cache = {}
+        self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
+        self._running = False
+        self._data_view = QuotationDataView()
+        self._symbol_pool = {}
+        self.current_time = None  # 目前数据运行到的时间，用于计算回测进度
+        self._min_time_frame = None
+        self._count = 0
+
+    @property
+    def min_time_frame(self):
+        return self._min_time_frame
+
+    @min_time_frame.setter
+    def min_time_frame(self, time_frame):
+        if not self._min_time_frame or tf2s(time_frame) < tf2s(self._min_time_frame):
+            self._min_time_frame = time_frame
+
+    @property
+    def symbol_pool(self):
+        return self._symbol_pool
+
+    # TODO 根据总回测时间区间去计算浮动收益的统计频率
+    @property
+    def float_pnl_frequency(self):
+        if self.config.running_mode == RunningMode.runtime:
+            return 1
+        if self.min_time_frame in ['M1', 'M5']:
+            return 1
+        time = tf2s(self.min_time_frame)
+        result = 2 * 60 * 60 // time  # 统计频率为2H一次
+        if result == 0:
+            return 1
         else:
-            self.__account_manager = FDTAccountManager(self, config)
-            self.mongo_user = MongoUser(self.__config['user'])
-        self.__trade_manager = TradeManager(self, )  # 交易管理器
-        self.__data_cache = DataCache(self, config)  # 数据中继站
-        self._logger_child = {self.__event_engine: "EventEngine",
-                              self.__trade_manager: "TradeManager",
-                              self.__data_cache: "DataCache",
-                              self.__account_manager: "AccountManager"}
-        self.__strategys = {}  # 策略管理器
-        self.__profit_records = []  # 保存账户净值的列表
+            return result
 
-    @property
-    def running_mode(self):
-        return self.__config.running_mode
-
-    @running_mode.setter
-    def running_mode(self, value):
-        assert isinstance(value, RunningMode)
-        self.__config.running_mode = value
-
-    @property
-    def trading_mode(self):
-        return self.__config.trading_mode
-
-    @trading_mode.setter
-    def trading_mode(self, value):
-        assert isinstance(value, TradingMode)
-        self.__config.trading_mode = value
-
-    def set_account(self, account):
-        assert isinstance(account, AccountManager)
-        self.__account_manager = account
-
-    def get_data(self):
-        return self.__data_cache.data
-
-    def get_symbol_pool(self):
-        return self.__data_cache.symbol_pool
-
-    def get_current_positions(self):
-        return self.__trade_manager.current_positions
-
-    def get_current_time(self):
-        return self.__data_cache.current_time
-
-    def get_positions(self):
-        return self.__trade_manager.positions
-
-    def get_deals(self):
-        return self.__trade_manager.deals
-
-    def get_strategys(self):
-        return self.__strategys
-
-    def get_profit_records(self):
-        """获取平仓收益记录"""
-        return self.__profit_records
-
-    def get_symbol_timeframe(self):
-        return self.__data_cache.get_cache_info().keys()
-
-    def get_capital_cash(self):
-        return self.__account_manager.capital_cash
-
-    def get_capital_net(self):
-        return self.__account_manager.capital_net
-
-    def get_capital_available(self):
-        return self.__account_manager.capital_available
-
-    # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
-    # property:
-    current_time = property(get_current_time)
-    symbol_pool = property(get_symbol_pool)
-    data = property(get_data)
-    current_positions = property(get_current_positions)
-    positions = property(get_positions)
-    deal = property(get_deals)
-    strategys = property(get_strategys)
-    profit_records = property(get_profit_records)
-    symbol_timeframe = property(get_symbol_timeframe)
-    capital_cash = property(get_capital_cash)
-    capital_net = property(get_capital_net)
-    capital_available = property(get_capital_available)
+    def find_quotation(self, symbol, time_frame):
+        return self._data_view.find(symbol, time_frame)
 
     def get_counter_price(self, code, time_frame):
         """
@@ -137,13 +151,13 @@ class StrategyEngine(LoggerInterface):
             base_price = 1
         elif symbol.code.startswith('USD'):  # 直接报价
             base = symbol.code[-3:]
-            base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+            base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
         else:  # 交叉盘
             base = symbol.code[-3:]
             if base + 'USD' in symbol.ALL.index:
-                base_price = self.data[time_frame]['close'][base + 'USD'][0]
+                base_price = self._data_view.find(base + 'USD', time_frame).close[0]
             elif 'USD' + base in symbol.ALL.index:
-                base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+                base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
             else:
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
@@ -155,186 +169,23 @@ class StrategyEngine(LoggerInterface):
         :param time_frame: 时间尺度
         :return: 当前对应货币对的报价货币(base currency)兑美元的价格
         """
-        symbol = self.symbol_pool[code]
+        symbol = self._symbol_pool[code]
         if symbol.code.startswith('USD'):  # 间接报价
             base_price = 1
         elif symbol.code.endswith('USD'):  # 直接报价
             base = symbol.code[:3]
-            base_price = self.data[time_frame]['close'][base + 'USD'][0]
+            base_price = self._data_view.find(base + 'USD', time_frame).close[0]
         else:  # 交叉盘
             base = symbol.code[:3]
             if base + 'USD' in symbol.ALL.index:
-                base_price = self.data[time_frame]['close'][base + 'USD'][0]
+                base_price = self._data_view.find(base + 'USD', time_frame).close[0]
             elif 'USD' + base in symbol.ALL.index:
-                base_price = 1 / self.data[time_frame]['close']['USD' + base][0]
+                base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
             else:
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
 
-    def get_capital(self):
-        return self.__account_manager.get_api()
-
-    def profit_record(self, *args, **kwargs):
-        return self.__account_manager.profit_record(*args, **kwargs)
-
-    # TODO 此方法将弃用或被重命名
-    def update_cash(self, deal):
-        return self.__account_manager.update_cash(deal)
-
-    def realize_order(self):
-        self.__trade_manager.realize_order()
-
-    def send_order_to_broker(self, order):
-        return self.__account_manager.send_order_to_broker(order)
-
-    def order_status(self):
-        return self.__account_manager.order_status()
-
-    def position_status(self, *args, **kwargs):
-        return self.__account_manager.position_status(*args, **kwargs)
-
-    def place_order(self, *args, **kwargs):
-        return self.__trade_manager.place_order(*args, **kwargs)
-
-    def open_position(self, *args, **kwargs):
-        return self.__trade_manager.open_position(*args, **kwargs)
-
-    def close_position(self, *args, **kwargs):
-        return self.__trade_manager.close_position(*args, **kwargs)
-
-    # ----------------------------------------------------------------------
-    def add_cache_info(self, *args, **kwargs):
-        self.__data_cache.add_cache_info(*args, **kwargs)
-        # TODO 从全局的品种池中查询
-
-    # ----------------------------------------------------------------------
-    def add_file(self, file):
-        self.__event_engine.add_file(file)
-
-    # ----------------------------------------------------------------------
-    def add_strategy(self, strategy):
-        """添加已创建的策略实例"""
-        self.__strategys[strategy.get_id()] = strategy
-        strategy.engine = self
-
-    # ----------------------------------------------------------------------
-    def put_event(self, event):
-        # TODO 加入验证
-        # TODO 多了一层函数调用，尝试用绑定的形式
-        self.__event_engine.put(event)
-
-    # ----------------------------------------------------------------------
-    def register_event(self, event_type, handle):
-        """注册事件监听"""
-        # TODO  加入验证
-        self.__event_engine.register(event_type, handle)
-
-    def unregister_event(self, event_type, handle):
-        """取消事件监听"""
-        self.__event_engine.unregister(event_type, handle)
-
-    # ----------------------------------------------------------------------
-    def write_log(self, log):
-        """写日志"""
-        self.__event_engine.put(Event(type=EVENT_LOG, log=log))
-
-    # ----------------------------------------------------------------------
-    def start(self):
-        """启动所有策略"""
-        for strategy in self.__strategys.values():
-            strategy.start()
-        self.__profit_records.clear()
-        self.__data_cache.start()
-        self.__trade_manager.init()
-        self.__event_engine.start()
-        self.__account_manager.initialize()
-
-    # ----------------------------------------------------------------------
-
-    def stop(self):
-        """停止所有策略"""
-        self.__event_engine.stop()
-        self.__data_cache.stop()
-        for strategy in self.__strategys.values():
-            strategy.stop()
-        self._recycle()  # 释放资源
-
-    # ----------------------------------------------------------------------
-
-    def _recycle(self):
-        self.__data_cache.stop()
-        self.__trade_manager.recycle()
-
-    def wait(self, call_back=None, finished=True, *args, **kwargs):
-        """等待所有事件处理完毕
-        :param call_back: 运行完成时的回调函数
-        :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
-        """
-        self.__event_engine.wait()
-        if call_back:
-            result = call_back(*args, **kwargs)
-        else:
-            result = None
-        if finished:
-            self.stop()
-        return result
-
-
-class DataCache(LoggerInterface):
-    """数据缓存器"""
-    CACHE_MAXLEN = 1000  # 默认的缓存长度
-    TICK_INTERVAL = 10  # Tick数据推送间隔
-
-    @classmethod
-    def set_default_maxlen(cls, maxlen):
-        cls.CACHE_MAXLEN = maxlen
-
-    def __init__(self, engine, config):
-        super().__init__()
-
-        self._engine = proxy(engine)  # 避免循环引用
-        self._config = config
-        self._tick_cache = {}
-        self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
-        self._running = False
-        self._data = {}
-        self._symbol_pool = {}
-        self.current_time = None  # 目前数据运行到的时间，用于计算回测进度
-        self._min_time_frame = None
-        self._count = 0
-
-    def get_min_time_frame(self):
-        return self._min_time_frame
-
-    def set_min_time_frame(self, time_frame):
-        if not self._min_time_frame or tf2s(time_frame) < tf2s(self._min_time_frame):
-            self._min_time_frame = time_frame
-
-    def get_data(self):
-        return self._data
-
-    def get_symbol_pool(self):
-        return self._symbol_pool
-
-    # TODO 根据总回测时间区间去计算浮动收益的统计频率
-    @property
-    def float_pnl_frequency(self):
-        if self._config.running_mode == RunningMode.runtime:
-            return 1
-        if self.min_time_frame in ['M1', 'M5']:
-            return 1
-        time = tf2s(self.min_time_frame)
-        result = 2 * 60 * 60 // time  # 统计频率为2H一次
-        if result == 0:
-            return 1
-        else:
-            return result
-
-    data = property(get_data)
-    symbol_pool = property(get_symbol_pool)
-    min_time_frame = property(get_min_time_frame, set_min_time_frame)
-
-    def add_cache_info(self, symbols, time_frame, maxlen=0):
+    def add_cache_info(self, symbols, time_frame, length=None):
         symbols = set(symbols)
         symbols_ = symbols.copy()
         for symbol in symbols:
@@ -344,70 +195,56 @@ class DataCache(LoggerInterface):
                 elif 'USD' + symbol[-3:] in Forex.ALL.index:
                     symbols_.add('USD' + symbol[-3:])
         for symbol in symbols_:
-            key = (symbol, time_frame)
             self.min_time_frame = time_frame
-            self._cache_info[key] = max(self._cache_info[key], maxlen)
+            self._data_view.update(CacheInfo(symbol, time_frame, length))
         self._symbol_pool.update(
             {symbol: Forex(symbol) for symbol in symbols_ if symbol not in self._symbol_pool})
 
-    def get_cache_info(self):
-        return self._cache_info.copy()
-
     def init(self):
-        for key, maxlen in self._cache_info.items():
-            symbol, timeframe = key
-            if timeframe not in self._data:
-                self._data[timeframe] = defaultdict(dict)
-            if maxlen == 0:
-                maxlen = self.CACHE_MAXLEN
-            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
-                self._data[timeframe][field][symbol] = deque(maxlen=maxlen)
-            if self._config.trading_mode == TradingMode.on_tick:
-                self._data[timeframe]['tick_open'][symbol] = 0  # 用于on_tick模式回测的模拟成交的价格记录
-            if self._config.running_mode == RunningMode.runtime:
+        self._data_view.create_all()
+        for symbol, time_frame in self._data_view.get_keys():
+            if self.config.running_mode == RunningMode.runtime:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
             else:
-                self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][timeframe], self.on_bar)
+                self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][time_frame], self.on_bar)
             # TODO 这里只考虑了单品种情况
-            if self._config.trading_mode == TradingMode.on_tick:
-                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][timeframe], self.on_next_bar)
-            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][timeframe], self.on_next_bar)
+            if self.config.trading_mode == TradingMode.on_tick:
+                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame], self.on_next_bar)
+            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.on_next_bar)
         self._count = 0
 
-    def start(self):
+    def _start(self):
         self.init()
-        self._running = True
 
-    def stop(self):
-        self._running = False
-        self._data.clear()
+    def _stop(self):
+        self._data_view.clear()
 
-    def update_bar(self, bar):
+    def update_bar(self, bar: Bar):
         symbol = bar.symbol
         time_frame = bar.time_frame
+        quotation = self._data_view.find(symbol, time_frame)
         self.current_time = bar.close_time if not self.current_time else max(self.current_time, bar.close_time)
-        last_time = self._data[time_frame]['timestamp'][symbol][0] \
-            if self._data[time_frame]['timestamp'][symbol] else 0
-        if self._config.trading_mode == TradingMode.on_tick:
-            self._data[time_frame]["tick_open"][symbol] = bar.open
+        last_time = quotation.timestamp[0] if quotation.timestamp else 0
+        if self.config.trading_mode == TradingMode.on_tick:
+            quotation.tick_open = bar.open
         if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
-                self._data[time_frame][field][symbol].appendleft(getattr(bar, field))
+                getattr(quotation, field).appendleft(getattr(bar, field))
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
         else:
-            self._data[time_frame]["high"][symbol][0] = max(self._data[time_frame]["high"][symbol][0], bar.high)
-            self._data[time_frame]["low"][symbol][0] = min(self._data[time_frame]["low"][symbol][0], bar.low)
-            self._data[time_frame]["volume"][symbol][0] += bar.volume
+            quotation.high[0] = max(quotation.high[0], bar.high)
+            quotation.low[0] = min(quotation.low[0], bar.low)
+            quotation.volume[0] += bar.volume
             for field in ["datetime", "timestamp", "close"]:
-                self._data[time_frame][field][symbol][0] = getattr(bar, field)
+                getattr(quotation, field)[0] = getattr(bar, field)
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
 
-    def on_bar(self, event):
+    def on_bar(self, event: Event):
         if self._running:
             bar = event.content['data']
             self.update_bar(bar)
 
-    def on_tick(self, event):
+    def on_tick(self, event: Event):
         if self._running:
             tick = event.content['data']
             symbol = tick.symbol
@@ -445,12 +282,11 @@ class DataCache(LoggerInterface):
                         dict_["volume"] += tick.volume
                         dict_['timestamp'] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
 
-    def on_next_bar(self, event):
+    def on_next_bar(self, event: Event):
         # 更新浮动盈亏
         self._count += 1
         if self._count % self.float_pnl_frequency == 0:
-            if self._config.running_mode == RunningMode.backtest:
-
+            if self.config.running_mode == RunningMode.backtest:
                 pnl = self._engine.profit_record(self.current_time)
                 self._engine.profit_records.append(pnl)
             else:
@@ -458,70 +294,116 @@ class DataCache(LoggerInterface):
                 self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
         self._engine.realize_order()
 
+    def get_APIs(self, symbols=None, time_frame=None):
+        APIs = {}
+        if symbols and time_frame:
+            for field in ["open", "high", "low", "close", "volume", "timestamp", "datetime"]:
+                APIs[field[0].upper() + field[1:] + 's'] = {}
+                for symbol in symbols:
+                    APIs[field[0].upper() + field[1:] + 's'][symbol] = self._data_view.find(symbol, time_frame)
+                APIs[field[0].upper() + field[1:]] = self._data_view.find(symbols[0], time_frame)
+        return APIs
 
-class TradeManager(LoggerInterface):
-    """负责保存交易信息，管理订单相关事件"""
 
-    def __init__(self, engine, config):
-        super().__init__()
-        self.engine = proxy(engine)
-        self.__config = config
-        if self.__config.running_mode == RunningMode.backtest:
-            self.__position_factory = PositionFactory()
-            self.__order_factory = OrderFactory()
-            self.__deal_factory = DealFactory()
+########################################################################################################################
+class TradingDataFactory(ConfigInterface):
+    def __init__(self, parent=None):
+        ConfigInterface.__init__(self, parent=parent)
+        if self.config.running_mode == RunningMode.backtest:
+            self._position_factory = PositionFactory()
+            self._order_factory = OrderFactory()
+            self._deal_factory = DealFactory()
         else:
             # 暂时只用account当前缀，下单时间和策略，信号的信息有了，只有对应实盘账户信息没有
-            prefix = '-'.join([self.__config['account']])
-            self.__position_factory = PositionFactory(prefix + '-P', timestamp=True)
-            self.__order_factory = OrderFactory(prefix + '-O', timestamp=True)
-            self.__deal_factory = DealFactory(prefix + '-D', timestamp=True)
+            prefix = '-'.join([self.config['account']])
+            self._position_factory = PositionFactory(prefix + '-P', timestamp=True)
+            self._order_factory = OrderFactory(prefix + '-O', timestamp=True)
+            self._deal_factory = DealFactory(prefix + '-D', timestamp=True)
 
-        class OrdersUr:
-            def __init__(self):
-                self.queue = defaultdict(PriorityQueue)  #
-                self.flag = set()
-                self.count = 0
+    def new_position(self, *args, **kwargs):
+        return self._position_factory.new(*args, **kwargs)
 
+    def new_order(self, *args, **kwargs):
+        return self._order_factory.new(*args, **kwargs)
+
+    def new_deal(self, *args, **kwargs):
+        return self._deal_factory.new(*args, **kwargs)
+
+    def find_position(self, id_):
+        return self._position_factory.find(id_)
+
+    def find_order(self, id_):
+        return self._order_factory.find(id_)
+
+    def find_deal(self, id_):
+        return self._deal_factory.find(id_)
+
+    @property
+    def positions(self):
+        return self._position_factory.map
+
+    @property
+    def deals(self):
+        return self._deal_factory.map
+
+    @property
+    def orders(self):
+        return self._order_factory.map
+
+    def clear(self):
+        self._position_factory.clear()
+        self._deal_factory.clear()
+        self._order_factory.clear()
+
+
+class OrdersUr:
+    def __init__(self):
+        self.queue = defaultdict(PriorityQueue)  #
+        self.flag = set()
+        self.count = 0
+
+
+class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
+    def __init__(self, engine, quotation_manager, account_manager, parent=None):
+        APIInterface.__init__(self)
+        LoggerInterface.__init__(self)
+        ConfigInterface.__init__(self, parent=parent)
+        self._engine = proxy(engine)
+        self.__quotation_manager = proxy(quotation_manager)
+        self.__account_manager = proxy(account_manager)
+        self.__factory = TradingDataFactory(parent=self)
         self.__orders_ur = defaultdict(OrdersUr)  # orders unrealized 还未被处理的订单请求
         self.__orders_done = {}  # 保存所有已处理报单数据的字典
         self.__orders_todo = {}  # 保存所有未处理报单（即挂单）数据的字典 key:id
         self.__orders_todo_index = {}  # 同上 key:symbol
         self.__positions = {}  # Key:id, value:position with responding id
         self.__current_positions = {}  # key：symbol，value：current position
-        self.__deals = {}  # key:id, value:deal with responding id
 
-    def get_current_positions(self):
+    @property
+    def current_positions(self):
         return self.__current_positions
 
-    def get_positions(self):
-        return self.__positions
+    @property
+    def positions(self):
+        return self.__factory.positions
 
-    def get_deals(self):
-        return self.__deals
-
-    current_positions = property(get_current_positions)
-    positions = property(get_positions)
-    deals = property(get_deals)
+    @property
+    def deals(self):
+        return self.__factory.deals
 
     def init(self):
-        for symbol, _ in self.engine.symbol_pool.items():
+        for symbol in self._engine.symbol_pool.keys():
             if symbol not in self.__current_positions:
-                position = self.__position_factory(symbol)
+                position = self.__factory.new_position(symbol)
                 self.__current_positions[symbol] = position
-                self.__positions[position.get_id()] = position
 
     def recycle(self):
         # TODO 数据结构还需修改
         self.__orders_done.clear()
         self.__orders_todo.clear()
         self.__orders_todo_index.clear()
-        self.__deals.clear()
-        self.__positions.clear()
         self.__current_positions.clear()
-        self.__position_factory.reset()
-        self.__deal_factory.reset()
-        self.__order_factory.reset()
+        self.__factory.clear()
 
     @staticmethod
     def check_order(order):
@@ -530,16 +412,16 @@ class TradeManager(LoggerInterface):
         # TODO更多关于订单合法性的检查
         return True
 
-    # ----------------------------------------------------------------------
     def __send_order_to_broker(self, order):
         # if order.volume_initial == 0:
         # return
         if order.volume_initial <= 0:
             return -1
-        if self.__config.running_mode == RunningMode.backtest:
-            time_frame = self.engine.strategys[order.strategy].signals[order.signal].get_time_frame()
-            position = self.engine.current_positions[order.symbol]
-            symbol = self.engine.symbol_pool[order.symbol]
+        if self.config.running_mode == RunningMode.backtest:
+            time_frame = self._engine.strategys[order.strategy].signals[order.signal].get_time_frame()
+            position = self.__current_positions[order.symbol]
+            symbol = self.__quotation_manager.symbol_pool[order.symbol]
+            quotation = self.__quotation_manager.find_quotation(order.symbol, time_frame)
             volume = order.volume_initial
             margin = 0
             if position.type * (1 - (order.type << 1)) < 0:
@@ -547,26 +429,27 @@ class TradeManager(LoggerInterface):
                     base_price = 1
                 elif symbol.code.endswith('USD'):  # 直接报价
                     base_price = position.price_current
-                margin -= symbol.margin(min(position.volume, volume), commission=self.__config['commission'],
+                margin -= symbol.margin(min(position.volume, volume), commission=self.config.commision,
                                         base_price=base_price)
                 volume -= position.volume
             if volume > 0:
-                margin += symbol.margin(volume, commission=self.__config['commission'],
-                                        base_price=self.engine.get_base_price(order.symbol, time_frame))
-            if self.engine.capital_available - margin >= 0:
-                time_ = self.engine.data[time_frame]["timestamp"][order.symbol][0]
+                margin += symbol.margin(volume, commission=self.config.commision,
+                                        base_price=self.__quotation_manager.get_base_price(order.symbol, time_frame))
+            if self.__account_manager.capital_available - margin >= 0:
+                time_ = quotation.timestamp[0]
                 order.time_done = int(time_)
                 order.time_done_msc = int((time_ - int(time_)) * (10 ** 6))
                 order.volume_current = order.volume_initial
-                deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
+                deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
                 deal.volume = order.volume_current
                 deal.time = order.time_done
                 deal.time_msc = order.time_done_msc
                 deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-                if self.__config.trading_mode == TradingMode.on_tick:
-                    deal.price = self.engine.data[time_frame]["tick_open"][order.symbol]  # 以next tick open 成交
+                if self.config.trading_mode == TradingMode.on_tick:
+                    deal.price = quotation.tick_open  # 以next tick open 成交
                 else:
-                    deal.price = self.engine.data[time_frame]["open"][order.symbol][0]  # 以next bar open 成交
+                    deal.price = quotation.open[0]
+                    # 以next bar open 成交
                 # TODO加入手续费等
                 order.deal = deal.get_id()
                 deal.order = order.get_id()
@@ -575,22 +458,22 @@ class TradeManager(LoggerInterface):
                 print('下单失败,保证金不足')
                 return -1
         else:
-            cash_old = self.engine.capital_cash
-            order_id = self.engine.send_order_to_broker(order)
+            cash_old = self.__account_manager.capital_cash
+            order_id = self.__account_manager.send_order_to_broker(order)
             if order_id != -1:
-                res = self.engine.order_status()
+                res = self.__account_manager.order_status()
                 if res['ok']:
                     order_status = res.get('orders', [])
                     for state in order_status:
                         if state['id'] == order_id:
-                            deal = self.__deal_factory(order.symbol, order.strategy, order.signal)
+                            deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
                             deal.type = 1 - ((order.type & 1) << 1)
                             deal.volume = round(state['quantity'] / 100000, 2)  # 换算成手，精确到mini手
                             deal.time = parse(state['created']).timestamp()
                             deal.price = state['avgPx']
                             deal.symbol = order.symbol
                             deal.order = order.get_id()
-                            cash_now = self.engine.capital_cash
+                            cash_now = self.__account_manager.capital_cash
                             deal.profit = cash_now - cash_old
                             break
         if order_id != -1:
@@ -602,7 +485,6 @@ class TradeManager(LoggerInterface):
             self.logger.info("编号<%s>下单失败,订单ID:%s" % (order.id, order_id))
             return -1
 
-    # ----------------------------------------------------------------------
     def send_order(self, order):
         """
         发单（仅允许限价单）
@@ -647,11 +529,11 @@ class TradeManager(LoggerInterface):
                 return -1
 
         position_prev = self.__current_positions[deal.symbol]
-        position_now = self.__position_factory(deal.symbol, deal.strategy, deal.signal)
+        position_now = self.__factory.new_position(deal.symbol, deal.strategy, deal.signal)
         position_now.prev_id = position_prev.get_id()
         position_prev.next_id = position_now.get_id()
-        if self.__config.running_mode == RunningMode.backtest:
-            symbol = self.engine.symbol_pool[deal.symbol]
+        if self.config.running_mode == RunningMode.backtest:
+            symbol = self.__quotation_manager.symbol_pool[deal.symbol]
             position = position_prev.type
             # XXX常量定义改变这里的映射函数也可能改变
             if deal.type * position >= 0:
@@ -668,8 +550,8 @@ class TradeManager(LoggerInterface):
                 position_now.price_current = (position_prev.price_current * position_prev.volume
                                               + deal.price * deal.volume) / position_now.volume
             else:
-                time_frame = self.engine.strategys[deal.strategy].signals[deal.signal].time_frame
-                base_price = self.engine.get_counter_price(deal.symbol, time_frame)
+                time_frame = self._engine.strategys[deal.strategy].signals[deal.signal].time_frame
+                base_price = self.__quotation_manager.get_counter_price(deal.symbol, time_frame)
                 contracts = position_prev.volume - deal.volume
                 position_now.volume = abs(contracts)
                 position_now.type = position * sign(contracts)
@@ -677,8 +559,8 @@ class TradeManager(LoggerInterface):
                     # close or underweight position
                     deal.entry = DEAL_ENTRY_OUT
                     deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
-                                                   commission=self.__config['commission'],
-                                                   slippage=self.__config['slippage'], base_price=base_price)
+                                                   commission=self.config.commision,
+                                                   slippage=self.config.slippage, base_price=base_price)
                     if position_now.type == 0:  # 防止浮点数精度可能引起的问题
                         position_now.price_current = 0
                         position_now.volume = 0
@@ -696,9 +578,10 @@ class TradeManager(LoggerInterface):
                     position_now.time_open_msc = deal.time_msc
                     position_now.price_open = position_now.price_current
                     """
-            self.engine.update_cash(deal)
+            if deal.profit is not None:
+                self.__account_manager.capital_cash += deal.profit
         else:
-            res = self.engine.position_status(deal.symbol)
+            res = self.__account_manager.position_status(deal.symbol)
             if res is not None:
                 qty = res['qty']
                 price = res['price']
@@ -726,12 +609,11 @@ class TradeManager(LoggerInterface):
         deal.position = position_now.get_id()
         position_now.deal = deal.get_id()
         self.__current_positions[deal.symbol] = position_now
-        if self.__config.running_mode == RunningMode.backtest:
-            self.__positions[position_now.get_id()] = position_now
-            self.__deals[deal.get_id()] = deal
+        if self.config.running_mode == RunningMode.backtest:
+            pass
         else:
-            self.engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
-            self.engine.mongo_user.collection['deals'].insert_one(deal.to_dict())
+            self._engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
+            self._engine.mongo_user.collection['deals'].insert_one(deal.to_dict())
 
     def realize_order(self):
         def get_order_info(orders_ur, direction):
@@ -790,9 +672,8 @@ class TradeManager(LoggerInterface):
         self.__orders_ur.clear()
 
     def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
-                    lineno=None,
-                    col_offset=None, direction=None):
-        if symbol not in self.__config['symbols']:
+                    lineno=None, col_offset=None, direction=None):
+        if symbol not in self.config.symbols:
             self.logger.warning("订单品种<%s>不在当前交易品种中")
         orders_ur = self.__orders_ur[symbol]
         if (lineno, col_offset) not in orders_ur.flag:
@@ -801,7 +682,6 @@ class TradeManager(LoggerInterface):
             orders_ur.queue[direction].put(
                 (orders_ur.count, lineno, col_offset, volume, price, stop, limit, strategy, signal))
 
-    # ----------------------------------------------------------------------
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                        direction=0):
         """
@@ -823,18 +703,17 @@ class TradeManager(LoggerInterface):
         if not position or position.type != direction:
             return -1
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
-        order = self.__order_factory(symbol, order_type, strategy, signal)
+        order = self.__factory.new_order(symbol, order_type, strategy, signal)
         order.volume_initial = volume
-        if self.__config.running_mode == RunningMode.backtest:
-            time_frame = self.engine.strategys[strategy].signals[signal].time_frame
-            time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
+        if self.config.running_mode == RunningMode.backtest:
+            time_frame = self._engine.strategys[strategy].signals[signal].time_frame
+            time_ = self.__quotation_manager.find_quotation(symbol, time_frame).timestamp[0]
         else:
             time_ = time.time()
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
         return self.send_order(order)
 
-    # ----------------------------------------------------------------------
     def open_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                       direction=0):
         """
@@ -851,9 +730,9 @@ class TradeManager(LoggerInterface):
         """
         volume = round(volume, 2)  # 精确到mini手
         # 计算下单时间
-        if self.__config.running_mode == RunningMode.backtest:
-            time_frame = self.engine.strategys[strategy].signals[signal].get_time_frame()
-            time_ = self.engine.data[time_frame]['timestamp'][symbol][0]
+        if self.config.running_mode == RunningMode.backtest:
+            time_frame = self._engine.strategys[strategy].signals[signal].get_time_frame()
+            time_ = self.__quotation_manager.find_quotation(symbol, time_frame).timestamp[0]
         else:
             time_ = time.time()
         # 反向开仓先进行平仓处理
@@ -861,7 +740,7 @@ class TradeManager(LoggerInterface):
         order_type = (1 - direction) >> 1  # 开仓，空头时order_type为1(ORDER_TYPE_SELL), 多头时order_type为0(ORDER_TYPE_BUY)
 
         if position and position.type * direction == -1:
-            order = self.__order_factory(symbol, order_type, strategy, signal)
+            order = self.__factory.new_order(symbol, order_type, strategy, signal)
             order.volume_initial = position.volume
             order.time_setup = int(time_)
             order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
@@ -870,10 +749,156 @@ class TradeManager(LoggerInterface):
         # 正向开仓
         if volume == 0:
             return -1
-        order = self.__order_factory(symbol, order_type, strategy, signal)
+        order = self.__factory.new_order(symbol, order_type, strategy, signal)
         order.volume_initial = volume
         order.time_setup = int(time_)
         order.time_setup_msc = int((time_ - int(time_)) * (10 ** 6))
         return self.send_order(order)
 
+    def get_APIs(self, strategy=None):
+        return {"Buy": partial(self.place_order, strategy=strategy, direction=OrderDirection.long_entry),
+                "Sell": partial(self.place_order, strategy=strategy, direction=OrderDirection.long_exit),
+                "SellShort": partial(self.place_order, strategy=strategy, direction=OrderDirection.short_entry),
+                "BuyToCover": partial(self.place_order, strategy=strategy, direction=OrderDirection.shoer_exit)
+                }
 
+
+########################################################################################################################
+class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
+    """策略引擎"""
+
+    def __init__(self, parent=None):
+        """Constructor"""
+        LoggerInterface.__init__(self)
+        Runnable.__init__(self)
+        ConfigInterface.__init__(self, parent=parent)
+        self.__event_engine = EventEngine()  # 事件处理引擎
+        if self.config.running_mode == RunningMode.backtest:
+            self.__account_manager = AccountManager(self, parent=self)  # 账户管理
+        else:
+            self.__account_manager = FDTAccountManager(self, parent=self)
+            self.mongo_user = MongoUser(self.config.user)
+        self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
+        self.__trading_manager = TradingManager(self, self.__quotation_manager, self.__account_manager,
+                                                parent=self)  # 交易管理器
+        self.__strategys = {}  # 策略管理器
+        self.__profit_records = []  # 保存账户净值的列表
+        self._logger_child = {self.__event_engine: "EventEngine",
+                              self.__trading_manager: "TradeManager",
+                              self.__quotation_manager: "DataCache",
+                              self.__account_manager: "AccountManager"}
+
+    def set_account(self, account):
+        assert isinstance(account, AccountManager)
+        self.__account_manager = account
+
+    def get_current_positions(self):
+        return self.__trading_manager.current_positions
+
+    def get_current_time(self):
+        return self.__quotation_manager.current_time
+
+    def get_positions(self):
+        return self.__trading_manager.positions
+
+    def get_deals(self):
+        return self.__trading_manager.deals
+
+    def get_strategys(self):
+        return self.__strategys
+
+    def get_profit_records(self):
+        """获取平仓收益记录"""
+        return self.__profit_records
+
+    def get_symbol_timeframe(self):
+        return self.__quotation_manager.get_cache_info().keys()
+
+    # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
+    # property:
+    current_time = property(get_current_time)
+    current_positions = property(get_current_positions)
+    positions = property(get_positions)
+    deal = property(get_deals)
+    strategys = property(get_strategys)
+    profit_records = property(get_profit_records)
+    symbol_timeframe = property(get_symbol_timeframe)
+
+    def profit_record(self, *args, **kwargs):
+        return self.__account_manager.profit_record(*args, **kwargs)
+
+    def realize_order(self):
+        self.__trading_manager.realize_order()
+
+    def add_cache_info(self, *args, **kwargs):
+        self.__quotation_manager.add_cache_info(*args, **kwargs)
+        # TODO 从全局的品种池中查询
+
+    def add_file(self, file):
+        self.__event_engine.add_file(file)
+
+    def add_strategy(self, strategy):
+        """添加已创建的策略实例"""
+        self.__strategys[strategy.get_id()] = strategy
+        strategy.engine = self
+
+    def put_event(self, event):
+        # TODO 加入验证
+        # TODO 多了一层函数调用，尝试用绑定的形式
+        self.__event_engine.put(event)
+
+    def register_event(self, event_type, handle):
+        """注册事件监听"""
+        # TODO  加入验证
+        self.__event_engine.register(event_type, handle)
+
+    def unregister_event(self, event_type, handle):
+        """取消事件监听"""
+        self.__event_engine.unregister(event_type, handle)
+
+    def write_log(self, log):
+        """写日志"""
+        self.__event_engine.put(Event(type=EVENT_LOG, log=log))
+
+    def _start(self):
+        """启动所有策略"""
+        for strategy in self.__strategys.values():
+            strategy.start()
+        self.__profit_records.clear()
+        self.__quotation_manager.start()
+        self.__trading_manager.init()
+        self.__event_engine.start()
+        self.__account_manager.initialize()
+
+    def _stop(self):
+        """停止所有策略"""
+        self.__event_engine.stop()
+        self.__quotation_manager.stop()
+        for strategy in self.__strategys.values():
+            strategy.stop()
+        self._recycle()  # 释放资源
+
+    def _recycle(self):
+        self.__quotation_manager.stop()
+        self.__trading_manager.recycle()
+
+    def wait(self, call_back=None, finished=True, *args, **kwargs):
+        """等待所有事件处理完毕
+        :param call_back: 运行完成时的回调函数
+        :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
+        """
+        self.__event_engine.wait()
+        if call_back:
+            result = call_back(*args, **kwargs)
+        else:
+            result = None
+        if finished:
+            self.stop()
+        return result
+
+    def get_APIs(self, symbols=None, time_frame=None):
+        APIs = {}
+        APIs.update(self.__account_manager.get_APIs())
+        APIs.update(self.__quotation_manager.get_APIs(symbols=symbols, time_frame=time_frame))
+        APIs.update(self.__trading_manager.get_APIs())
+        return APIs

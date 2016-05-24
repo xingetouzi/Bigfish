@@ -1,3 +1,4 @@
+from weakref import proxy
 from Bigfish.models.base import RunningMode, TradingMode
 
 
@@ -5,20 +6,20 @@ class ConfigInterface:
     def __init__(self, parent=None):
         if parent is not None:
             assert isinstance(parent, ConfigInterface)
-        self.__parent = parent
-        self.__config = None
+        self.__parent = proxy(parent)
+        self.config = None
 
     @property
     def config(self):
-        if self.__config is None:
+        if self.config is None:
             return self.__parent.config
         else:
-            return self.__config
+            return self.config
 
     @config.setter
     def config(self, config):
         assert isinstance(config, BfConfig)
-        self.__config = config
+        self.config = config
 
 
 class BfConfig:

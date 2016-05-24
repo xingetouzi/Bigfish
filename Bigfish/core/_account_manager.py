@@ -7,9 +7,9 @@ Created on Wed Nov 25 20:46:00 2015
 from functools import wraps
 from dateutil.parser import parse
 from weakref import proxy
-
+from Bigfish.models.config import ConfigInterface
 from Bigfish.utils.log import LoggerInterface
-from Bigfish.models.base import Currency
+from Bigfish.models.base import Currency, APIInterface
 from Bigfish.fdt.account import FDTAccount
 from Bigfish.models.trade import *
 
@@ -17,13 +17,13 @@ BASE_DEFAULT = 100000
 
 
 ###################################################################
-class AccountManager(LoggerInterface):
+class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
     """交易账户对象"""
 
-    def __init__(self, engine, config, currency=Currency("USD")):
-        super().__init__()
+    def __init__(self, engine, currency=Currency("USD"), parent=None):
+        LoggerInterface.__init__(self)
+        ConfigInterface.__init__(self, parent=parent)
         self._engine = proxy(engine)
-        self._config = config
         self._capital_base = None
         self._capital_net = None
         self._capital_cash = None
@@ -35,35 +35,39 @@ class AccountManager(LoggerInterface):
     @property
     def capital_base(self):
         if self._capital_base is None:
-            self._capital_base = self._config.capital_base
+            self._capital_base = self.config.capital_base
         return self._capital_base
 
     @capital_base.setter
-    def capital_base(self, capital_base):
-        if isinstance(capital_base, int) and capital_base > 0:
-            self._capital_base = capital_base
+    def capital_base(self, value):
+        if isinstance(value, float) and value > 0:
+            self._capital_base = value
             self.initialize()
         else:
-            raise (ValueError("不合法的base值%s" % capital_base))
+            raise (ValueError("不合法的base值%s" % value))
 
     @property
     def capital_cash(self):
         return self._capital_cash
 
+    @capital_cash.setter
+    def capital_cash(self, value):
+        self._capital_cash = value
+
     @property
     def capital_net(self):
         symbol_pool = self._engine.symbol_pool
         float_pnl = 0
-        time_frame = self._config['time_frame']
+        time_frame = self.config['time_frame']
         if not time_frame:
-            time_frame = self._config['time_frame']
+            time_frame = self.config['time_frame']
         for symbol, position in self._engine.current_positions.items():
             price = self._engine.data[time_frame]['close'][symbol][0]
             base_price = self._engine.get_counter_price(symbol, time_frame)
             float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
                                                        position.volume,
-                                                       commission=self._config['commission'],
-                                                       slippage=self._config['slippage'],
+                                                       commission=self.config['commission'],
+                                                       slippage=self.config['slippage'],
                                                        base_price=base_price)
         self._capital_net = self._capital_cash + float_pnl
         return self._capital_net
@@ -90,15 +94,10 @@ class AccountManager(LoggerInterface):
         self._capital_net = self.capital_base
         self._capital_cash = self.capital_base
 
-    def update_cash(self, deal):
-        if not deal.profit:
-            return
-        self._capital_cash += deal.profit
-
     def profit_record(self, time):
         return {'x': time, 'y': float('%.2f' % ((self.capital_net / self.capital_base - 1) * 100))}
 
-    def get_api(self):
+    def get_APIs(self, **kwargs):
         class Capital:
             def __init__(self, manager):
                 self.__manager = proxy(manager)
@@ -123,7 +122,7 @@ class AccountManager(LoggerInterface):
             def margin(self):
                 return self.__manager.capital_margin
 
-        return Capital(self)
+        return {"Cap": Capital(self)}
 
 
 def with_login(func):
@@ -137,13 +136,14 @@ def with_login(func):
     return wrapper
 
 
-class FDTAccountManager(AccountManager):
-    def __init__(self, engine, config):
-        self._username = config.account
-        self._password = config.password
+class FDTAccountManager(AccountManager, ConfigInterface):  # 显示说明继承了ConfigInterface，并不影响MRO
+    def __init__(self, engine, parent=None):
+        ConfigInterface.__init__(self, parent=parent)
+        self._username = self.config.account
+        self._password = self.config.password
         if self._username is not None and self._password is not None:
             self._account = FDTAccount(self._username, self._password)
-        super().__init__(engine, config)
+        super().__init__(engine)
 
     def set_account(self, username, password):
         self._username = username
@@ -164,7 +164,7 @@ class FDTAccountManager(AccountManager):
         return self._capital_base
 
     @capital_base.setter
-    def capital_base(self, capital_base):
+    def capital_base(self, value):
         pass
 
     @property
@@ -172,6 +172,10 @@ class FDTAccountManager(AccountManager):
     def capital_cash(self):
         self._capital_cash = self.fx_account['cash']
         return self._capital_cash
+
+    @capital_base.setter
+    def capital_base(self, value):
+        pass
 
     @property
     @with_login
@@ -209,11 +213,8 @@ class FDTAccountManager(AccountManager):
     def order_status(self):
         return self._account.order_status()
 
-    def update_cash(self, *args, **kwargs):
-        self.capital_cash
-
     @with_login
-    def profit_record(self):
+    def profit_record(self, *args):
         time = parse(self._account.info['user']['lastLogin']).timestamp()
         return super().profit_record(time)
 

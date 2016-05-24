@@ -164,7 +164,7 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode10.py"
+    file = "testcode17.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-import copy
-from collections import deque, UserList
+from collections import deque
 from datetime import datetime
 
 
@@ -81,23 +80,30 @@ class FactoryWithTimestampPrefixID(FactoryWithPrefixID):
             return self._prefix
 
 
-class FactoryWithList(FactoryWithID):
+class FactoryWithTimestampPrefixIDMap(FactoryWithTimestampPrefixID):
     _class = None
 
-    def __init__(self):
-        super(FactoryWithList, self).__init__()
-        self.all = []
+    def __init__(self, prefix='', timestamp=False):
+        super(FactoryWithTimestampPrefixIDMap, self).__init__(prefix=prefix, timestamp=timestamp)
+        self._map = {}
 
     def new(self, *args, **kwargs):
-        result = super(FactoryWithList, self).new(*args, **kwargs)
-        self.all.append(result)
+        result = super(FactoryWithTimestampPrefixIDMap, self).new(*args, **kwargs)
+        self._map[result.id] = result
         return result
+
+    def find(self, id):
+        return self._map[id]
+
+    @property
+    def map(self):
+        return self._map.copy()
 
     def clear(self):
         """
         重置ID计数器,清空存储。
         """
-        self.all.clear()
+        self._map.clear()
         self.reset()
 
 

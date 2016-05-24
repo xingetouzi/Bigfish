@@ -28,6 +28,44 @@ class TradingCommands(Enum):
     buytocover = "BuyToCover"
 
 
+# TODO running 状态改变的时候可能要加上线程锁
+class Runnable:
+    def __init__(self):
+        self._running = False
+
+    @property
+    def running(self):
+        return self._running
+
+    def _start(self):
+        raise NotImplementedError
+
+    def start(self):
+        if self._running:
+            return
+        else:
+            self._start()
+            self._running = True
+
+    def _stop(self):
+        raise NotImplementedError
+
+    def stop(self):
+        if not self._running:
+            return
+        else:
+            self._stop()
+            self._running = False
+
+
+class APIInterface:
+    def __init__(self):
+        pass
+
+    def get_APIs(self, **kwargs):
+        raise NotImplementedError
+
+
 class Currency:
     """货币对象"""
 

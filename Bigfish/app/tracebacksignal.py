@@ -4,18 +4,17 @@ Created on Wed Nov 25 20:41:04 2015
 
 @author: BurdenBear
 """
-import traceback
 import logging
-
+import traceback
+from Bigfish.config import DEBUG
 from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
+from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.models.base import RunningMode, TradingMode
 from Bigfish.models.config import BfConfig, ConfigInterface
-from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.utils.log import LoggerInterface
-from Bigfish.config import DEBUG
 
 
-class RuntimeSignal(LoggerInterface, ConfigInterface):
+class TracebackSignal(LoggerInterface, ConfigInterface):
     def __init__(self):
         LoggerInterface.__init__(self)
         ConfigInterface.__init__(self)
@@ -24,7 +23,6 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
         self.__strategy_engine = None
         self.__data_generator = None
         self.__strategy_parameters = None
-        self.__performance_manager = None
         self.__is_alive = False
         self.__initialized = False
 
@@ -51,7 +49,7 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
     def set_config(self, config):
         assert isinstance(config, BfConfig)
         self._config = config
-        self._config.running_mode = RunningMode.runtime
+        self._config.running_mode = RunningMode.traceback
 
     @property
     def code(self):
@@ -145,17 +143,17 @@ if __name__ == '__main__':
     config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
                       password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
                       trading_mode=TradingMode.on_tick)
-    runtime_signal = RuntimeSignal()
-    runtime_signal.code = code
-    runtime_signal.set_config(config)
-    runtime_signal.init()
-    set_handle(runtime_signal.logger)
+    traceback_signal = TracebackSignal()
+    traceback_signal.code = code
+    traceback_signal.set_config(config)
+    traceback_signal.init()
+    set_handle(traceback_signal.logger)
 
 
     def terminate(signum, frame):
         print("terminate")
-        runtime_signal.stop()
+        traceback_signal.stop()
 
     signal.signal(signal.SIGINT, terminate)
     signal.signal(signal.SIGTERM, terminate)
-    runtime_signal.start()
+    traceback_signal.start()

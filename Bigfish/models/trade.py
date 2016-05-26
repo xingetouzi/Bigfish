@@ -5,7 +5,7 @@ Created on Fri Nov 27 09:59:13 2015
 @author: BurdenBear
 """
 
-from Bigfish.models.common import DictLike, FactoryWithTimestampPrefixID
+from Bigfish.models.common import DictLike, FactoryWithTimestampPrefixIDMap
 from enum import Enum
 
 """所有的数据结构都继承HasID，通过ID来访问，以便于以后在数据库中存储"""
@@ -63,7 +63,7 @@ class Position(DictLike):
         return self.id
 
 
-class PositionFactory(FactoryWithTimestampPrefixID):
+class PositionFactory(FactoryWithTimestampPrefixIDMap):
     _class = Position
 
     def __init__(self, prefix='', timestamp=False):
@@ -146,7 +146,7 @@ class Order(DictLike):
         return self.id
 
 
-class OrderFactory(FactoryWithTimestampPrefixID):
+class OrderFactory(FactoryWithTimestampPrefixIDMap):
     _class = Order
 
     def __init__(self, prefix='', timestamp=False):
@@ -187,7 +187,7 @@ class Deal(DictLike):
         return self.id
 
 
-class DealFactory(FactoryWithTimestampPrefixID):
+class DealFactory(FactoryWithTimestampPrefixIDMap):
     _class = Deal
 
     def __init__(self, prefix='', timestamp=False):

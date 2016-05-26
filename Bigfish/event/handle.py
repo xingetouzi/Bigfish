@@ -5,9 +5,10 @@ Created on Fri Nov 27 22:42:54 2015
 @author: BurdenBear
 """
 from collections import OrderedDict
-
 from Bigfish.event.event import EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLETED, Event
-from Bigfish.models.common import FactoryWithList
+from Bigfish.models.common import FactoryWithID
+from Bigfish.models.enviroment import APIInterface, Globals, Environment
+from Bigfish.models.base import Runnable
 
 
 class EventsPacker:
@@ -65,7 +66,7 @@ class SymbolBarCompletedEventsPacker(EventsPacker):
         super(SymbolBarCompletedEventsPacker, self).__init__(engine, events, out, type)
 
 
-class Signal:
+class Signal(Runnable, APIInterface):
     def __init__(self, engine, user, strategy, name, symbols, time_frame, id=None):
         """
         信号对象，每一个信号即为策略代码中不以init为名的任意最外层函数，订阅某些品种的行情数据，运行于特定时间框架下。
@@ -75,6 +76,8 @@ class Signal:
         :param time_frame:所订阅行情数据的事件框架
         :param id:不需要传入，由SignalFactory自动管理。
         """
+        Runnable.__init__(self)
+        APIInterface.__init__(self)
         self._id = id
         self._user = user
         self._strategy = strategy
@@ -93,6 +96,16 @@ class Signal:
         self._generator = None
         self._gene_instance = None
         self._bar_num = 0  # 暂时使用在LocalsInjector中改写的方式
+        self._environment = None
+
+    @property
+    def environment(self):
+        return self._environment
+
+    @environment.setter
+    def environment(self, value):
+        assert isinstance(value, Environment)
+        self._environment = Environment
 
     @property
     def symbols(self):
@@ -106,9 +119,6 @@ class Signal:
     def id(self):
         return self._id
 
-    def get_current_bar(self):
-        return self._bar_num
-
     def add_parameters(self, key, value):
         self._parameters[key] = value
 
@@ -117,9 +127,6 @@ class Signal:
 
     def get_parameters(self):
         return self._parameters.copy()
-
-    def get_time_frame(self):
-        return self._time_frame
 
     def set_generator(self, generator):
         self._generator = generator
@@ -136,7 +143,7 @@ class Signal:
                 self._bar_num += 1
             self._gene_instance.__next__()
 
-    def start(self):
+    def _start(self):
         self._bar_num = 0
         if self._generator:
             self._handler = self.__handle()
@@ -147,7 +154,7 @@ class Signal:
             self._completed.start()
             self._handler.send(None)  # start it
 
-    def stop(self):
+    def _stop(self):
         if self._generator:
             self._gene_instance.close()
             self._handler.close()  # stop it
@@ -156,6 +163,10 @@ class Signal:
             self._engine.unregister_event(self._event_update, self._handler.send)
             self._engine.unregister_event(self._event_completed, self._handler.send)
 
+    def get_APIs(self, **kwargs) -> Globals:
+        var = {"BarNum": self.get_bar_num}
+        return Globals({}, var)
 
-class SignalFactory(FactoryWithList):
+
+class SignalFactory(FactoryWithID):
     _class = Signal

@@ -1,10 +1,15 @@
 # -*- coding:utf-8 -*-
+import logging
+
+logger = logging.getLogger("RuntimeSignal")
+
 
 def init():
     pass
 
 
 def handle():
+    # logger.info("%s %s %s %s" % (MarketPosition, Pos.volume, Cap.margin, Cap.available))
     print(MarketPosition, Pos.volume, Cap.margin, Cap.available)
     if Pos.volume >= 0.1:
         BuyToCover(Symbol, Pos.volume)
@@ -12,5 +17,5 @@ def handle():
         SellShort(Symbol, 0.01)
         SellShort(Symbol, 0.01)
         SellShort(Symbol, 0.01)
-    # else:
+        # else:
         # BuyToCover(Symbol, Pos.volume)

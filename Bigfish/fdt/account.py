@@ -54,6 +54,10 @@ class FDTAccount:
         data = {"token": self.token}
         return post(op_url, data)
 
+    def account_info(self):
+        self.login()
+        return self.info['accounts']
+
     def cancel_order(self):
         co_url = fdt_url + "/CancelOrder"
         data = {"token": self.token}
@@ -76,8 +80,8 @@ if __name__ == '__main__':
 
 
     om = FDTAccount("mb000004296", "Morrisonwudi520")
-    url = "http://61.152.93.136:54321/Login"
     print(om.login())
+    #print(om.info)
     print(om.info['accounts'])
     res0 = om.market_order("Buy", 100000, "EURUSD")
     buy_id = res0.get('orderId', '')

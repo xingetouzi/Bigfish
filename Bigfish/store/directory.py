@@ -27,13 +27,14 @@ class UserDirectory(object):
             os.makedirs(new_dir)
         return new_dir
 
-    def __get_root__(self):
+    @classmethod
+    def __get_root__(cls):
         """
         获取策略代码存放路径
         :return: 策略代码存放的根目录
         """
         # TODO 先写死, 以后肯定需要重构
-        return self.__get_dir__(os.path.expanduser('~'), BASE_DIR_NAME)
+        return cls.__get_dir__(os.path.expanduser('~'), BASE_DIR_NAME)
 
     def get_home(self, code=None):
         """

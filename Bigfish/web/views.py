@@ -10,6 +10,8 @@ import tornado.ioloop
 import tornado.web
 
 from Bigfish.app.backtest import Backtesting
+from Bigfish.models.base import TradingMode
+from Bigfish.models.config import BfConfig
 from Bigfish.models.model import User
 from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory
@@ -19,8 +21,14 @@ from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
 
 def backtest(conn, *args):
     try:
-        user = args[0]
-        backtesting = Backtesting(*args)
+        code = args[0]
+        config = BfConfig(**{v[0]: v[1] for v in zip(["user", "name", "symbols", "time_frame", "start_time",
+                                                      "end_time", "commission", "slippage"], args[1:])})
+        config.trading_mode = TradingMode.on_tick
+        user = config.user
+        backtesting = Backtesting()
+        backtesting.set_code(code)
+        backtesting.set_config(config)
         backtesting.start()
         performance = backtesting.get_performance()
         cache = StrategyPerformanceJsonCache(user)
@@ -68,7 +76,7 @@ class BaseHandler(tornado.web.RequestHandler):
         if user_id:
             self.write('callback(')
             try:
-                result = yield tornado.gen.Task(run_backtest, user_id, name, code, [symbols],
+                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
                                                 time_frame, start_time,
                                                 end_time, commission, slippage)
             except TimeoutError:

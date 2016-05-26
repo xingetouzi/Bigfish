@@ -206,7 +206,10 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         for symbol, time_frame in self._data_view.get_keys():
             if self.config.running_mode == RunningMode.runtime:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
-            else:
+            elif self.config.running_mode == RunningMode.backtest:
+                self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][time_frame], self.on_bar)
+            elif self.config.running_mode == RunningMode.traceback:
+                self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][time_frame], self.on_bar)
             # TODO 这里只考虑了单品种情况
             if self.config.trading_mode == TradingMode.on_tick:
@@ -736,6 +739,10 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         position = self.__current_positions.get(symbol, None)
         if not position or position.type != direction:
             return -1
+        position_volume = round(position.volume, 2)
+        if volume > position_volume:
+            volume = position_volume
+            self.logger.warning("平仓量超出当前持仓")
         order_type = (direction + 1) >> 1  # 平仓，多头时order_type为1(ORDER_TYPE_SELL), 空头时order_type为0(ORDER_TYPE_BUY)
         order = self.__factory.new_order(symbol, order_type, strategy, signal)
         order.volume_initial = volume

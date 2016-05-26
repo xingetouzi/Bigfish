@@ -14,6 +14,7 @@ __all__ = ['Currency', 'RunningMode', "TradingMode", "TradingCommands"]
 class RunningMode(Enum):
     backtest = 0
     runtime = 1
+    traceback = 2
 
 
 class TradingMode(Enum):

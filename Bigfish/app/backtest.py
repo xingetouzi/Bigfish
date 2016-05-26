@@ -124,9 +124,9 @@ class Backtesting(LoggerInterface, ConfigInterface):
         # TODO 加入回测是否运行的判断
         if False:
             raise ValueError('please run the backtest first')
-        return StrategyPerformanceManagerOnline(self.__strategy_engine.get_profit_records(),
-                                                self.__strategy_engine.get_deals(),
-                                                self.__strategy_engine.get_positions())
+        return StrategyPerformanceManagerOnline(self.__strategy_engine.profit_records,
+                                                self.__strategy_engine.deals,
+                                                self.__strategy_engine.positions)
 
     def get_profit_records(self):
         return self.__strategy_engine.get_profit_records()

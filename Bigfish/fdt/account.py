@@ -81,6 +81,7 @@ if __name__ == '__main__':
 
     om = FDTAccount("mb000004296", "Morrisonwudi520")
     print(om.login())
+    #print(om.info)
     print(om.info['accounts'])
     res0 = om.market_order("Buy", 100000, "EURUSD")
     buy_id = res0.get('orderId', '')

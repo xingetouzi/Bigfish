@@ -9,7 +9,7 @@ import logging
 
 from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
 from Bigfish.models.base import RunningMode, TradingMode
-from Bigfish.models.config import BfConfig
+from Bigfish.models.config import BfConfig, ConfigInterface
 from Bigfish.event.event import Event, EVENT_FINISH
 from Bigfish.performance.performance import StrategyPerformanceManagerOnline
 from Bigfish.utils.log import LoggerInterface
@@ -17,10 +17,10 @@ from Bigfish.utils.memory_profiler import profile
 from Bigfish.config import DEBUG
 
 
-class RuntimeSignal(LoggerInterface):
+class RuntimeSignal(LoggerInterface, ConfigInterface):
     def __init__(self):
-        super().__init__()
-        self.__config = None
+        LoggerInterface.__init__(self)
+        ConfigInterface.__init__(self)
         self.__code = None
         self.__strategy = None
         self.__strategy_engine = None
@@ -33,11 +33,11 @@ class RuntimeSignal(LoggerInterface):
     def init(self):
         if self.__initialized:
             return True
-        assert isinstance(self.__config, BfConfig)  # 判断初始化前是否设置好了基本参数
-        self.__strategy_engine = StrategyEngine(self.__config)
-        self.__strategy = Strategy(self.__strategy_engine, self.__code, self.__config)
+        assert isinstance(self._config, BfConfig)  # 判断初始化前是否设置好了基本参数
+        self.__strategy_engine = StrategyEngine(parent=self)
+        self.__strategy = Strategy(self.__strategy_engine, self.__code, parent=self)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = TickDataGenerator(self.__config,
+        self.__data_generator = TickDataGenerator(self._config,
                                                   lambda x: self.__strategy_engine.put_event(x.to_event()),
                                                   lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
         self._logger_child = {self.__strategy_engine: "StrategyEngine",
@@ -52,20 +52,17 @@ class RuntimeSignal(LoggerInterface):
 
     def set_config(self, config):
         assert isinstance(config, BfConfig)
-        self.__config = config
-        self.__config.running_mode = RunningMode.runtime
-
-    def get_config(self, name):
-        return getattr(self.__config, name)
+        self._config = config
+        self._config.running_mode = RunningMode.runtime
 
     @property
     def code(self):
         return self.__code
 
     @code.setter
-    def code(self, code):
-        assert isinstance(code, str)
-        self.__code = code.replace('\t', '    ')
+    def code(self, value):
+        assert isinstance(value, str)
+        self.__code = value.replace('\t', '    ')
 
     def register_event(self, event_type, func):
         if self.__initialized:
@@ -85,7 +82,7 @@ class RuntimeSignal(LoggerInterface):
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
         try:
-            self.logger.info("<%s>策略运算开始" % self.__config["name"])
+            self.logger.info("<%s>策略运算开始" % self._config["name"])
             if not self.__initialized:
                 self.init()
             self.__is_alive = True
@@ -105,7 +102,7 @@ class RuntimeSignal(LoggerInterface):
             self.stop()
 
     def stop(self):
-        self.logger.info("<%s>策略运算停止" % self.__config["name"])
+        self.logger.info("<%s>策略运算停止" % self._config["name"])
         self.__is_alive = False
         self.__data_generator.stop()
         self.__strategy_engine.stop()
@@ -143,7 +140,7 @@ class RuntimeSignal(LoggerInterface):
 if __name__ == '__main__':
     import codecs
     import time
-
+    import signal
     import sys
     import os
 
@@ -164,16 +161,24 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode17.py"
+    file = "testcode10.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
     config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
                       password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
                       trading_mode=TradingMode.on_tick)
-    signal = RuntimeSignal()
-    signal.code = code
-    signal.set_config(config)
-    signal.init()
-    set_handle(signal.logger)
-    signal.start()
+    runtime_signal = RuntimeSignal()
+    runtime_signal.code = code
+    runtime_signal.set_config(config)
+    runtime_signal.init()
+    set_handle(runtime_signal.logger)
+
+
+    def terminate(signum, frame):
+        print("terminate")
+        runtime_signal.stop()
+
+    signal.signal(signal.SIGINT, terminate)
+    signal.signal(signal.SIGTERM, terminate)
+    runtime_signal.start()

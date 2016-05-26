@@ -16,7 +16,7 @@ from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
 from Bigfish.utils.common import tf2s
 from Bigfish.utils.log import LoggerInterface
-from Bigfish.core import AccountManager, FDTAccountManager
+from Bigfish.core import BfAccountManager, FDTAccountManager, AccountManager
 from Bigfish.event.engine import EventEngine
 from Bigfish.data.mongo_utils import MongoUser
 
@@ -27,10 +27,10 @@ class CacheInfo:
     """
     CACHE_MAXLEN = 1000  # 默认的缓存长度
 
-    def __init__(self, symbol, time_frame, length=CACHE_MAXLEN):
+    def __init__(self, symbol, time_frame, length=None):
         self.__symbol = symbol
         self.__time_frame = time_frame
-        self.length = length
+        self.length = length if length is not None else self.CACHE_MAXLEN
 
     @property
     def symbol(self):
@@ -103,7 +103,6 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         ConfigInterface.__init__(self, parent=parent)
         self._engine = proxy(engine)  # 避免循环引用
         self._tick_cache = {}
-        self._cache_info = defaultdict(int)  # 需要拉取和缓存哪些品种和时间尺度的数据，字典，key:(symbol, timeframe)，value:(maxlen)
         self._running = False
         self._data_view = QuotationDataView()
         self._symbol_pool = {}
@@ -200,7 +199,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             self.min_time_frame = time_frame
             self._data_view.update(CacheInfo(symbol, time_frame, length))
         self._symbol_pool.update(
-                {symbol: Forex(symbol) for symbol in symbols_ if symbol not in self._symbol_pool})
+            {symbol: Forex(symbol) for symbol in symbols_ if symbol not in self._symbol_pool})
 
     def init(self):
         self._data_view.create_all()
@@ -250,7 +249,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         if self._running:
             tick = event.content['data']
             symbol = tick.symbol
-            for time_frame in {item[1] for item in self._cache_info.keys()}:
+            for time_frame in {item[1] for item in self._data_view.get_keys() if item[0] == symbol}:
                 bar_interval = tf2s(time_frame)
                 if symbol not in self._tick_cache:
                     self._tick_cache[symbol] = {}
@@ -297,13 +296,17 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         self._engine.realize_order()
 
     def get_APIs(self, symbols=None, time_frame=None) -> Globals:
+        def capitalize(s: str) -> str:
+            return s[0].upper() + s[1:]
+
         APIs = Globals({}, {})
         if symbols and time_frame:
             for field in ["open", "high", "low", "close", "volume", "timestamp", "datetime"]:
-                APIs.const[field[0].upper() + field[1:] + 's'] = {}
+                APIs.const[capitalize(field) + 's'] = {}
                 for symbol in symbols:
-                    APIs.const[field[0].upper() + field[1:] + 's'][symbol] = self._data_view.find(symbol, time_frame)
-                APIs.const[field[0].upper() + field[1:]] = self._data_view.find(symbols[0], time_frame)
+                    APIs.const[capitalize(field) + 's'][symbol] = getattr(self._data_view.find(symbol, time_frame),
+                                                                          field)
+                APIs.const[capitalize(field)] = getattr(self._data_view.find(symbols[0], time_frame), field)
         APIs.const["Points"] = {symbol: self._symbol_pool[symbol].point for symbol in symbols}
         APIs.const["Point"] = self._symbol_pool[symbols[0]].point
         return APIs
@@ -395,8 +398,35 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
     def deals(self):
         return self.__factory.deals
 
+    @property
+    def float_pnl(self):
+        symbol_pool = self.__quotation_manager.symbol_pool
+        float_pnl = 0
+        time_frame = self.config['time_frame']  # 应该是最小的事件尺度
+        for symbol, position in self.__current_positions.items():
+            quotation = self.__quotation_manager.find_quotation(symbol, time_frame)
+            price = quotation.close[0]
+            base_price = self.__quotation_manager.get_counter_price(symbol, time_frame)
+            float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
+                                                       position.volume,
+                                                       commission=self.config['commission'],
+                                                       slippage=self.config['slippage'],
+                                                       base_price=base_price)
+        return float_pnl
+
+    @property
+    def margin(self):
+        margin = 0
+        symbol_pool = self.__quotation_manager.symbol_pool
+        for symbol, positions in self.current_positions.items():
+            if symbol.startswith('USD'):
+                margin += positions.volume * 100000 / symbol_pool[symbol].leverage
+            elif symbol.endswith('USD'):
+                margin += positions.volume * 100000 * positions.price_current / symbol_pool[symbol].leverage
+        return margin
+
     def init(self):
-        for symbol in self._engine.symbol_pool.keys():
+        for symbol in self.__quotation_manager.symbol_pool.keys():
             if symbol not in self.__current_positions:
                 position = self.__factory.new_position(symbol)
                 self.__current_positions[symbol] = position
@@ -422,7 +452,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         if order.volume_initial <= 0:
             return -1
         if self.config.running_mode == RunningMode.backtest:
-            time_frame = self._engine.strategys[order.strategy].signals[order.signal].get_time_frame()
+            time_frame = self._engine.strategys[order.strategy].signals[order.signal].time_frame
             position = self.__current_positions[order.symbol]
             symbol = self.__quotation_manager.symbol_pool[order.symbol]
             quotation = self.__quotation_manager.find_quotation(order.symbol, time_frame)
@@ -433,11 +463,11 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                     base_price = 1
                 elif symbol.code.endswith('USD'):  # 直接报价
                     base_price = position.price_current
-                margin -= symbol.margin(min(position.volume, volume), commission=self.config.commision,
+                margin -= symbol.margin(min(position.volume, volume), commission=self.config.commission,
                                         base_price=base_price)
                 volume -= position.volume
             if volume > 0:
-                margin += symbol.margin(volume, commission=self.config.commision,
+                margin += symbol.margin(volume, commission=self.config.commission,
                                         base_price=self.__quotation_manager.get_base_price(order.symbol, time_frame))
             if self.__account_manager.capital_available - margin >= 0:
                 time_ = quotation.timestamp[0]
@@ -563,7 +593,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                     # close or underweight position
                     deal.entry = DEAL_ENTRY_OUT
                     deal.profit = symbol.lot_value((deal.price - position_prev.price_current) * position, deal.volume,
-                                                   commission=self.config.commision,
+                                                   commission=self.config.commission,
                                                    slippage=self.config.slippage, base_price=base_price)
                     if position_now.type == 0:  # 防止浮点数精度可能引起的问题
                         position_now.price_current = 0
@@ -684,7 +714,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             orders_ur.count += 1
             orders_ur.flag.add((lineno, col_offset))
             orders_ur.queue[direction].put(
-                    (orders_ur.count, lineno, col_offset, volume, price, stop, limit, strategy, signal))
+                (orders_ur.count, lineno, col_offset, volume, price, stop, limit, strategy, signal))
 
     def close_position(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                        direction=0):
@@ -735,7 +765,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         volume = round(volume, 2)  # 精确到mini手
         # 计算下单时间
         if self.config.running_mode == RunningMode.backtest:
-            time_frame = self._engine.strategys[strategy].signals[signal].get_time_frame()
+            time_frame = self._engine.strategys[strategy].signals[signal].time_frame
             time_ = self.__quotation_manager.find_quotation(symbol, time_frame).timestamp[0]
         else:
             time_ = time.time()
@@ -761,17 +791,17 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
 
     def get_APIs(self, strategy=None, signal=None, symbol=None) -> Globals:
         const = dict(
-                Buy=partial(self.place_order, strategy=strategy, signal=signal, direction=OrderDirection.long_entry),
-                Sell=partial(self.place_order, strategy=strategy, signal=signal, direction=OrderDirection.long_exit),
-                SellShort=partial(self.place_order, strategy=strategy, signal=signal,
-                                  direction=OrderDirection.short_entry),
-                BuyToCover=partial(self.place_order, strategy=strategy, signal=signal,
-                                   direction=OrderDirection.shoer_exit),
-                Positions=self.current_positions)
+            Buy=partial(self.place_order, strategy=strategy, signal=signal, direction=OrderDirection.long_entry),
+            Sell=partial(self.place_order, strategy=strategy, signal=signal, direction=OrderDirection.long_exit),
+            SellShort=partial(self.place_order, strategy=strategy, signal=signal,
+                              direction=OrderDirection.short_entry),
+            BuyToCover=partial(self.place_order, strategy=strategy, signal=signal,
+                               direction=OrderDirection.short_exit),
+            Positions=self.current_positions)
         var = dict(
-                Pos= lambda : self.current_positions[symbol],
-                MarketPosition= lambda : partial(getattr, self.current_positions[symbol]),
-                CurrentContracts=lambda : partial(getattr, self.current_positions[symbol]),
+            Pos=lambda: self.current_positions[symbol],
+            MarketPosition=lambda: self.current_positions[symbol].type,
+            CurrentContracts=lambda: self.current_positions[symbol].volume,
         )
         return Globals(const, var)
 
@@ -785,14 +815,16 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
         self.__event_engine = EventEngine()  # 事件处理引擎
-        if self.config.running_mode == RunningMode.backtest:
-            self.__account_manager = AccountManager(self, parent=self)  # 账户管理
-        else:
-            self.__account_manager = FDTAccountManager(self, parent=self)
-            self.mongo_user = MongoUser(self.config.user)
         self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
+        if self.config.running_mode == RunningMode.backtest:
+            self.__account_manager = BfAccountManager(parent=self)  # 账户管理
+        else:
+            self.__account_manager = FDTAccountManager(parent=self)
+            self.mongo_user = MongoUser(self.config.user)
         self.__trading_manager = TradingManager(self, self.__quotation_manager, self.__account_manager,
                                                 parent=self)  # 交易管理器
+        if self.config.running_mode == RunningMode.backtest:
+            self.__account_manager.set_trading_manager(self.__trading_manager)
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
         self._logger_child = {self.__event_engine: "EventEngine",
@@ -804,37 +836,26 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         assert isinstance(account, AccountManager)
         self.__account_manager = account
 
-    def get_current_positions(self):
-        return self.__trading_manager.current_positions
-
-    def get_current_time(self):
+    @property
+    def current_time(self):
         return self.__quotation_manager.current_time
 
-    def get_positions(self):
+    @property
+    def positions(self):
         return self.__trading_manager.positions
 
-    def get_deals(self):
+    @property
+    def deals(self):
         return self.__trading_manager.deals
 
-    def get_strategys(self):
+    @property
+    def strategys(self):
         return self.__strategys
 
-    def get_profit_records(self):
+    @property
+    def profit_records(self):
         """获取平仓收益记录"""
         return self.__profit_records
-
-    def get_symbol_timeframe(self):
-        return self.__quotation_manager.get_cache_info().keys()
-
-    # XXX之所以不用装饰器的方式是考虑到不知经过一层property会不会影响效率，所以保留用get_XXX直接访问
-    # property:
-    current_time = property(get_current_time)
-    current_positions = property(get_current_positions)
-    positions = property(get_positions)
-    deals = property(get_deals)
-    strategys = property(get_strategys)
-    profit_records = property(get_profit_records)
-    symbol_timeframe = property(get_symbol_timeframe)
 
     def profit_record(self, *args, **kwargs):
         return self.__account_manager.profit_record(*args, **kwargs)
@@ -874,30 +895,31 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
 
     def _start(self):
         """启动所有策略"""
-        for strategy in self.__strategys.values():
-            strategy.start()
         self.__profit_records.clear()
         self.__quotation_manager.start()
         self.__trading_manager.init()
         self.__event_engine.start()
         self.__account_manager.initialize()
+        for strategy in self.__strategys.values():
+            strategy.start()
 
     def _stop(self):
         """停止所有策略"""
-        self.__event_engine.stop()
-        self.__quotation_manager.stop()
         for strategy in self.__strategys.values():
             strategy.stop()
+        self.__event_engine.stop()
+        self.__quotation_manager.stop()
         self._recycle()  # 释放资源
 
     def _recycle(self):
         self.__quotation_manager.stop()
         self.__trading_manager.recycle()
 
+    # TODO finished的参数设计有点问题
     def wait(self, call_back=None, finished=True, *args, **kwargs):
         """等待所有事件处理完毕
         :param call_back: 运行完成时的回调函数
-        :param finish: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
+        :param finished: 向下兼容，finish为True时，事件队列处理完成时结束整个回测引擎；为False时只是调用回调函数，继续挂起回测引擎。
         """
         self.__event_engine.wait()
         if call_back:
@@ -908,9 +930,9 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
             self.stop()
         return result
 
-    def get_APIs(self, symbols=None, time_frame=None) -> Globals:
-        APIs = Globals()
+    def get_APIs(self, strategy=None, signal=None, symbols=None, time_frame=None) -> Globals:
+        APIs = Globals({}, {})
         APIs.update(self.__account_manager.get_APIs())
         APIs.update(self.__quotation_manager.get_APIs(symbols=symbols, time_frame=time_frame))
-        APIs.update(self.__trading_manager.get_APIs())
+        APIs.update(self.__trading_manager.get_APIs(strategy=strategy, signal=signal, symbol=symbols[0]))
         return APIs

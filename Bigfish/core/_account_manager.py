@@ -14,38 +14,29 @@ from Bigfish.models.enviroment import APIInterface, Globals
 from Bigfish.fdt.account import FDTAccount
 from Bigfish.models.trade import *
 
-BASE_DEFAULT = 100000
+__all__ = ["AccountManager", "BfAccountManager", "FDTAccountManager"]
 
 
-###################################################################
 class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
     """交易账户对象"""
 
-    def __init__(self, engine, currency=Currency("USD"), parent=None):
+    def __init__(self, currency=Currency("USD"), parent=None):
         LoggerInterface.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
-        self._engine = proxy(engine)
         self._capital_base = None
         self._capital_net = None
         self._capital_cash = None
         self._capital_available = None
         self._capital_margin = None
         self._currency = currency
-        self.initialize()
 
     @property
     def capital_base(self):
-        if self._capital_base is None:
-            self._capital_base = self.config.capital_base
         return self._capital_base
 
     @capital_base.setter
     def capital_base(self, value):
-        if isinstance(value, float) and value > 0:
-            self._capital_base = value
-            self.initialize()
-        else:
-            raise (ValueError("不合法的base值%s" % value))
+        raise NotImplementedError
 
     @property
     def capital_cash(self):
@@ -53,52 +44,41 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
 
     @capital_cash.setter
     def capital_cash(self, value):
-        self._capital_cash = value
+        raise NotImplementedError
 
     @property
     def capital_net(self):
-        symbol_pool = self._engine.symbol_pool
-        float_pnl = 0
-        time_frame = self.config['time_frame']
-        if not time_frame:
-            time_frame = self.config['time_frame']
-        for symbol, position in self._engine.current_positions.items():
-            price = self._engine.data[time_frame]['close'][symbol][0]
-            base_price = self._engine.get_counter_price(symbol, time_frame)
-            float_pnl += symbol_pool[symbol].lot_value((price - position.price_current) * position.type,
-                                                       position.volume,
-                                                       commission=self.config['commission'],
-                                                       slippage=self.config['slippage'],
-                                                       base_price=base_price)
-        self._capital_net = self._capital_cash + float_pnl
         return self._capital_net
+
+    @capital_net.setter
+    def capital_net(self, value):
+        raise NotImplementedError
 
     @property
     def capital_available(self):
-        self._capital_available = self.capital_net - self.capital_margin
         return self._capital_available
+
+    @capital_available.setter
+    def capital_available(self, value):
+        raise NotImplementedError
 
     @property
     def capital_margin(self):
-        self._capital_margin = 0
-        symbol_pool = self._engine.symbol_pool
-        for symbol, positions in self._engine.current_positions.items():
-            if symbol.startswith('USD'):
-                self._capital_margin += positions.volume * 100000 / symbol_pool[symbol].leverage
-            elif symbol.endswith('USD'):
-                self._capital_margin += positions.volume * 100000 * positions.price_current / symbol_pool[
-                    symbol].leverage
         return self._capital_margin
 
+    @capital_margin.setter
+    def capital_margin(self):
+        self._capital_margin = 0
+
     def initialize(self):
-        self._capital_base = None
+        self._capital_base = self.config.capital_base
         self._capital_net = self.capital_base
         self._capital_cash = self.capital_base
 
     def profit_record(self, time):
         return {'x': time, 'y': float('%.2f' % ((self.capital_net / self.capital_base - 1) * 100))}
 
-    def get_APIs(self, **kwargs)->Globals:
+    def get_APIs(self) -> Globals:
         class Capital:
             def __init__(self, manager):
                 self.__manager = proxy(manager)
@@ -126,6 +106,51 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
         return Globals({"Cap": Capital(self)}, {})
 
 
+class BfAccountManager(AccountManager):
+    def __init__(self, trading_manager=None, parent=None):
+        super().__init__(parent=parent)
+        self.__trading_manager = trading_manager
+
+    def set_trading_manager(self, trading_manager):
+        self.__trading_manager = trading_manager
+
+    @property
+    def capital_base(self):
+        return self._capital_base
+
+    @capital_base.setter
+    def capital_base(self, value):
+        if isinstance(value, float) and value > 0:
+            self._capital_base = value
+            self.initialize()
+        else:
+            raise (ValueError("不合法的base值%s" % value))
+
+    @property
+    def capital_cash(self):
+        return self._capital_cash
+
+    @capital_cash.setter
+    def capital_cash(self, value):
+        self._capital_cash = value
+
+    @property
+    def capital_net(self):
+        float_pnl = self.__trading_manager.float_pnl
+        self._capital_net = self._capital_cash + float_pnl
+        return self._capital_net
+
+    @property
+    def capital_available(self):
+        self._capital_available = self.capital_net - self.capital_margin
+        return self._capital_available
+
+    @property
+    def capital_margin(self):
+        self._capital_margin = self.__trading_manager.margin
+        return self._capital_margin
+
+
 def with_login(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -137,20 +162,18 @@ def with_login(func):
     return wrapper
 
 
-class FDTAccountManager(AccountManager, ConfigInterface):  # 显示说明继承了ConfigInterface，并不影响MRO
-    def __init__(self, engine, parent=None):
-        ConfigInterface.__init__(self, parent=parent)
+class FDTAccountManager(AccountManager):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
         self._username = self.config.account
         self._password = self.config.password
         if self._username is not None and self._password is not None:
             self._account = FDTAccount(self._username, self._password)
-        super().__init__(engine)
 
     def set_account(self, username, password):
         self._username = username
         self._password = password
         self._account = FDTAccount(self._username, self._password)
-        self.initialize()
 
     @property
     def fx_account(self):
@@ -164,19 +187,11 @@ class FDTAccountManager(AccountManager, ConfigInterface):  # 显示说明继承�
         self._capital_base = self.fx_account['cashDeposited']
         return self._capital_base
 
-    @capital_base.setter
-    def capital_base(self, value):
-        pass
-
     @property
     @with_login
     def capital_cash(self):
         self._capital_cash = self.fx_account['cash']
         return self._capital_cash
-
-    @capital_base.setter
-    def capital_base(self, value):
-        pass
 
     @property
     @with_login
@@ -196,6 +211,9 @@ class FDTAccountManager(AccountManager, ConfigInterface):  # 显示说明继承�
         fx_account = self.fx_account
         self._capital_net = fx_account['cash'] + fx_account['urPnL']
         return self._capital_net
+
+    def initialize(self):
+        pass
 
     def login(self):
         return self._account.login()

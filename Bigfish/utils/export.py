@@ -5,10 +5,10 @@ Created on Wed Nov 25 21:09:47 2015
 
 @author: BurdenBear
 """
-
-from Bigfish.models.common import Deque as deque
 from functools import wraps, partial
 from weakref import WeakKeyDictionary
+from Bigfish.models.common import Deque as deque
+from Bigfish.models.base import Runnable
 
 
 class SeriesStorage:
@@ -50,9 +50,10 @@ def export(*args, barnum=None, maxlen=1000, series_id=None, export_id=None, stra
     return (storage.series_args[arg_name] for arg_name in args)
 
 
-class SeriesFunction:
-    def __init__(self, generator=None, handle=None):
-        self.__handle = handle
+class SeriesFunction(Runnable):
+    def __init__(self, generator=None, signal=None):
+        Runnable.__init__(self)
+        self.__signal = signal
         self.__generator = generator
         self.__cache = {}
         self.__map = {}
@@ -65,16 +66,20 @@ class SeriesFunction:
         if key not in self.__cache:
             self.__count += 1
             self.__map[key] = self.__count
-            self.__cache[key] = self.__generator(*args, series_id='%s.%s' % (self.__handle, self.__count), **kwargs)
+            self.__cache[key] = self.__generator(*args, series_id='%s.%s' % (self.__signal, self.__count), **kwargs)
         return self.__cache[key].__next__()
 
-    def start(self):
+    def _start(self):
+        pass
+
+    def _stop(self):
+        for item in self.__cache.values():
+            item.close()
         self.__cache.clear()
         self.__map.clear()
 
-    def stop(self):
-        for item in self.__cache.values():
-            item.close()
+    def set_generator(self, value):
+        self.__generator = value
 
     @staticmethod
     def get_key(args, kwargs):

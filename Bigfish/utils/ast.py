@@ -26,19 +26,29 @@ class LocationPatcher(ast.NodeTransformer):
         return ast.copy_location(visitor(node), self.__benchmark)
 
 
+def find_func_in_module(func, ast_root: ast.AST):
+    """
+    在一个模块的ast中寻找特定的函数定义的ast节点
+    :param func: str or list 函数名
+    :param ast_root: ast根节点
+    :return: str -> 单个节点, list -> map str to node
+    """
+    if isinstance(func, str):
+        for node in ast_root.body:
+            if isinstance(node, ast.FunctionDef) and node.name == func:
+                return node
+    elif hasattr(func, '__iter__'):
+        result = {}
+        for node in ast_root.body:
+            if isinstance(node, ast.FunctionDef) and node.name in func:
+                result[node.name] = node
+        return result
+
+
 class FunctionsDetector(ast.NodeVisitor):
     def __init__(self, funcs):
         self._funcs = funcs
-        self._funcs_in_use = {}
-        self._handler = None
-
-    def visit_FunctionDef(self, node):
-        if self._handler is None:
-            self._handler = node.name
-            self.generic_visit(node)
-            self._handler = None
-        else:
-            self.generic_visit(node)
+        self._funcs_in_use = set()
 
     def get_funcs_in_use(self):
         return self._funcs_in_use
@@ -52,52 +62,45 @@ class SystemFunctionsDetector(FunctionsDetector):
     def visit_Name(self, node):
         name = node.id
         if name in self._funcs and isinstance(node.ctx, ast.Load):
-            if self._handler is not None:
-                if name not in self._funcs_in_use:
-                    self._funcs_in_use[name] = set()
-                self._funcs_in_use[name].add(self._handler)
-            else:
-                raise RuntimeError('系统函数只能在handler中调用')
-            with codecs.open(os.path.join(self._sys_func_dir, name + '.py'), 'r', "utf-8") as f:
-                self.visit(ast.parse(f.read()))
-                f.close()
+            if name not in self._funcs_in_use:
+                self._funcs_in_use.add(name)
+                with codecs.open(os.path.join(self._sys_func_dir, name + '.py'), 'r', "utf-8") as f:
+                    self.visit(find_func_in_module(name, ast.parse(f.read(), filename=name + ".py", mode="exec")))
+                    f.close()
         self.generic_visit(node)
+
+
+class InjectingInfo:
+    """
+    注入信息，用于创建API注入器
+    """
+
+    def __init__(self, to_inject_init, to_inject_var):
+        self.to_inject_init = to_inject_init
+        self.to_inject_var = to_inject_var
 
 
 class LocalsInjector(ast.NodeVisitor):
     """向函数中注入局部变量，参考ast.NodeVisitor"""
 
-    def __init__(self, to_inject_init={}, to_inject_loop={}, is_signal=True):
-        self.__depth = 0
-        self.__to_inject_init = to_inject_init
-        self.__to_inject_loop = to_inject_loop
-        self.__is_signal = True
+    def __init__(self, inject_info: InjectingInfo):
+        self.__inject_info = inject_info
 
     def visit(self, node):
-        self.__depth += 1
-        method = 'visit_' + node.__class__.__name__
-        visitor = getattr(self, method, self.generic_visit)
-        visitor(node)
-        self.__depth -= 1
-
-    def visit_FunctionDef(self, node):
-        self.generic_visit(node)
-        if (self.__depth == 2) and (node.name in self.__to_inject_init):
-            # 注入变量
-            code_init = '\n'.join(self.__to_inject_init[node.name])
-            location_patcher = LocationPatcher(node)
-            code_init_ast = location_patcher.visit(ast.parse(code_init))
-            code_loop = '\n'.join(self.__to_inject_loop[node.name])  # 每个信号或函数注入的语句可能都相同
-            code_loop_ast = location_patcher.visit(ast.parse(code_loop))
-
-            while_node = ast.copy_location(ast.While(
-                body=code_loop_ast.body + node.body,
-                test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
-            node.body = code_init_ast.body + [self.return_to_yield(while_node)]
-            # 改变函数签名
-            node.args.kwonlyargs.append(location_patcher.visit(ast.arg(arg='series_id', annotation=None)))
-            node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
-            # print(ast.dump(node))
+        assert isinstance(node, ast.FunctionDef)
+        code_init = '\n'.join(self.__inject_info.to_inject_init)
+        location_patcher = LocationPatcher(node)
+        code_init_ast = location_patcher.visit(ast.parse(code_init))
+        code_loop = '\n'.join(self.__inject_info.to_inject_var)  # 每个信号或函数注入的语句可能都相同
+        code_loop_ast = location_patcher.visit(ast.parse(code_loop))
+        while_node = ast.copy_location(ast.While(
+            body=code_loop_ast.body + node.body,
+            test=ast.copy_location(ast.NameConstant(value=True), node), orelse=[]), node)
+        node.body = code_init_ast.body + [self.return_to_yield(while_node)]
+        # 改变函数签名
+        node.args.kwonlyargs.append(location_patcher.visit(ast.arg(arg='series_id', annotation=None)))
+        node.args.kw_defaults.append(location_patcher.visit(ast.Str(s='')))
+        # print(ast.dump(node))
 
     @staticmethod
     def return_to_yield(node):
@@ -208,6 +211,7 @@ class ImportInspector(ast.NodeVisitor):
             self.raise_error(name)
 
 
+# TODO 可能也要修改为从子树开始VISIT
 class InitTransformer(ast.NodeVisitor):
     def __init__(self):
         self.__depth = 0

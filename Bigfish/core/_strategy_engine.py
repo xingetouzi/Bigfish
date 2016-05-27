@@ -310,6 +310,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                     APIs.const[capitalize(field) + 's'][symbol] = getattr(self._data_view.find(symbol, time_frame),
                                                                           field)
                 APIs.const[capitalize(field)] = getattr(self._data_view.find(symbols[0], time_frame), field)
+                APIs.const[field[0].upper()] = getattr(self._data_view.find(symbols[0], time_frame), field)
         APIs.const["Points"] = {symbol: self._symbol_pool[symbol].point for symbol in symbols}
         APIs.const["Point"] = self._symbol_pool[symbols[0]].point
         return APIs

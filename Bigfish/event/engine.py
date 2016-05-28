@@ -8,7 +8,7 @@ import sys
 import time
 import traceback
 # 自定义模块
-from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event, EVENT_FINISH, EVENT_EXIT
+from Bigfish.event.event import EVENT_TIMER, EVENT_ASYNC, Event, EVENT_FINISH, EVENT_EXIT, EVENT_EMPTY
 from Bigfish.utils.error import SlaverThreadError
 from Bigfish.utils.log import LoggerInterface
 
@@ -88,6 +88,7 @@ class EventEngine(LoggerInterface):
                 *_, event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
                 self.__process(event)
             except Empty:
+                self.put(Event(EVENT_EMPTY, message=None))  # 标志队列已空
                 time.sleep(0)
             except Exception as e:
                 self.__exc_type, self.__exc_value, self.__exc_traceback = sys.exc_info()

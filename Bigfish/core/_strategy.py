@@ -75,7 +75,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
         self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
-        self.__printer = FilePrinter(self.config.user, self.config.name, self.engine)
+        self.printer = FilePrinter(self.config.user, self.config.name, self.engine)
         self.__context = {}
         self._setting()
         # 将策略容器与对应代码文件关联
@@ -85,7 +85,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
         raise RuntimeError("open函数已被禁用")
 
     def get_output(self):
-        with open(self.__printer.get_path()) as f:
+        with open(self.printer.get_path()) as f:
             content = f.read()
             f.close()
         return content
@@ -167,7 +167,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
             signal.start()
         for function in self.system_functions.values():
             function.start()
-        self.__printer.start()
+        self.printer.start()
         self.logger.info("<%s>策略开始运行" % self.__strategy_code.name)
 
     def _stop(self):
@@ -179,7 +179,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
             signal.stop()
         for function in self.system_functions.values():
             function.stop()
-        self.__printer.stop()
+        self.printer.stop()
         self._recycle()
         self.logger.info("<%s>策略停止运行" % self.__strategy_code.name)
 
@@ -188,7 +188,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
             "Symbols": symbols, "TimeFrame": time_frame, "Symbol": symbols[0], "StartTime": self.start_time,
             "EndTime": self.end_time,
             "Context": self.__context, "Export": partial(export, strategy=self), "Put": self.put_context,
-            "Get": self.get_context, "print": self.__printer.print, "open": self.open,
+            "Get": self.get_context, "print": self.printer.print, "open": self.open,
             "signals": self.signals, "system_functions": self.system_functions}
         return Globals(temp, {})
 
@@ -244,12 +244,13 @@ class CodeParser:
         else:
             return default
 
+    # TODO 这里最好也使用Environment对象来设置
     def _init(self, loc):
         init_transformer = InitTransformer()
         init_transformer.visit(self.ast_root)
         # XXX 必须要一个module node作为根节点。
         exec(compile(wrap_with_module(init_transformer.init_node), "[Strategy:%s]" % self.__code.name, mode="exec")
-             , dict(open=self.__strategy.open, **loc), loc)
+             , dict(open=self.__strategy.open, print=self.__strategy.printer.print, **loc), loc)
         self.__globals.update(Globals(loc["init"](), {}))
 
     def _extract_signal_setting(self, name, func):

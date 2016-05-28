@@ -6,9 +6,9 @@ class BfConfig:
     """
     运行一个策略所需的配置类
     """
-
     def __init__(self, user='', name='', symbols=None, time_frame='', start_time=None, end_time=None,
                  capital_base=100000, commission=0, slippage=0, account=None, password=None,
+                 allow_trading=True,
                  running_mode=RunningMode.backtest.value,
                  trading_mode=TradingMode.on_bar.value):
         self.user = user
@@ -22,6 +22,7 @@ class BfConfig:
         self.slippage = slippage
         self.account = account
         self.password = password
+        self.allow_trading = allow_trading
         self.running_mode = RunningMode(running_mode)
         self.trading_mode = TradingMode(trading_mode)
 
@@ -34,7 +35,7 @@ class BfConfig:
     def to_dict(self):
         result = {}
         for field in ["user", "name", "capital_base", "time_frame", "symbols", "start_time", "end_time",
-                      "commission", "slippage", "account", "password"]:
+                      "commission", "slippage", "account", "password", "allow_trading"]:
             result[field] = getattr(self, field)
         result["running_mode"] = self.running_mode.value
         result["trading_mode"] = self.trading_mode.value

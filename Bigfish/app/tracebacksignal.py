@@ -6,24 +6,26 @@ Created on Wed Nov 25 20:41:04 2015
 """
 import logging
 import traceback
+from functools import partial
 from Bigfish.config import DEBUG
-from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy
-from Bigfish.event.event import Event, EVENT_FINISH
-from Bigfish.models.base import RunningMode, TradingMode
+from Bigfish.core import TickDataGenerator, StrategyEngine, Strategy, DataGenerator
+from Bigfish.event.event import Event, EVENT_FINISH, EVENT_EMPTY
+from Bigfish.models.base import RunningMode, TradingMode, Runnable
 from Bigfish.models.config import BfConfig, ConfigInterface
 from Bigfish.utils.log import LoggerInterface
 
 
-class TracebackSignal(LoggerInterface, ConfigInterface):
+class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
     def __init__(self):
         LoggerInterface.__init__(self)
         ConfigInterface.__init__(self)
+        Runnable.__init__(self)
         self.__code = None
         self.__strategy = None
         self.__strategy_engine = None
-        self.__data_generator = None
+        self.__tb_data_generator = None
+        self.__rt_data_generator = None
         self.__strategy_parameters = None
-        self.__is_alive = False
         self.__initialized = False
 
     def init(self):
@@ -33,12 +35,16 @@ class TracebackSignal(LoggerInterface, ConfigInterface):
         self.__strategy_engine = StrategyEngine(parent=self)
         self.__strategy = Strategy(self.__strategy_engine, self.__code, parent=self)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = TickDataGenerator(self._config,
-                                                  lambda x: self.__strategy_engine.put_event(x.to_event()),
-                                                  lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
+        self.__rt_data_generator = TickDataGenerator(self._config,
+                                                     lambda x: self.__strategy_engine.put_event(x.to_event()),
+                                                     partial(self.__strategy_engine.put_event, Event(EVENT_FINISH)))
+        self.__tb_data_generator = DataGenerator(self._config,
+                                                 lambda x: self.__strategy_engine.put_event(x.to_event()),
+                                                 partial(self.__strategy_engine.put_event,
+                                                         Event(EVENT_EMPTY, message="traceback over")))
         self._logger_child = {self.__strategy_engine: "StrategyEngine",
                               self.__strategy: "Strategy",
-                              self.__data_generator: "DataGenerator"}
+                              self.__tb_data_generator: "DataGenerator"}
         self.logger_name = 'RuntimeSignal'
         if DEBUG:
             self.logger.setLevel(logging.DEBUG)
@@ -49,6 +55,7 @@ class TracebackSignal(LoggerInterface, ConfigInterface):
     def set_config(self, config):
         assert isinstance(config, BfConfig)
         self._config = config
+        self._config.allow_trading = False
         self._config.running_mode = RunningMode.traceback
 
     @property
@@ -70,30 +77,41 @@ class TracebackSignal(LoggerInterface, ConfigInterface):
     def is_finished(self):
         return self.__is_alive
 
-    def start(self, paras=None):
+    def _start(self, paras=None):
         """
 
         :param paras:
         :param refresh: True表示刷新绩效且需要释放资源，即用户一个完整的请求已经结束；False的情况主要是参数优化时批量运行回测。
         """
         try:
-            self.logger.info("<%s>策略运算开始" % self._config["name"])
+            self.logger.info("<%s>策略回溯运算开始" % self._config["name"])
             if not self.__initialized:
                 self.init()
-            self.__is_alive = True
             if paras is not None:
                 self.__strategy.set_parameters(paras)
             self.__strategy_engine.start()
-            self.__data_generator.start()
+            self.__tb_data_generator.start()
+            self.__strategy_engine.register_event(EVENT_EMPTY, self._change_trading_mode)
             self.__strategy_engine.wait()
         except:
             self.logger.error("\n" + traceback.format_exc())
             self.stop()
 
-    def stop(self):
-        self.logger.info("<%s>策略运算停止" % self._config["name"])
-        self.__is_alive = False
-        self.__data_generator.stop()
+    def _change_trading_mode(self, event):
+        if event.content["message"] == "traceback over":
+            try:
+                self.logger.info("<%s>策略回溯运算停止" % self._config["name"])
+                self._config.allow_trading = True
+                self.logger.info("<%s>策略实时运算开始" % self._config["name"])
+                self.__rt_data_generator.start()
+            except:
+                self.logger.error("\n" + traceback.format_exc())
+                self.stop()
+
+    def _stop(self):
+        self.logger.info("<%s>策略实时运算停止" % self._config["name"])
+        self.__tb_data_generator.stop()
+        self.__rt_data_generator.stop()
         self.__strategy_engine.stop()
 
     def get_output(self):
@@ -142,7 +160,7 @@ if __name__ == '__main__':
         code = f.read()
     config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
                       password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
-                      trading_mode=TradingMode.on_tick)
+                      start_time="2015-12-01", trading_mode=TradingMode.on_tick)
     traceback_signal = TracebackSignal()
     traceback_signal.code = code
     traceback_signal.set_config(config)
@@ -153,6 +171,7 @@ if __name__ == '__main__':
     def terminate(signum, frame):
         print("terminate")
         traceback_signal.stop()
+
 
     signal.signal(signal.SIGINT, terminate)
     signal.signal(signal.SIGTERM, terminate)

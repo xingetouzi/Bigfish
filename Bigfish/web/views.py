@@ -70,8 +70,8 @@ class BaseHandler(tornado.web.RequestHandler):
         time_frame = self.get_argument('time_frame', None)
         start_time = self.get_argument('start_time', None)
         end_time = self.get_argument('end_time', None)
-        commission = int(self.get_argument('commission', 0))
-        slippage = int(self.get_argument('slippage', 0))
+        commission = float(self.get_argument('commission', 0))
+        slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
         if user_id:
             self.write('callback(')

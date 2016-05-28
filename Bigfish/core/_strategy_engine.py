@@ -1,24 +1,23 @@
 import time
-from weakref import proxy
 from collections import defaultdict
-from queue import PriorityQueue
-from dateutil.parser import parse
 from functools import partial
-from operator import getitem
+from queue import PriorityQueue
+from weakref import proxy
+from dateutil.parser import parse
+from Bigfish.core import BfAccountManager, FDTAccountManager, AccountManager
+from Bigfish.data.mongo_utils import MongoUser
+from Bigfish.event.engine import EventEngine
 from Bigfish.event.event import EVENT_SYMBOL_TICK_RAW, EVENT_SYMBOL_BAR_RAW, EVENT_SYMBOL_BAR_UPDATE, \
     EVENT_SYMBOL_BAR_COMPLETED, Event, EVENT_LOG
 from Bigfish.models.base import Runnable, RunningMode, TradingMode
-from Bigfish.models.enviroment import APIInterface, Globals
 from Bigfish.models.common import Deque as deque
 from Bigfish.models.config import ConfigInterface
+from Bigfish.models.enviroment import APIInterface, Globals
 from Bigfish.models.quote import Bar
 from Bigfish.models.symbol import Forex
 from Bigfish.models.trade import *
 from Bigfish.utils.common import tf2s
 from Bigfish.utils.log import LoggerInterface
-from Bigfish.core import BfAccountManager, FDTAccountManager, AccountManager
-from Bigfish.event.engine import EventEngine
-from Bigfish.data.mongo_utils import MongoUser
 
 
 class CacheInfo:
@@ -82,7 +81,10 @@ class QuotationDataView:
             self.__data[(symbol, time_frame)] = QuotationData(self.__info[(symbol, time_frame)])
 
     def find(self, symbol, time_frame) -> QuotationData:
-        return self.__data[(symbol, time_frame)]
+        try:
+            return self.__data[(symbol, time_frame)]
+        except KeyError:
+            raise KeyError("找不到报价数据:(%s, %s)" % (symbol, time_frame))
 
     def create_all(self):
         for symbol, time_frame in self.__info.keys():
@@ -152,13 +154,13 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             base_price = 1
         elif symbol.code.startswith('USD'):  # 直接报价
             base = symbol.code[-3:]
-            base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
+            base_price = 1 / self.get_strike_price('USD' + base, time_frame)
         else:  # 交叉盘
             base = symbol.code[-3:]
             if base + 'USD' in symbol.ALL.index:
-                base_price = self._data_view.find(base + 'USD', time_frame).close[0]
+                base_price = self.get_strike_price(base + 'USD', time_frame)
             elif 'USD' + base in symbol.ALL.index:
-                base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
+                base_price = self.get_strike_price('USD' + base, time_frame)
             else:
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
@@ -175,16 +177,23 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             base_price = 1
         elif symbol.code.endswith('USD'):  # 直接报价
             base = symbol.code[:3]
-            base_price = self._data_view.find(base + 'USD', time_frame).close[0]
+            base_price = self.get_strike_price(base + 'USD', time_frame)
         else:  # 交叉盘
             base = symbol.code[:3]
             if base + 'USD' in symbol.ALL.index:
-                base_price = self._data_view.find(base + 'USD', time_frame).close[0]
+                base_price = self.get_strike_price(base + 'USD', time_frame)
             elif 'USD' + base in symbol.ALL.index:
-                base_price = 1 / self._data_view.find('USD' + base, time_frame).close[0]
+                base_price = 1 / self.get_strike_price('USD' + base, time_frame)
             else:
                 raise ValueError('找不到基准报价:%s' % base)
         return base_price
+
+    def get_strike_price(self, symbol, time_frame):
+        quotation = self._data_view.find(symbol, time_frame)
+        if self.config.trading_mode == TradingMode.on_tick:
+            return quotation.tick_open  # 以next tick open 成交
+        else:
+            return quotation.open[0]
 
     def add_cache_info(self, symbols, time_frame, length=None):
         symbols = set(symbols)
@@ -483,12 +492,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                 deal.time = order.time_done
                 deal.time_msc = order.time_done_msc
                 deal.type = 1 - ((order.type & 1) << 1)  # 参见ENUM_ORDER_TYPE和ENUM_DEAL_TYPE的定义
-                if self.config.trading_mode == TradingMode.on_tick:
-                    deal.price = quotation.tick_open  # 以next tick open 成交
-                else:
-                    deal.price = quotation.open[0]
-                    # 以next bar open 成交
-                # TODO加入手续费等
+                deal.price = self.__quotation_manager.get_strike_price(order.symbol, time_frame)
                 order.deal = deal.get_id()
                 deal.order = order.get_id()
                 order_id = order.get_id()
@@ -711,6 +715,8 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
 
     def place_order(self, symbol, volume=1, price=None, stop=False, limit=False, strategy=None, signal=None,
                     lineno=None, col_offset=None, direction=None):
+        if not self.config.allow_trading:
+            return
         if symbol not in self.config.symbols:
             self.logger.warning("订单品种<%s>不在当前交易品种中")
         orders_ur = self.__orders_ur[symbol]

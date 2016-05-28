@@ -9,8 +9,8 @@ def init():
 
 
 def handle():
-    # logger.info("%s %s %s %s" % (MarketPosition, Pos.volume, Cap.margin, Cap.available))
-    print(MarketPosition, Pos.volume, Cap.margin, Cap.available)
+    logger.info("%s %s %s %s %s" % (BarNum, MarketPosition, Pos.volume, Cap.margin, Cap.available))
+    print(BarNum, MarketPosition, Pos.volume, Cap.margin, Cap.available)
     if Pos.volume >= 0.1:
         BuyToCover(Symbol, Pos.volume)
     if BarNum % 6 != 0:

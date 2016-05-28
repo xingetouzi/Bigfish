@@ -129,7 +129,7 @@ class Backtesting(LoggerInterface, ConfigInterface):
                                                 self.__strategy_engine.positions)
 
     def get_profit_records(self):
-        return self.__strategy_engine.get_profit_records()
+        return self.__strategy_engine.profit_records
 
     def get_performance(self):
         return self.__performance_manager.get_performance()
@@ -167,7 +167,7 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode10.py"
+    file = "testcode15.py"
     # file = 'IKH_testCase.py'
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     # print('ar:\n%s' % performance.ar)  # 年化收益率
     # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
     print('volatility:\n%s' % performance.volatility)  # 波动率
-    # print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
+    print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
     # print(time.time() - start_time)
@@ -229,3 +229,7 @@ if __name__ == '__main__':
     # optimize = backtest.optimize(paras, None, None)
     # print('optimize\n%s' % optimize)
     # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))
+    from Bigfish.app.sharpe_calculator import SharpeCalculator
+    sc = SharpeCalculator(backtest.get_profit_records())
+    print(backtest.get_profit_records())
+    print(sc.get_sharpe("2015-01-01", "2015-02-01"))

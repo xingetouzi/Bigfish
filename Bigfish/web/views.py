@@ -97,6 +97,42 @@ class BaseHandler(tornado.web.RequestHandler):
         self.flush()
         self.finish()
 
+    @tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def post(self):
+        code = self.get_argument('code', '').replace('\t', '    ')
+        name = self.get_argument('name', 'untitled')
+        symbols = self.get_argument('symbols', None)
+        time_frame = self.get_argument('time_frame', None)
+        start_time = self.get_argument('start_time', None)
+        end_time = self.get_argument('end_time', None)
+        commission = float(self.get_argument('commission', 0))
+        slippage = float(self.get_argument('slippage', 0))
+        user_id = self.get_argument('user_id', None)
+        if user_id:
+            self.write('callback(')
+            try:
+                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
+                                                time_frame, start_time,
+                                                end_time, commission, slippage)
+            except TimeoutError:
+                self.write({'stat': 'FALSE', 'error': '回测超时'})
+                self.finish()
+                return
+            if result['stat'] == 'OK':
+                cache = StrategyPerformanceJsonCache(user_id)
+                performance = cache.get_performance()
+                output = self.get_output(user_id, name)
+                self.write({'stat': 'OK', 'result': performance.yield_curve, 'output': string_to_html(output),
+                            'performance': performance.info_on_home_page})
+            else:
+                output = self.get_output(user_id, name)
+                result['output'] = string_to_html(output)
+                self.write(result)
+            self.write(')')
+        self.flush()
+        self.finish()
+
     @staticmethod
     def get_output(user_id, name):
         user_dir = UserDirectory(User(user_id))

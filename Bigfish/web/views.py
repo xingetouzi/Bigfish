@@ -27,7 +27,7 @@ def backtest(conn, *args):
                                                       "end_time", "commission", "slippage"], args)})
         config.trading_mode = TradingMode.on_tick
         user = User(config.user)
-        code = get_strategy(user, "LastBacktest")
+        code = get_strategy(user, "LastBacktest").content
         backtesting = Backtesting()
         backtesting.set_code(code)
         backtesting.set_config(config)
@@ -66,7 +66,6 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
-        code = self.get_argument('code', '').replace('\t', '    ')
         name = self.get_argument('name', 'untitled')
         symbols = self.get_argument('symbols', None)
         time_frame = self.get_argument('time_frame', None)
@@ -102,7 +101,6 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def post(self):
-        code = self.get_argument('code', '').replace('\t', '    ')
         name = self.get_argument('name', 'untitled')
         symbols = self.get_argument('symbols', None)
         time_frame = self.get_argument('time_frame', None)

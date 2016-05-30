@@ -113,7 +113,7 @@ class StrategyPerformance(Performance):
     _dict_name.update(__trade_info)
     _dict_name.update(__strategy_info)
     _dict_name.update(__optimize_info)
-    _dict_name.update({'info_on_home_page': '首页信息'})
+    _dict_name.update({'info_on_home_page': '首页信息', "yield_rate": "收益率"})
 
     @classmethod
     def get_factor_list(cls):
@@ -516,6 +516,16 @@ class StrategyPerformanceManager(PerformanceManager):
 
     @property
     @cache_calculator
+    def yield_rate(self):
+        ts = self._rate_of_return_percent['M']
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        for key, value in self._column_names['M'].items():
+            result[value[0]] = pd.rolling_sum(ts['rate'], key)
+        result.total = ts['rate'].sum()
+        return result
+
+    @property
+    @cache_calculator
     def risk_free_rate(self):
         return self._roll_exp(self._risk_free_rate['M'])
 
@@ -529,7 +539,8 @@ class StrategyPerformanceManager(PerformanceManager):
     @property
     @cache_calculator
     def sharpe_ratio(self):
-        expected = self.ar
+        expected = self.yield_rate
+        # expected = self.ar
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
         std = _deal_float_error(self.volatility, fill=np.nan) * (self._annual_factor ** 0.5)  # 年化标准差
         std.total = self.volatility.total * (self._annual_factor ** 0.5)

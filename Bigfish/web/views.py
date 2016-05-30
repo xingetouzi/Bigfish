@@ -17,21 +17,23 @@ from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory
 from Bigfish.utils.common import string_to_html
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
+from Bigfish.store.st_code_manage import get_strategy
 
 
 def backtest(conn, *args):
     try:
-        code = args[0]
+
         config = BfConfig(**{v[0]: v[1] for v in zip(["user", "name", "symbols", "time_frame", "start_time",
-                                                      "end_time", "commission", "slippage"], args[1:])})
+                                                      "end_time", "commission", "slippage"], args)})
         config.trading_mode = TradingMode.on_tick
-        user = config.user
+        user = User(config.user)
+        code = get_strategy(user, "LastBacktest").content
         backtesting = Backtesting()
         backtesting.set_code(code)
         backtesting.set_config(config)
         backtesting.start()
         performance = backtesting.get_performance()
-        cache = StrategyPerformanceJsonCache(user)
+        cache = StrategyPerformanceJsonCache(user.user_id)
         cache.put_performance(performance)
         cache.put('setting', json.dumps(backtesting.get_setting()))
         conn.put({"stat": "OK"})
@@ -64,7 +66,6 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
-        code = self.get_argument('code', '').replace('\t', '    ')
         name = self.get_argument('name', 'untitled')
         symbols = self.get_argument('symbols', None)
         time_frame = self.get_argument('time_frame', None)
@@ -76,7 +77,7 @@ class BaseHandler(tornado.web.RequestHandler):
         if user_id:
             self.write('callback(')
             try:
-                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
+                result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
                                                 time_frame, start_time,
                                                 end_time, commission, slippage)
             except TimeoutError:
@@ -100,7 +101,6 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def post(self):
-        code = self.get_argument('code', '').replace('\t', '    ')
         name = self.get_argument('name', 'untitled')
         symbols = self.get_argument('symbols', None)
         time_frame = self.get_argument('time_frame', None)
@@ -110,9 +110,8 @@ class BaseHandler(tornado.web.RequestHandler):
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
         if user_id:
-            self.write('callback(')
             try:
-                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
+                result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
                                                 time_frame, start_time,
                                                 end_time, commission, slippage)
             except TimeoutError:
@@ -128,8 +127,7 @@ class BaseHandler(tornado.web.RequestHandler):
             else:
                 output = self.get_output(user_id, name)
                 result['output'] = string_to_html(output)
-                self.write(result)
-            self.write(')')
+                self.write(json.dumps(result))
         self.flush()
         self.finish()
 

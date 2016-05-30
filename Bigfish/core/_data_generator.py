@@ -133,6 +133,9 @@ class DataGenerator(LoggerInterface):
                 bar.low = row["low"]
                 bar.open = row["open"]
                 bar.volume = row["volume"]
+                # volume maybe None in mysql
+                if bar.volume is None:
+                    bar.volume = 0
                 bar.time_frame = self.__config.time_frame
                 self.__dq.put(bar)
                 self.__start_time = bar.timestamp + tf2s(self.__config.time_frame)

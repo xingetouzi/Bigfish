@@ -110,7 +110,6 @@ class BaseHandler(tornado.web.RequestHandler):
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
         if user_id:
-            self.write('callback(')
             try:
                 result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
                                                 time_frame, start_time,
@@ -128,8 +127,7 @@ class BaseHandler(tornado.web.RequestHandler):
             else:
                 output = self.get_output(user_id, name)
                 result['output'] = string_to_html(output)
-                self.write(result)
-            self.write(')')
+                self.write(json.dumps(result))
         self.flush()
         self.finish()
 

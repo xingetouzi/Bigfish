@@ -17,21 +17,23 @@ from Bigfish.performance.cache import StrategyPerformanceJsonCache
 from Bigfish.store import UserDirectory
 from Bigfish.utils.common import string_to_html
 from Bigfish.utils.error import SlaverThreadError, get_user_friendly_traceback
+from Bigfish.store.st_code_manage import get_strategy
 
 
 def backtest(conn, *args):
     try:
-        code = args[0]
+
         config = BfConfig(**{v[0]: v[1] for v in zip(["user", "name", "symbols", "time_frame", "start_time",
-                                                      "end_time", "commission", "slippage"], args[1:])})
+                                                      "end_time", "commission", "slippage"], args)})
         config.trading_mode = TradingMode.on_tick
-        user = config.user
+        user = User(config.user)
+        code = get_strategy(user, "LastBacktest")
         backtesting = Backtesting()
         backtesting.set_code(code)
         backtesting.set_config(config)
         backtesting.start()
         performance = backtesting.get_performance()
-        cache = StrategyPerformanceJsonCache(user)
+        cache = StrategyPerformanceJsonCache(user.user_id)
         cache.put_performance(performance)
         cache.put('setting', json.dumps(backtesting.get_setting()))
         conn.put({"stat": "OK"})
@@ -76,7 +78,7 @@ class BaseHandler(tornado.web.RequestHandler):
         if user_id:
             self.write('callback(')
             try:
-                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
+                result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
                                                 time_frame, start_time,
                                                 end_time, commission, slippage)
             except TimeoutError:
@@ -111,7 +113,7 @@ class BaseHandler(tornado.web.RequestHandler):
         user_id = self.get_argument('user_id', None)
         if user_id:
             try:
-                result = yield tornado.gen.Task(run_backtest, code, user_id, name, [symbols],
+                result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
                                                 time_frame, start_time,
                                                 end_time, commission, slippage)
             except TimeoutError:

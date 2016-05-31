@@ -23,6 +23,7 @@ def main():
     userid=sys.argv[1]
     rd=runtime_data(userid)
     config=rd.get_config()
+    config['symbols']=[config['symbols']]
     code=rd.get_code()
 
     def set_handle(logger, user=config.get("user", "non-existent user")):

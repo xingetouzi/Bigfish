@@ -121,7 +121,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
             setting = self.__code_parser.get_signal_setting(signal)
             self.engine.add_cache_info(setting.symbols, setting.time_frame, setting.max_len)
             self.signals[signal] = self.signal_factory.new(self.engine, self.user, self.__strategy_code.name, signal,
-                                                           setting.symbols, setting.time_frame)
+                                                           setting.symbols, setting.time_frame, parent=self)
 
     def _init(self):
         # check the import

@@ -545,8 +545,8 @@ class StrategyPerformanceManager(PerformanceManager):
         expected = self.yield_rate
         # expected = self.ar
         # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
-        std = _deal_float_error(self.volatility, fill=np.nan) * (self._annual_factor ** 0.5)  # 年化标准差
-        std.total = self.volatility.total * (self._annual_factor ** 0.5)
+        std = _deal_float_error(self.volatility, fill=np.nan)  # 年化标准差
+        std.total = self.volatility.total
         result = expected / std
         result.total = expected.total / std.total
         return result

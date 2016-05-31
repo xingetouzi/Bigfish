@@ -5,6 +5,7 @@ Created on Wed Nov 25 20:46:00 2015
 @author: BurdenBear
 """
 from functools import wraps
+import time
 from dateutil.parser import parse
 from weakref import proxy
 from Bigfish.models.config import ConfigInterface
@@ -151,17 +152,6 @@ class BfAccountManager(AccountManager):
         return self._capital_margin
 
 
-def with_login(func):
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        if self.login():
-            return func(self, *args, **kwargs)
-        else:
-            raise RuntimeError('账户验证失败')
-
-    return wrapper
-
-
 class FDTAccountManager(AccountManager):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -177,36 +167,31 @@ class FDTAccountManager(AccountManager):
 
     @property
     def fx_account(self):
-        for account in self._account.info['accounts']:
+        for account in self._account.account_status()["accounts"]:
             if 'FX' in account['id']:
                 return account
 
     @property
-    @with_login
     def capital_base(self):
         self._capital_base = self.fx_account['cashDeposited']
         return self._capital_base
 
     @property
-    @with_login
     def capital_cash(self):
         self._capital_cash = self.fx_account['cash']
         return self._capital_cash
 
     @property
-    @with_login
     def capital_available(self):
         self._capital_available = self.fx_account['cashAvailable']
         return self._capital_available
 
     @property
-    @with_login
     def capital_margin(self):
         self._capital_margin = self.fx_account['marginHeld']
         return self._capital_margin
 
     @property
-    @with_login
     def capital_net(self):
         fx_account = self.fx_account
         self._capital_net = fx_account['cash'] + fx_account['urPnL']
@@ -232,10 +217,9 @@ class FDTAccountManager(AccountManager):
     def order_status(self):
         return self._account.order_status()
 
-    @with_login
     def profit_record(self, *args):
-        time = parse(self._account.info['user']['lastLogin']).timestamp()
-        return super().profit_record(time)
+        time_ = time.time()
+        return super().profit_record(time_)
 
     def position_status(self, symbol=None):
         res = self._account.open_positions()

@@ -398,6 +398,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         self.__orders_todo_index = {}  # 同上 key:symbol
         self.__positions = {}  # Key:id, value:position with responding id
         self.__current_positions = {}  # key：symbol，value：current position
+        self.max_margin = 0
 
     @property
     def current_positions(self):
@@ -443,6 +444,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             if symbol not in self.__current_positions:
                 position = self.__factory.new_position(symbol)
                 self.__current_positions[symbol] = position
+        self.max_margin = 0
 
     def recycle(self):
         # TODO 数据结构还需修改
@@ -652,6 +654,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         position_now.deal = deal.get_id()
         self.__current_positions[deal.symbol] = position_now
         if self.config.running_mode == RunningMode.backtest:
+            self.max_margin = max(self.max_margin, self.__account_manager.capital_margin)
             pass
         else:
             self._engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
@@ -870,6 +873,10 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
     def profit_records(self):
         """获取平仓收益记录"""
         return self.__profit_records
+
+    @property
+    def max_margin(self):
+        return self.__trading_manager.max_margin
 
     def profit_record(self, *args, **kwargs):
         return self.__account_manager.profit_record(*args, **kwargs)

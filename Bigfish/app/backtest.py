@@ -81,6 +81,10 @@ class Backtesting(LoggerInterface, ConfigInterface):
         else:
             return 0
 
+    @property
+    def max_margin(self):
+        return self.__strategy_engine.max_margin
+
     @profile
     def start(self, paras=None, refresh=True):
         """
@@ -236,5 +240,5 @@ if __name__ == '__main__':
     from Bigfish.app.sharpe_calculator import SharpeCalculator
 
     sc = SharpeCalculator(backtest.get_profit_records())
-    print(backtest.get_profit_records())
-    print(sc.get_sharpe(config.capital_base, "2015-01-01", "2015-02-01"))
+    print(backtest.max_margin)
+    print(sc.get_sharpe("2015-01-01", "2015-02-01", simple=backtest.max_margin < config.capital_base))

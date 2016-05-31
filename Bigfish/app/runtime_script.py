@@ -9,17 +9,21 @@ from Bigfish.app.runtime_singal import RuntimeSignal
 from Bigfish.models.model import User
 from Bigfish.store.directory import UserDirectory
 from Bigfish.models.config import BfConfig
-
+from Bigfish.web_utils.runtime_data_man import runtime_data
 
 def main():
-    code_file = sys.argv[1]
-    config_file = sys.argv[2]
-    with codecs.open(code_file, "r", "utf-8") as f:
-        code = f.read()
-        f.close()
-    with codecs.open(config_file, "r", "utf-8") as f:
-        config = json.loads(f.read())
-        f.close()
+    # code_file = sys.argv[1]
+    # config_file = sys.argv[2]
+    # with codecs.open(code_file, "r", "utf-8") as f:
+    #     code = f.read()
+    #     f.close()
+    # with codecs.open(config_file, "r", "utf-8") as f:
+    #     config = json.loads(f.read())
+    #     f.close()
+    userid=sys.argv[1]
+    rd=runtime_data(userid)
+    config=rd.get_config()
+    code=rd.get_code()
 
     def set_handle(logger, user=config.get("user", "non-existent user")):
         path = os.path.join(UserDirectory(User(user)).get_temp_dir(), "runtime.log")

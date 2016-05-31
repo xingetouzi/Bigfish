@@ -169,6 +169,7 @@ if __name__ == '__main__':
     start_time = time.time()
     file = "testcode15.py"
     # file = 'IKH_testCase.py'
+    file = "boom.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -176,8 +177,8 @@ if __name__ == '__main__':
     name = 'test'  # 策略名
     backtest = Backtesting()
     backtest.set_code(code)
-    config = BfConfig(user=user, name='test', symbols=['EURUSD'], time_frame='M15', start_time='2015-01-01',
-                      end_time='2015-03-01', trading_mode=TradingMode.on_tick)
+    config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='H1', start_time='2014-01-01',
+                      end_time='2016-04-01', trading_mode=TradingMode.on_tick)
     backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)
@@ -202,9 +203,12 @@ if __name__ == '__main__':
     # print('info_on_home_page\n%s' % performance.info_on_home_page())
     # print(performance.get_factor_list())
     # print(performance.yield_curve)
-    # print('ar:\n%s' % performance.ar)  # 年化收益率
     # print('risk_free_rate:\n%s' % performance._manager.risk_free_rate)  # 无风险收益率
+    print('ar_compound:\n%s' % performance.ar_compound)
+    print('ar:\n%s' % performance.ar)  # 年化收益率
+    print('volatility_compound:\n%s' % performance.volatility_compound)
     print('volatility:\n%s' % performance.volatility)  # 波动率
+    print('sharpe_ratio_compound:\n%s' % performance.sharpe_ratio_compound)  # sharpe比率
     print('sharpe_ratio:\n%s' % performance.sharpe_ratio)  # sharpe比率
     # print('max_drawdown:\n%s' % performance.max_drawdown)  # 最大回测
     # print('trade_position\n%s' % performance.trade_positions)  # 交易仓位
@@ -230,6 +234,7 @@ if __name__ == '__main__':
     # print('optimize\n%s' % optimize)
     # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))
     from Bigfish.app.sharpe_calculator import SharpeCalculator
+
     sc = SharpeCalculator(backtest.get_profit_records())
     print(backtest.get_profit_records())
-    print(sc.get_sharpe("2015-01-01", "2015-02-01"))
+    print(sc.get_sharpe(config.capital_base, "2015-01-01", "2015-02-01"))

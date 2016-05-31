@@ -8,7 +8,8 @@ from collections import OrderedDict
 from Bigfish.event.event import EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLETED, Event
 from Bigfish.models.common import FactoryWithID
 from Bigfish.models.enviroment import APIInterface, Globals, Environment
-from Bigfish.models.base import Runnable
+from Bigfish.models.config import ConfigInterface
+from Bigfish.models.base import Runnable,  TradingMode
 
 
 class EventsPacker:
@@ -66,8 +67,8 @@ class SymbolBarCompletedEventsPacker(EventsPacker):
         super(SymbolBarCompletedEventsPacker, self).__init__(engine, events, out, type)
 
 
-class Signal(Runnable, APIInterface):
-    def __init__(self, engine, user, strategy, name, symbols, time_frame, id=None):
+class Signal(Runnable, APIInterface, ConfigInterface):
+    def __init__(self, engine, user, strategy, name, symbols, time_frame, id=None, parent=None):
         """
         信号对象，每一个信号即为策略代码中不以init为名的任意最外层函数，订阅某些品种的行情数据，运行于特定时间框架下。
         通过两个EventPacker(事件打包器)接受StrategyEngine中的DataCache(数据中转器)发出的行情事件来管理Bar数据的结构。
@@ -78,6 +79,7 @@ class Signal(Runnable, APIInterface):
         """
         Runnable.__init__(self)
         APIInterface.__init__(self)
+        ConfigInterface.__init__(self, parent=parent)
         self._id = id
         self._user = user
         self._strategy = strategy
@@ -148,7 +150,8 @@ class Signal(Runnable, APIInterface):
         if self._generator:
             self._handler = self.__handle()
             self._gene_instance = self._generator(**self._parameters)
-            self._engine.register_event(self._event_update, self._handler.send)
+            if self.config.trading_mode == TradingMode.on_tick:
+                self._engine.register_event(self._event_update, self._handler.send)
             self._engine.register_event(self._event_completed, self._handler.send)
             self._update.start()
             self._completed.start()

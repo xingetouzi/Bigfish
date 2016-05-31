@@ -17,7 +17,6 @@ def save_code(user, code):
     """
     if not code.name:
         raise ValueError("code.name is empty")
-
     conn.ping(True)
     cur = conn.cursor(pymysql.cursors.DictCursor)
     if not strategy_exists(user, code.name):  # 如果是第一次创建,则记录相关信息

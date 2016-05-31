@@ -3,8 +3,6 @@
 import pymysql
 from connection import conn
 
-
-
 class runtime_data():
     def __init__(self,userid):
         self._userid=userid

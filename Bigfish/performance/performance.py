@@ -103,8 +103,8 @@ class StrategyPerformance(Performance):
 
     _dict_name = {'yield_curve': '收益曲线', 'trade_positions': '交易仓位线', 'is_negative': '是否爆仓'}
     __factor_info = OrderedDict()
-    for k, v in [('ar', '策略年化收益率(%)'), ('sharpe_ratio', '夏普比率'), ('volatility', '收益波动率'),
-                 ('max_drawdown', '最大回撤(%)')]:
+    for k, v in [('ar_compound', '策略年化收益率(%)'), ('sharpe_ratio_compound', '夏普比率'),
+                 ('volatility_compound', '收益波动率'), ('max_drawdown', '最大回撤(%)')]:
         __factor_info[k] = v
     __trade_info = {'trade_summary': '总体交易概要', 'trade_details': '分笔交易详情'}
     __strategy_info = {'strategy_summary': '策略绩效概要'}
@@ -113,7 +113,8 @@ class StrategyPerformance(Performance):
     _dict_name.update(__trade_info)
     _dict_name.update(__strategy_info)
     _dict_name.update(__optimize_info)
-    _dict_name.update({'info_on_home_page': '首页信息', "yield_rate": "收益率"})
+    _dict_name.update({'info_on_home_page': '首页信息', "ar": "年化收益率[单利](%)",
+                       'sharpe_ratio': '夏普比率[单利]', 'volatility': '收益波动率[单利]'})
 
     @classmethod
     def get_factor_list(cls):
@@ -196,6 +197,7 @@ class StrategyPerformanceManager(PerformanceManager):
                         result['R'].resample('D', how='last', label='left') * 0))
 
         else:
+            # 由于是取了对数，日收率是以复利的方式计算
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
                     *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
@@ -216,6 +218,29 @@ class StrategyPerformanceManager(PerformanceManager):
                  'trade_days': x['trade_days']}))(
                 self._rate_of_return['D']
             )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
+
+    @property
+    @cache_calculator
+    def _rate_of_return_percent_simple(self):
+        result = {}
+        result['R'] = self._rate_of_return_raw
+        # TODO 对爆仓情况的考虑
+        if result['R'].min() <= 0:
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                        result['R'].resample('D', how='last', label='left') * 0))
+        else:
+            # 由于是取了对数，日收率是以复利的方式计算
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
+                        result['R'].resample('D', how='last', label='left') * 100 - 100
+                    )
+                )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
         result['M'] = result['D'].resample('MS', how='sum').dropna()
         return result
@@ -491,10 +516,8 @@ class StrategyPerformanceManager(PerformanceManager):
         # TODO numpy.sqrt np自带有开根号运算
         for key, value in self._column_names['M'].items():
             # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
-            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5 * (
-                self._annual_factor ** 0.5)
-        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5 * (
-            self._annual_factor ** 0.5)
+            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
+        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5
         return _deal_float_error(result)
 
     def alpha(self):
@@ -503,13 +526,24 @@ class StrategyPerformanceManager(PerformanceManager):
     def beta(self):
         pass
 
+    # @property
+    # @cache_calculator
+    # # @profile
+    # def ar(self):
+    #     # TODO 可以抽象为日分析，周分析，月分析之类的
+    #     calculator = lambda x: _get_percent_from_log(x['rate'], factor=self._annual_factor / x['trade_days'])
+    #     ts = self._rate_of_return['M']
+    #     result = DataFrameExtended([], index=ts.index.rename('time'))
+    #     for key, value in self._column_names['M'].items():
+    #         result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+    #     result.total = calculator(ts.sum())
+    #     return result
+
     @property
     @cache_calculator
-    # @profile
-    def ar(self):
-        # TODO 可以抽象为日分析，周分析，月分析之类的
-        calculator = lambda x: _get_percent_from_log(x['rate'], factor=self._annual_factor / x['trade_days'])
-        ts = self._rate_of_return['M']
+    def ar_compound(self):
+        calculator = lambda x: (x['rate'] / x['trade_days']) * self._annual_factor
+        ts = self._rate_of_return_percent['M']
         result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
@@ -518,9 +552,9 @@ class StrategyPerformanceManager(PerformanceManager):
 
     @property
     @cache_calculator
-    def yield_rate(self):
+    def ar(self):
         calculator = lambda x: (x['rate'] / x['trade_days']) * self._annual_factor
-        ts = self._rate_of_return_percent['M']
+        ts = self._rate_of_return_percent_simple['M']
         result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
             result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
@@ -537,16 +571,35 @@ class StrategyPerformanceManager(PerformanceManager):
     # @profile
     def volatility(self):
         # TODO pandas好像并不支持分组上的移动窗口函数
-        return self._roll_std(self._rate_of_return_percent['D'])
+        result = self._roll_std(self._rate_of_return_percent_simple['D'])
+        result *= self._annual_factor ** 0.5
+        result.total *= self._annual_factor ** 0.5
+        return result
+
+    @property
+    @cache_calculator
+    def volatility_compound(self):
+        result = self._roll_std(self._rate_of_return_percent['D'])
+        result *= self._annual_factor ** 0.5
+        result.total *= self._annual_factor ** 0.5
+        return result
 
     @property
     @cache_calculator
     def sharpe_ratio(self):
-        expected = self.yield_rate
-        # expected = self.ar
-        # XXX作为分母的列需要特殊判断为零的情况，同时要考虑由于浮点计算引起的误差
+        expected = self.ar
         std = _deal_float_error(self.volatility, fill=np.nan)  # 年化标准差
         std.total = self.volatility.total
+        result = expected / std
+        result.total = expected.total / std.total
+        return result
+
+    @property
+    @cache_calculator
+    def sharpe_ratio_compound(self):
+        expected = self.ar_compound
+        std = _deal_float_error(self.volatility_compound, fill=np.nan)
+        std.total = self.volatility_compound.total
         result = expected / std
         result.total = expected.total / std.total
         return result

@@ -491,8 +491,10 @@ class StrategyPerformanceManager(PerformanceManager):
         # TODO numpy.sqrt np自带有开根号运算
         for key, value in self._column_names['M'].items():
             # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
-            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
-        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5
+            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5 * (
+                self._annual_factor ** 0.5)
+        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5 * (
+            self._annual_factor ** 0.5)
         return _deal_float_error(result)
 
     def alpha(self):
@@ -517,11 +519,12 @@ class StrategyPerformanceManager(PerformanceManager):
     @property
     @cache_calculator
     def yield_rate(self):
+        calculator = lambda x: (x['rate'] / x['trade_days']) * self._annual_factor
         ts = self._rate_of_return_percent['M']
         result = DataFrameExtended([], index=ts.index.rename('time'))
         for key, value in self._column_names['M'].items():
-            result[value[0]] = pd.rolling_sum(ts['rate'], key)
-        result.total = ts['rate'].sum()
+            result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        result.total = calculator(ts.sum())
         return result
 
     @property

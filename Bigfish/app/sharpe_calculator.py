@@ -20,6 +20,6 @@ class SharpeCalculator:
         manager = StrategyPerformanceManagerOnline(records, {}, {})
         performance = manager.get_performance()
         if simple:
-            return performance.sharpe_ratio
+            return performance.sharpe_ratio.total
         else:
-            return performance.sharpe_ratio_compound
+            return performance.sharpe_ratio_compound.total

@@ -99,7 +99,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
     TICK_INTERVAL = 10  # Tick数据推送间隔
 
     def __init__(self, engine, parent=None):
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         Runnable.__init__(self)
         APIInterface.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
@@ -111,6 +111,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         self.current_time = None  # 目前数据运行到的时间，用于计算回测进度
         self._min_time_frame = None
         self._count = 0
+        self.logger_name = "QuotationManager"
 
     @property
     def min_time_frame(self):
@@ -386,7 +387,7 @@ class OrdersUr:
 class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
     def __init__(self, engine, quotation_manager, account_manager, parent=None):
         APIInterface.__init__(self)
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
         self._engine = proxy(engine)
         self.__quotation_manager = proxy(quotation_manager)
@@ -399,6 +400,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         self.__positions = {}  # Key:id, value:position with responding id
         self.__current_positions = {}  # key：symbol，value：current position
         self.max_margin = 0
+        self.logger_name = "TradingManager"
 
     @property
     def current_positions(self):
@@ -831,7 +833,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         LoggerInterface.__init__(self)
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
-        self.__event_engine = EventEngine()  # 事件处理引擎
+        self.__event_engine = EventEngine(parent=self)  # 事件处理引擎
         self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
         if self.config.running_mode == RunningMode.backtest:
             self.__account_manager = BfAccountManager(parent=self)  # 账户管理
@@ -844,10 +846,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
             self.__account_manager.set_trading_manager(self.__trading_manager)
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
-        self._logger_child = {self.__event_engine: "EventEngine",
-                              self.__trading_manager: "TradeManager",
-                              self.__quotation_manager: "DataCache",
-                              self.__account_manager: "AccountManager"}
+        self.logger_name = "StrategyEngine"
 
     def set_account(self, account):
         assert isinstance(account, AccountManager)

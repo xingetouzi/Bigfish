@@ -22,7 +22,7 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
     """交易账户对象"""
 
     def __init__(self, currency=Currency("USD"), parent=None):
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
         self._capital_base = None
         self._capital_net = None
@@ -30,6 +30,7 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
         self._capital_available = None
         self._capital_margin = None
         self._currency = currency
+        self.logger_name = "AccountManager"
 
     @property
     def capital_base(self):

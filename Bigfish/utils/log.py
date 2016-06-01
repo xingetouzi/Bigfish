@@ -7,7 +7,7 @@ Created on Mon Nov  2 19:07:00 2015
 import os
 import logging
 from functools import partial
-from weakref import WeakKeyDictionary
+from weakref import proxy
 
 from contextlib import redirect_stdout
 from Bigfish.store.directory import UserDirectory
@@ -17,19 +17,34 @@ import logging
 
 
 class LoggerInterface:
-    def __init__(self):
+    def __init__(self, parent=None):
         self._logger_name = ''
-        self._logger_child = WeakKeyDictionary()
+
+        def reset_logger_parent():
+            self._logger_parent = None
+
+        if parent is not None:
+            self._logger_parent = proxy(parent, reset_logger_parent)
+        else:
+            reset_logger_parent()
 
     @property
     def logger_name(self):
-        return self._logger_name
+        if self._logger_parent is None:
+            return self._logger_name
+        else:
+            name_parent = self._logger_parent.logger_name
+            if self._logger_name and name_parent:
+                return name_parent + '.' + self._logger_name
+            elif name_parent:
+                return name_parent
+            else:
+                return self._logger_name
 
     @logger_name.setter
     def logger_name(self, name):
+        assert isinstance(name, str)
         self._logger_name = name
-        for key, value in self._logger_child.items():
-            key.logger_name = name + '.' + value
 
     @property
     def logger(self):

@@ -2,10 +2,12 @@ from __future__ import print_function
 
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import ClientFactory, ReconnectingClientFactory
 from twisted.protocols.basic import LineReceiver
 import ujson as json
 from Bigfish.models.quote import Tick
+from Bigfish.models.base import Runnable
+from Bigfish.utils.log import LoggerInterface
 
 # tick_period = dict()
 
@@ -105,20 +107,24 @@ class TickDataClient(LineReceiver):
             self.transport.loseConnection()
 
 
-class DataClientFactory(ClientFactory):
+class DataClientFactory(ClientFactory, LoggerInterface):
     protocol = TickDataClient
 
-    def __init__(self):
+    def __init__(self, parent=None):
+        super().__init__()
+        LoggerInterface.__init__(self, parent=parent)
         self.done = Deferred()
         self._tick_event = dict()
 
     def clientConnectionFailed(self, connector, reason):
-        print('connection failed:', reason.getErrorMessage())
+        self.logger.error('connection failed:', reason.getErrorMessage())
         self.done.errback(reason)
+        ReconnectingClientFactory.clientConnectionFailed(connector, reason)
 
     def clientConnectionLost(self, connector, reason):
-        print('connection lost:', reason.getErrorMessage())
+        self.logger.warning('connection lost:', reason.getErrorMessage())
         self.done.callback(None)
+        ReconnectingClientFactory.clientConnectionLost(connector, reason)
 
     def register_event(self, symbol, handle):
         self._tick_event[symbol] = handle
@@ -127,22 +133,19 @@ class DataClientFactory(ClientFactory):
         del self._tick_event[symbol]
 
 
-class TickDataReceiver:
-    def __init__(self):
-        self.factory = DataClientFactory()
-        self.__running = False
+class TickDataReceiver(LoggerInterface, Runnable):
+    def __init__(self, parent=None):
+        LoggerInterface.__init__(self, parent=parent)
+        Runnable.__init__(self)
+        self.factory = DataClientFactory(parent=self)
 
-    def start(self):
+    def _start(self):
         reactor.connectTCP('112.74.195.144', 9123, self.factory)
         self.__running = True
         reactor.run(installSignalHandlers=0)
         return self.factory.done
 
-    def stop(self):
-        if self.__running:
-            self.__running = False
-        else:
-            return
+    def _stop(self):
         self.factory.stopFactory()
         if reactor.running:
             reactor.stop()

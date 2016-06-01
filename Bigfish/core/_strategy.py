@@ -55,7 +55,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
     def __init__(self, engine, code, parent=None):
         """Constructor"""
         super().__init__()
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         APIInterface.__init__(self)
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
@@ -78,6 +78,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
         self.printer = FilePrinter(self.config.user, self.config.name, self.engine)
         self.__context = {}
         self._setting()
+        self.logger_name = "Strategy"
         # 将策略容器与对应代码文件关联
 
     @staticmethod
@@ -140,7 +141,7 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
             environment.update(self.engine.get_APIs(self.get_id(), signal, setting.symbols, setting.time_frame))
             environment.update(self.signals[signal].get_APIs())
             self.signals[signal].environment = environment
-            setter = EnvironmentSetter(environment)
+            setter = EnvironmentSetter(environment, parent=self)
             series_exporter = SeriesExporter()
             for func in sys_func_detector.get_funcs_in_use():
                 func_ast = self._get_system_func_ast(func)

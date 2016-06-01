@@ -32,6 +32,7 @@ def reconnect(func):
                 else:
                     return {"ok": False, "message": e.msg}
         return {"ok": False, "message": "LoginFailed"}
+
     return wrapper
 
 
@@ -43,17 +44,20 @@ class FDTAccount:
         self.pwd = pwd
 
     def login(self):
-        data = {"userId": self.fdt_id, "pwd": self.pwd}
-        # url="http://121.43.71.76:13321/Login"
-        login_url = fdt_url + "/Login"
-        res = post(login_url, data)
-        self.info = res
-        if res['ok']:
-            self.token = res['token']
-            return True
-        else:
+        try:
+            data = {"userId": self.fdt_id, "pwd": self.pwd}
+            login_url = fdt_url + "/Login"
+            res = post(login_url, data)
+            self.info = res
+            if res['ok']:
+                self.token = res['token']
+                return True
+            else:
+                return False
+                # TODO 登录失败的处理
+        except HTTPError as e:
+            self.info = {'ok': False, 'message': e.msg}
             return False
-            # TODO 登录失败的处理
 
     @reconnect
     def market_order(self, order_side, qty, symbol):

@@ -27,6 +27,7 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
         self.__performance_manager = None
         self.__is_alive = False
         self.__initialized = False
+        self.logger_name = 'RuntimeSignal'
 
     def init(self):
         if self.__initialized:
@@ -35,13 +36,9 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
         self.__strategy_engine = StrategyEngine(parent=self)
         self.__strategy = Strategy(self.__strategy_engine, self.__code, parent=self)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = TickDataGenerator(self._config,
-                                                  lambda x: self.__strategy_engine.put_event(x.to_event()),
-                                                  lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)))
-        self._logger_child = {self.__strategy_engine: "StrategyEngine",
-                              self.__strategy: "Strategy",
-                              self.__data_generator: "DataGenerator"}
-        self.logger_name = 'RuntimeSignal'
+        self.__data_generator = TickDataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
+                                                  lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)),
+                                                  parent=self)
         if DEBUG:
             self.logger.setLevel(logging.DEBUG)
         else:

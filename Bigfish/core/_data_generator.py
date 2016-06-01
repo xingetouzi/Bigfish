@@ -9,6 +9,7 @@ from Bigfish.utils.common import check_time_frame, tf2s, get_datetime
 from Bigfish.utils.log import LoggerInterface
 from Bigfish.data.connection import MySql
 from Bigfish.data.receiver import TickDataReceiver
+from Bigfish.models.config import ConfigInterface
 
 
 # 定义两个线程执行接口
@@ -32,7 +33,7 @@ def consume(generator):
     generator.finish()
 
 
-class DataGenerator(LoggerInterface):
+class DataGenerator(LoggerInterface, ConfigInterface):
     """
     这个对象包括两个线程,一个生产者,一段一段的不断从数据库中查询记录,并存入缓存队列.
     另一个消费者,不断的从缓存队列中取数据,这样做的好处是避免一次回测的数据太多占用太多的内存
@@ -41,31 +42,31 @@ class DataGenerator(LoggerInterface):
     dg.start()
     """
 
-    def __init__(self, config, process, finish=None, maxsize=500):
+    def __init__(self, process, finish=None, maxsize=500, parent=None):
         """
 
         Parameters
         ----------
-        config: BfConfig对象
         process: 每个数据bar事件来时的回调方法
         finish: 数据结束的回调方法
         maxsize: 缓存大小,默认500
         """
         # assert isinstance(config, Config)
-        super().__init__()
-        self.__check_tf(config.time_frame)
+        LoggerInterface.__init__(self, parent=parent)
+        ConfigInterface.__init__(self, parent=parent)
+        self.__check_tf(self.config.time_frame)
         self.__maxsize = maxsize
         self.__dq = Queue(maxsize=maxsize * 2)  # 数据缓存器,避免数据在内存里过大,造成内存不足的错误
-        self.__config = config
-        self.__symbol = config.symbols[0]
-        self.__start_time = int(get_datetime(config.start_time).timestamp())
-        if config.end_time:
-            self.__end_time = int(get_datetime(config.end_time).timestamp())
+        self.__symbol = self.config.symbols[0]
+        self.__start_time = int(get_datetime(self.config.start_time).timestamp())
+        if self.config.end_time:
+            self.__end_time = int(get_datetime(self.config.end_time).timestamp())
         else:  # 如果没有指定结束时间,默认查询到最近的数据
             self.__end_time = int(time.time())
         self.__handle = process  # 行情数据监听函数(可以想象成java的interface)
         self.__finish = finish  # 数据结束函数
         self._finished = False
+        self.logger_name = "DataGenerator"
 
     @property
     def finished(self):
@@ -119,7 +120,7 @@ class DataGenerator(LoggerInterface):
             query_params = " where ctime >= '%s'" % (self.__start_time,)
             query_params += " and ctime < '%s'" % (self.__end_time,)
 
-            coll = "%s_%s" % (self.__symbol, self.__config.time_frame)
+            coll = "%s_%s" % (self.__symbol, self.config.time_frame)
 
             cur = conn.cursor(pymysql.cursors.DictCursor)
 
@@ -136,12 +137,12 @@ class DataGenerator(LoggerInterface):
                 # volume maybe None in mysql
                 if bar.volume is None:
                     bar.volume = 0
-                bar.time_frame = self.__config.time_frame
+                bar.time_frame = self.config.time_frame
                 self.__dq.put(bar)
-                self.__start_time = bar.timestamp + tf2s(self.__config.time_frame)
+                self.__start_time = bar.timestamp + tf2s(self.config.time_frame)
             cur.close()
             # 如果开始时间距结束时间的距离不超过当前时间尺度,证明数据查询完成
-            if (cur.rownumber == 0) or self.__end_time - self.__start_time <= tf2s(self.__config.time_frame):
+            if (cur.rownumber == 0) or self.__end_time - self.__start_time <= tf2s(self.config.time_frame):
                 self.stop()
         except:
             self.logger.error('\n' + traceback.format_exc())
@@ -152,7 +153,7 @@ class DataGenerator(LoggerInterface):
         check_time_frame(time_frame)
 
 
-class TickDataGenerator(LoggerInterface):
+class TickDataGenerator(LoggerInterface, ConfigInterface):
     """
     这个对象包括两个线程,一个生产者,一段一段的不断从数据库中查询记录,并存入缓存队列.
     另一个消费者,不断的从缓存队列中取数据,这样做的好处是避免一次回测的数据太多占用太多的内存
@@ -161,7 +162,7 @@ class TickDataGenerator(LoggerInterface):
     dg.start()
     """
 
-    def __init__(self, config, process, finish=None, maxsize=500):
+    def __init__(self, process, finish=None, maxsize=500, parent=None):
         """
 
         Parameters
@@ -171,17 +172,18 @@ class TickDataGenerator(LoggerInterface):
         finish: 数据结束的回调方法
         maxsize: 缓存大小,默认500
         """
-        super().__init__()
-        self.__check_tf(config.time_frame)
+        LoggerInterface.__init__(self, parent=parent)
+        ConfigInterface.__init__(self, parent=parent)
+        self.__check_tf(self.config.time_frame)
         self.__maxsize = maxsize
         self.__dq = Queue(maxsize=maxsize * 2)  # 数据缓存器,避免数据在内存里过大,造成内存不足的错误
-        self.__config = config
-        self.__receiver = TickDataReceiver()
-        self.__receiver.register_event(config.symbols[0], self.product)
-        self.__symbol = config.symbols[0]
+        self.__receiver = TickDataReceiver(parent=self)
+        self.__receiver.register_event(self.config.symbols[0], self.product)
+        self.__symbol = self.config.symbols[0]
         self.__handle = process  # 行情数据监听函数(可以想象成java的interface)
         self.__finish = finish  # 数据结束函数
         self._finished = False
+        self.logger_name = "TickDataGenerator"
 
     @property
     def finished(self):

@@ -52,10 +52,11 @@ class EventEngine(LoggerInterface):
     """
 
     # ----------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, parent=None):
         """初始化事件引擎"""
         # 事件队列
-        super().__init__()
+        LoggerInterface.__init__(self, parent=parent)
+        self.logger_name = "EventEngine"
         self.__queue = None
         self.__count_lock = Lock()
         self.__count = 0  # 计数器，用于辅助实现优先级队列

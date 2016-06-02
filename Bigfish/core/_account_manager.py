@@ -168,9 +168,15 @@ class FDTAccountManager(AccountManager):
 
     @property
     def fx_account(self):
-        for account in self._account.account_status()["accounts"]:
+        accounts = []
+        retry_time = 0
+        while not accounts and retry_time < 3:
+            accounts = self._account.account_status()["accounts"]
+            retry_time += 1
+        for account in accounts:
             if 'FX' in account['id']:
                 return account
+        raise RuntimeError("回去账户信息失败")
 
     @property
     def capital_base(self):

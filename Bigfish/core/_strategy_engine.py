@@ -501,7 +501,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                 deal.order = order.get_id()
                 order_id = order.get_id()
             else:
-                print('下单失败,保证金不足')
+                self.logger.warning("下单失败,保证金不足")
                 return -1
         else:
             cash_old = self.__account_manager.capital_cash
@@ -830,9 +830,10 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
 
     def __init__(self, parent=None):
         """Constructor"""
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
+        APIInterface.__init__(self)
         self.__event_engine = EventEngine(parent=self)  # 事件处理引擎
         self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
         if self.config.running_mode == RunningMode.backtest:

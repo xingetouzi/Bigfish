@@ -167,9 +167,10 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode15.py"
+    file = "testcode10.py"
     # file = 'IKH_testCase.py'
-    file = "boom.py"
+    # file = "boom.py"
+    file = "margin_error.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -177,8 +178,8 @@ if __name__ == '__main__':
     name = 'test'  # 策略名
     backtest = Backtesting()
     backtest.set_code(code)
-    config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='H1', start_time='2014-01-01',
-                      end_time='2016-04-01', trading_mode=TradingMode.on_tick)
+    config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='M5', start_time='2014-01-01',
+                      end_time='2015-05-01', trading_mode=TradingMode.on_tick)
     backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)
@@ -234,7 +235,29 @@ if __name__ == '__main__':
     # print('optimize\n%s' % optimize)
     # print("优化完成，耗时:{0} seconds".format(time.time() - start_time))
     from Bigfish.app.sharpe_calculator import SharpeCalculator
-
-    sc = SharpeCalculator(backtest.get_profit_records())
+    start_time = "2015-02-01"
+    end_time = "2015-05-01"
+    profit_records = backtest.get_profit_records()
+    sc = SharpeCalculator(profit_records)
     print(backtest.max_margin)
-    print(sc.get_sharpe("2015-01-01", "2015-02-01", simple=backtest.max_margin < config.capital_base))
+    pm = sc.get_performance(start_time, end_time)
+    p = pm.get_performance()
+    print("ar_compound:\n%s" % p.ar_compound)
+    print("volatility_compound:\n%s" % p.volatility_compound)
+    print(sc.get_sharpe(start_time, end_time, simple=backtest.max_margin < config.capital_base))
+    from matplotlib import pyplot, dates
+    from datetime import datetime
+    si, ei = sc.get_index(start_time, end_time)
+    records = profit_records[si: ei]
+    profits = list(map(lambda x: x['y'], records))
+    datetimes = list(map(lambda x: datetime.fromtimestamp(x['x']), records))
+    pyplot.plot_date(dates.date2num(datetimes), profits, linestyle='-')
+    x_text = pyplot.xlabel("时间")
+    y_text = pyplot.ylabel("收益率(%)")
+    t_text = pyplot.title("浮动盈亏")
+    pyplot.setp(t_text, size='large', color='r')
+    # setp(text, size='medium', name='courier', weight='bold',color='b')
+    pyplot.setp(x_text, size='medium', name='courier', weight='bold', color='g')
+    pyplot.setp(y_text, size='medium', name='helvetica', weight='light', color='b')
+    pyplot.show()
+    pyplot.grid(True)

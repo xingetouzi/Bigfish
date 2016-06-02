@@ -193,15 +193,21 @@ class StrategyPerformanceManager(PerformanceManager):
         if result['R'].min() <= 0:
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                        result['R'].resample('D', how='last', label='left') * 0))
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 0
+                        )
+                    )
+                )
 
         else:
             # 由于是取了对数，日收率是以复利的方式计算
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                        result['R'].resample('D', how='last', label='left').apply(math.log)
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left').apply(math.log)
+                        )
                     )
                 )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()
@@ -231,14 +237,20 @@ class StrategyPerformanceManager(PerformanceManager):
         if result['R'].min() <= 0:
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                        result['R'].resample('D', how='last', label='left') * 0))
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 0
+                        )
+                    )
+                )
         else:
             # 由于是取了对数，日收率是以复利的方式计算
             result['D'], self.__index_daily = \
                 (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
-                    *(lambda x: (x - x.shift(1).fillna(method='ffill').fillna(0), x.notnull().astype('int')))(
-                        result['R'].resample('D', how='last', label='left') * 100 - 100
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 100 - 100
+                        )
                     )
                 )
         result['W'] = result['D'].resample('W-MON', how='sum').dropna()

@@ -13,8 +13,15 @@ def post(req_url, data):
     j_data = json.dumps(data)
     req = urllib.request.Request(req_url, j_data.encode(encoding="UTF8"))
     req.add_header('Content-Type', 'application/json')
-    response = urllib.request.urlopen(req)
-    return json.loads(response.read().decode())
+    with urllib.request.urlopen(req) as res:
+        content = b""
+        while True:
+            temp = res.read(1024)
+            if temp:
+                content += temp
+            else:
+                break
+    return json.loads(content.decode())
 
 
 def reconnect(func):

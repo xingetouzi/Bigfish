@@ -4,16 +4,14 @@ Created on Wed Nov 25 20:46:00 2015
 
 @author: BurdenBear
 """
-from functools import wraps
 import time
-from dateutil.parser import parse
 from weakref import proxy
-from Bigfish.models.config import ConfigInterface
-from Bigfish.utils.log import LoggerInterface
-from Bigfish.models.base import Currency
-from Bigfish.models.enviroment import APIInterface, Globals
 from Bigfish.fdt.account import FDTAccount
+from Bigfish.models.base import Currency
+from Bigfish.models.config import ConfigInterface
+from Bigfish.models.enviroment import APIInterface, Globals
 from Bigfish.models.trade import *
+from Bigfish.utils.log import LoggerInterface
 
 __all__ = ["AccountManager", "BfAccountManager", "FDTAccountManager"]
 
@@ -22,7 +20,7 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
     """交易账户对象"""
 
     def __init__(self, currency=Currency("USD"), parent=None):
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
         self._capital_base = None
         self._capital_net = None
@@ -30,6 +28,7 @@ class AccountManager(LoggerInterface, ConfigInterface, APIInterface):
         self._capital_available = None
         self._capital_margin = None
         self._currency = currency
+        self.logger_name = "AccountManager"
 
     @property
     def capital_base(self):
@@ -167,9 +166,15 @@ class FDTAccountManager(AccountManager):
 
     @property
     def fx_account(self):
-        for account in self._account.account_status()["accounts"]:
+        accounts = []
+        retry_time = 0
+        while not accounts and retry_time < 3:
+            accounts = self._account.account_status()["accounts"]
+            retry_time += 1
+        for account in accounts:
             if 'FX' in account['id']:
                 return account
+        raise RuntimeError("回去账户信息失败")
 
     @property
     def capital_base(self):

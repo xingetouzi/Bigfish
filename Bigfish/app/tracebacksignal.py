@@ -27,6 +27,7 @@ class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
         self.__rt_data_generator = None
         self.__strategy_parameters = None
         self.__initialized = False
+        self.logger_name = 'RuntimeSignal'
 
     def init(self):
         if self.__initialized:
@@ -35,17 +36,13 @@ class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
         self.__strategy_engine = StrategyEngine(parent=self)
         self.__strategy = Strategy(self.__strategy_engine, self.__code, parent=self)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__rt_data_generator = TickDataGenerator(self._config,
-                                                     lambda x: self.__strategy_engine.put_event(x.to_event()),
-                                                     partial(self.__strategy_engine.put_event, Event(EVENT_FINISH)))
-        self.__tb_data_generator = DataGenerator(self._config,
-                                                 lambda x: self.__strategy_engine.put_event(x.to_event()),
+        self.__rt_data_generator = TickDataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
+                                                     partial(self.__strategy_engine.put_event, Event(EVENT_FINISH)),
+                                                     parent=self)
+        self.__tb_data_generator = DataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
                                                  partial(self.__strategy_engine.put_event,
-                                                         Event(EVENT_EMPTY, message="traceback over")))
-        self._logger_child = {self.__strategy_engine: "StrategyEngine",
-                              self.__strategy: "Strategy",
-                              self.__tb_data_generator: "DataGenerator"}
-        self.logger_name = 'RuntimeSignal'
+                                                         Event(EVENT_EMPTY, message="traceback over")),
+                                                 parent=self)
         if DEBUG:
             self.logger.setLevel(logging.DEBUG)
         else:

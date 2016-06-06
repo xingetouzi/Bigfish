@@ -59,11 +59,11 @@ class APIInterface:
 class EnvironmentSetter(LoggerInterface):
     EXCLUDE = ["Buy, Sell, BuyToCover, SellShort"]
 
-    def __init__(self, environment: Environment):
+    def __init__(self, environment: Environment, parent: LoggerInterface = None):
         assert isinstance(environment, Environment)
         self.__environment = environment
-        LoggerInterface.__init__(self)
-        self._logger_name = "EnvironmentSetter"
+        LoggerInterface.__init__(self, parent=parent)
+        self.logger_name = "EnvironmentSetter"
 
     def get_func_within_environment(self, ast_: ast.AST, allow_trading=True, filename=None):
         assert isinstance(ast_, ast.FunctionDef)

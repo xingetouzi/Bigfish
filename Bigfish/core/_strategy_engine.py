@@ -1,4 +1,5 @@
 import time
+import pytz
 from collections import defaultdict
 from functools import partial
 from queue import PriorityQueue
@@ -99,7 +100,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
     TICK_INTERVAL = 10  # Tick数据推送间隔
 
     def __init__(self, engine, parent=None):
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         Runnable.__init__(self)
         APIInterface.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
@@ -111,6 +112,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         self.current_time = None  # 目前数据运行到的时间，用于计算回测进度
         self._min_time_frame = None
         self._count = 0
+        self.logger_name = "QuotationManager"
 
     @property
     def min_time_frame(self):
@@ -386,7 +388,7 @@ class OrdersUr:
 class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
     def __init__(self, engine, quotation_manager, account_manager, parent=None):
         APIInterface.__init__(self)
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
         self._engine = proxy(engine)
         self.__quotation_manager = proxy(quotation_manager)
@@ -398,6 +400,8 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         self.__orders_todo_index = {}  # 同上 key:symbol
         self.__positions = {}  # Key:id, value:position with responding id
         self.__current_positions = {}  # key：symbol，value：current position
+        self.max_margin = 0
+        self.logger_name = "TradingManager"
 
     @property
     def current_positions(self):
@@ -443,6 +447,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             if symbol not in self.__current_positions:
                 position = self.__factory.new_position(symbol)
                 self.__current_positions[symbol] = position
+        self.max_margin = 0
 
     def recycle(self):
         # TODO 数据结构还需修改
@@ -497,7 +502,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                 deal.order = order.get_id()
                 order_id = order.get_id()
             else:
-                print('下单失败,保证金不足')
+                self.logger.warning("下单失败,保证金不足")
                 return -1
         else:
             cash_old = self.__account_manager.capital_cash
@@ -511,7 +516,8 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                             deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
                             deal.type = 1 - ((order.type & 1) << 1)
                             deal.volume = round(state['quantity'] / 100000, 2)  # 换算成手，精确到mini手
-                            deal.time = parse(state['created']).timestamp()
+                            tz = pytz.timezone('Asia/Shanghai')
+                            deal.time = tz.localize(parse(state['created'])).timestamp()
                             deal.price = state['avgPx']
                             deal.symbol = order.symbol
                             deal.order = order.get_id()
@@ -652,6 +658,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         position_now.deal = deal.get_id()
         self.__current_positions[deal.symbol] = position_now
         if self.config.running_mode == RunningMode.backtest:
+            self.max_margin = max(self.max_margin, self.__account_manager.capital_margin)
             pass
         else:
             self._engine.mongo_user.collection['positions'].insert_one(position_now.to_dict())
@@ -825,10 +832,11 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
 
     def __init__(self, parent=None):
         """Constructor"""
-        LoggerInterface.__init__(self)
+        LoggerInterface.__init__(self, parent=parent)
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
-        self.__event_engine = EventEngine()  # 事件处理引擎
+        APIInterface.__init__(self)
+        self.__event_engine = EventEngine(parent=self)  # 事件处理引擎
         self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
         if self.config.running_mode == RunningMode.backtest:
             self.__account_manager = BfAccountManager(parent=self)  # 账户管理
@@ -841,10 +849,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
             self.__account_manager.set_trading_manager(self.__trading_manager)
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
-        self._logger_child = {self.__event_engine: "EventEngine",
-                              self.__trading_manager: "TradeManager",
-                              self.__quotation_manager: "DataCache",
-                              self.__account_manager: "AccountManager"}
+        self.logger_name = "StrategyEngine"
 
     def set_account(self, account):
         assert isinstance(account, AccountManager)
@@ -870,6 +875,10 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
     def profit_records(self):
         """获取平仓收益记录"""
         return self.__profit_records
+
+    @property
+    def max_margin(self):
+        return self.__trading_manager.max_margin
 
     def profit_record(self, *args, **kwargs):
         return self.__account_manager.profit_record(*args, **kwargs)

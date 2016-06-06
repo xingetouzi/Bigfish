@@ -1,4 +1,5 @@
 import time
+import pytz
 from collections import defaultdict
 from functools import partial
 from queue import PriorityQueue
@@ -515,7 +516,8 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                             deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
                             deal.type = 1 - ((order.type & 1) << 1)
                             deal.volume = round(state['quantity'] / 100000, 2)  # 换算成手，精确到mini手
-                            deal.time = parse(state['created']).timestamp()
+                            tz = pytz.timezone('Asia/Shanghai')
+                            deal.time = tz.localize(parse(state['created'])).timestamp()
                             deal.price = state['avgPx']
                             deal.symbol = order.symbol
                             deal.order = order.get_id()

@@ -836,6 +836,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         Runnable.__init__(self)
         ConfigInterface.__init__(self, parent=parent)
         APIInterface.__init__(self)
+        self.logger_name = "StrategyEngine"
         self.__event_engine = EventEngine(parent=self)  # 事件处理引擎
         self.__quotation_manager = QuotationManager(self, parent=self)  # 行情数据管理器
         if self.config.running_mode == RunningMode.backtest:
@@ -849,7 +850,6 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
             self.__account_manager.set_trading_manager(self.__trading_manager)
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
-        self.logger_name = "StrategyEngine"
 
     def set_account(self, account):
         assert isinstance(account, AccountManager)

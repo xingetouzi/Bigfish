@@ -1,27 +1,97 @@
 import ujson as json
-import urllib
+import pycurl
 import urllib.request
+import urllib.parse
 from urllib.error import HTTPError
+from http.client import IncompleteRead, HTTPConnection
 from functools import wraps
+from io import BytesIO
 
 # fdt_url = "http://61.152.93.136:54321"
 fdt_url = "http://121.43.71.76:13321"
 reconnect_times = 3
 
 
-def post(req_url, data):
+class HTTP10Connection(HTTPConnection):
+    _http_vsn = 10
+    _http_vsn_str = "HTTP/1.0"
+
+
+class HTTP10Handler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(HTTP10Connection, req)
+
+
+def post_with_urllib(req_url, data):
     j_data = json.dumps(data)
     req = urllib.request.Request(req_url, j_data.encode(encoding="UTF8"))
     req.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req) as res:
         content = b""
         while True:
-            temp = res.read(1024)
-            if temp:
-                content += temp
-            else:
+            try:
+                content += res.read()
                 break
+            except IncompleteRead as e:
+                content += e.partial
     return json.loads(content.decode())
+
+
+def post_with_curl(req_url, data):
+    def get_message(header):
+        return ' '.join(header.split('\r\n')[0].split(' ')[2:])
+    j_data = json.dumps(data)
+    buffer = BytesIO()
+    header = BytesIO()
+    curl = pycurl.Curl()
+    # curl.setopt(pycurl.VERBOSE, 1)
+    curl.setopt(pycurl.POST, 1)
+    curl.setopt(pycurl.HTTPHEADER, ["Content-Type: application/json"])
+    curl.setopt(pycurl.URL, req_url)
+    curl.setopt(pycurl.POSTFIELDS, j_data)
+    curl.setopt(pycurl.WRITEDATA, buffer)
+    curl.setopt(pycurl.HEADERFUNCTION, header.write)
+    curl.setopt(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_1_0)
+    curl.perform()
+    res_code = curl.getinfo(pycurl.RESPONSE_CODE)
+    curl.close()
+    msg = get_message(header.getvalue().decode())
+    if res_code // 100 > 3:
+        error = HTTPError(None, res_code, msg, None, None)
+        raise error
+    else:
+        content = buffer.getvalue().decode()
+        res = json.loads(content)
+        return res
+
+
+def post_with_http(req_url, data):
+    host, req_url = (lambda x: (x[1].replace('/', ''), x[2]))(req_url.split(':'))
+    port, url = (lambda x: (int(x[0]), x[1]))(req_url.split('/'))
+    j_data = json.dumps(data)
+    header = {'Content-Type': 'application/json'}
+    conn = HTTPConnection(host, port)
+    conn._http_vsn = 10
+    conn._http_vsn_str = 'HTTP/1.0'
+    conn.request("POST", '/' + url, j_data, header)
+    res = conn.getresponse()
+    result = res.read()
+    conn.close()
+    return json.loads(result.decode())
+
+
+def post_with_urllib_http10(req_url, data):
+    opener = urllib.request.build_opener(HTTP10Handler)
+    j_data = json.dumps(data)
+    req = urllib.request.Request(req_url, j_data.encode(encoding="UTF8"))
+    req.add_header('Content-Type', 'application/json')
+    with opener.open(req) as res:
+        content = res.read()
+        print(res.version)
+    return json.loads(content.decode())
+
+
+post = post_with_curl
 
 
 def reconnect(func):

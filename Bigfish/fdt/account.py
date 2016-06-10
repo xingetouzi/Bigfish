@@ -6,10 +6,12 @@ from urllib.error import HTTPError
 from http.client import IncompleteRead, HTTPConnection
 from functools import wraps
 from io import BytesIO
+from Bigfish.utils.log import LoggerInterface
 
 # fdt_url = "http://61.152.93.136:54321"
 fdt_url = "http://121.43.71.76:13321"
 reconnect_times = 3
+retry_times = 3
 
 
 class HTTP10Connection(HTTPConnection):
@@ -40,6 +42,7 @@ def post_with_urllib(req_url, data):
 def post_with_curl(req_url, data):
     def get_message(header):
         return ' '.join(header.split('\r\n')[0].split(' ')[2:])
+
     j_data = json.dumps(data)
     buffer = BytesIO()
     header = BytesIO()
@@ -51,7 +54,7 @@ def post_with_curl(req_url, data):
     curl.setopt(pycurl.POSTFIELDS, j_data)
     curl.setopt(pycurl.WRITEDATA, buffer)
     curl.setopt(pycurl.HEADERFUNCTION, header.write)
-    curl.setopt(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_1_0)
+    # curl.setopt(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_1_0)
     curl.perform()
     res_code = curl.getinfo(pycurl.RESPONSE_CODE)
     curl.close()
@@ -94,6 +97,7 @@ def post_with_urllib_http10(req_url, data):
 post = post_with_curl
 
 
+# TODO pycurl.error
 def reconnect(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -102,19 +106,38 @@ def reconnect(func):
             try:
                 return func(self, *args, **kwargs)
             except HTTPError as e:
-                print(e.msg)
+                self.logger.warning(e.reason)
                 if e.code == 400:
                     self.login()
                     connect_count += 1
                 else:
                     return {"ok": False, "message": e.msg}
-        return {"ok": False, "message": "LoginFailed"}
+            except pycurl.error as e:
+                return {"ok": False, "message": ' '.join(e.args)}
+        return {"ok": False, "message": "Login Failed"}
 
     return wrapper
 
 
-class FDTAccount:
-    def __init__(self, fdt_id, pwd):
+def retry(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        retry_count = 0
+        while retry_count <= retry_times:
+            res = func(self, *args, **kwargs)
+            if not res['ok']:
+                self.logger.warning("Connection failed, in %s, message:%s" % (func.__name__, res.get("message", "")))
+                retry_count += 1
+            else:
+                return res
+        return {"ok": False, "message": "Connection failed"}
+
+    return wrapper
+
+
+class FDTAccount(LoggerInterface):
+    def __init__(self, fdt_id, pwd, parent=None):
+        LoggerInterface.__init__(self, parent=parent)
         self.token = None
         self.info = None
         self.fdt_id = fdt_id
@@ -136,36 +159,42 @@ class FDTAccount:
             self.info = {'ok': False, 'message': e.msg}
             return False
 
+    @retry
     @reconnect
     def market_order(self, order_side, qty, symbol):
         mo_url = fdt_url + "/MarketOrder"
         data = {"orderSide": order_side, "qty": qty, "symbol": symbol, "token": self.token}
         return post(mo_url, data)
 
+    @retry
     @reconnect
     def limit_order(self, order_side, price, qty, symbol):
         lo_url = fdt_url + "/LimitOrder"
         data = {"orderSide": order_side, "price": price, "qty": qty, "symbol": symbol, "token": self.token}
         return post(lo_url, data)
 
+    @retry
     @reconnect
-    def order_status(self):
+    def order_status(self, order_id):
         os_url = fdt_url + "/OrderStatus"
-        data = {"token": self.token}
+        data = {"token": self.token, "orderId": order_id}
         return post(os_url, data)
 
+    @retry
     @reconnect
     def open_positions(self):
         op_url = fdt_url + "/OpenPositions"
         data = {"token": self.token}
         return post(op_url, data)
 
+    @retry
     @reconnect
     def account_status(self):
         as_url = fdt_url + "/AccountStatus"
         data = {"token": self.token}
         return post(as_url, data)
 
+    @retry
     @reconnect
     def cancel_order(self):
         co_url = fdt_url + "/CancelOrder"
@@ -182,10 +211,7 @@ if __name__ == '__main__':
 
 
     def order_status(om, id):
-        res = om.order_status()
-        for order in res.get('orders', []):
-            if order['id'] == id:
-                return order
+        return om.order_status(id)
 
 
     om = FDTAccount("mb000004296", "Morrisonwudi520")
@@ -203,7 +229,7 @@ if __name__ == '__main__':
     print('<P>:%s' % om.open_positions()['openPositions'])
     om.login()
     print(om.info['accounts'])
-    time.sleep(60)
+    time.sleep(10)
     print('<P>:%s' % om.open_positions()['openPositions'])
     om.login()
     print(om.info['accounts'])

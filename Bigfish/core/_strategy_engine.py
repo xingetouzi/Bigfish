@@ -508,29 +508,31 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             cash_old = self.__account_manager.capital_cash
             order_id = self.__account_manager.send_order_to_broker(order)
             if order_id != -1:
-                res = self.__account_manager.order_status()
+                res = self.__account_manager.order_status(order_id)
+                print(res)
                 if res['ok']:
-                    order_status = res.get('orders', [])
-                    for state in order_status:
-                        if state['id'] == order_id:
-                            deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
-                            deal.type = 1 - ((order.type & 1) << 1)
-                            deal.volume = round(state['quantity'] / 100000, 2)  # 换算成手，精确到mini手
-                            tz = pytz.timezone('Asia/Shanghai')
-                            deal.time = tz.localize(parse(state['created'])).timestamp()
-                            deal.price = state['avgPx']
-                            deal.symbol = order.symbol
-                            deal.order = order.get_id()
-                            cash_now = self.__account_manager.capital_cash
-                            deal.profit = cash_now - cash_old
-                            break
+                    order_status = res['order']
+                    deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)
+                    deal.type = 1 - ((order.type & 1) << 1)
+                    deal.volume = round(order_status['quantity'] / 100000, 2)  # 换算成手，精确到mini手
+                    tz = pytz.timezone('Asia/Shanghai')
+                    deal.time = tz.localize(parse(order_status['created'])).timestamp()
+                    deal.price = order_status['avgPx']
+                    deal.symbol = order.symbol
+                    deal.order = order.get_id()
+                    cash_now = self.__account_manager.capital_cash
+                    deal.profit = cash_now - cash_old
+                else:
+                    self.logger.info("编号<%s>下单成功,订单ID:%s" % (order.id, order_id))
+                    self.logger.warning("订单信息查询失败,ID:%s" % order_id)
+                    return order_id
         if order_id != -1:
             self.logger.info("编号<%s>下单成功,订单ID:%s" % (order.id, order_id))
             self.__update_position(deal)  # TODO 加入事件引擎，支持异步
             self.__orders_done[order.get_id()] = order
             return order.get_id()
         else:
-            self.logger.info("编号<%s>下单失败,订单ID:%s" % (order.id, order_id))
+            self.logger.info("编号<%s>下单失败" % order.id)
             return -1
 
     def send_order(self, order):

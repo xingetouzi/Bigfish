@@ -170,7 +170,7 @@ if __name__ == '__main__':
     file = "testcode10.py"
     # file = 'IKH_testCase.py'
     # file = "boom.py"
-    file = "margin_error.py"
+    # file = "margin_error.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     backtest = Backtesting()
     backtest.set_code(code)
     config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='M5', start_time='2014-01-01',
-                      end_time='2015-05-01', trading_mode=TradingMode.on_tick)
+                      end_time='2015-05-01', trading_mode=TradingMode.on_tick, commission=2)
     backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)

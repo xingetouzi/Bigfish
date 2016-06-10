@@ -157,7 +157,7 @@ class FDTAccountManager(AccountManager):
         self._username = self.config.account
         self._password = self.config.password
         if self._username is not None and self._password is not None:
-            self._account = FDTAccount(self._username, self._password)
+            self._account = FDTAccount(self._username, self._password, parent=self)
 
     def set_account(self, username, password):
         self._username = username
@@ -219,8 +219,8 @@ class FDTAccountManager(AccountManager):
         else:
             return res.get('orderId')
 
-    def order_status(self):
-        return self._account.order_status()
+    def order_status(self, order_id):
+        return self._account.order_status(order_id)
 
     def profit_record(self, *args):
         time_ = time.time()

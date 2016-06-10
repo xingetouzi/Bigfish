@@ -115,6 +115,7 @@ class DataClientFactory(ClientFactory, LoggerInterface):
         LoggerInterface.__init__(self, parent=parent)
         self.done = Deferred()
         self._tick_event = dict()
+        self.logger_name = "DataReceiver"
 
     def clientConnectionFailed(self, connector, reason):
         self.logger.error('connection failed:', reason.getErrorMessage())
@@ -140,8 +141,9 @@ class TickDataReceiver(LoggerInterface, Runnable):
         self.factory = DataClientFactory(parent=self)
 
     def _start(self):
+        self._running = True
+        self.logger.debug("DataReceiver开始运行")
         reactor.connectTCP('112.74.195.144', 9123, self.factory)
-        self.__running = True
         reactor.run(installSignalHandlers=0)
         return self.factory.done
 
@@ -149,6 +151,7 @@ class TickDataReceiver(LoggerInterface, Runnable):
         self.factory.stopFactory()
         if reactor.running:
             reactor.stop()
+        self.logger.debug("DataReceiver停止运行")
 
     def register_event(self, symbol, handle):
         self.factory.register_event(symbol, handle)

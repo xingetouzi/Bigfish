@@ -87,6 +87,7 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
             self.__strategy_engine.wait()
         except:
             self.logger.error("\n" + traceback.format_exc())
+        finally:
             self.stop()
 
     def stop(self):
@@ -136,11 +137,15 @@ if __name__ == '__main__':
 
     start_time = time.time()
     file = "testcode10.py"
+    file = "testcode22.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
-    config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
-                      password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
+    # config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
+    #                   password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
+    #                   trading_mode=TradingMode.on_tick)
+    config = BfConfig(user='10032', name=file.split(".")[0], account="mb000000949",
+                      password="trq8075667", time_frame='M1', symbols=['EURUSD'],
                       trading_mode=TradingMode.on_tick)
     runtime_signal = RuntimeSignal()
     runtime_signal.code = code

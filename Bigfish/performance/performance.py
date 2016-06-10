@@ -756,12 +756,408 @@ class StrategyPerformanceManagerOnline(StrategyPerformanceManager):
         return self._yield_raw
 
 
-class AccountPerformance(Performance):
-    pass
+class Profit:
+    def __init__(self, yield_raw):
+        self._yield_raw = yield_raw
+
+    @property
+    @cache_calculator
+    def rate_of_return_raw(self):
+        if not self._yield_raw:
+            return pd.Series(name='rate')
+        temp = pd.DataFrame(self._yield_raw)
+        rate_of_return = pd.Series(temp['y'].values / 100 + 1, name='rate',
+                                   index=temp['x'].map(partial(pd.datetime.fromtimestamp,
+                                                               tz=pytz.timezone('Asia/Shanghai'))))
+        rate_of_return.index.name = 'time_index'
+        return rate_of_return
+
+    @property
+    @cache_calculator
+    def yield_curve(self):
+        return self._yield_raw
+
+    @property
+    @cache_calculator
+    def rate_of_return(self):
+        result = {}
+        result['R'] = self.rate_of_return_raw  # 'R' means raw
+        # TODO 对爆仓情况的考虑
+        if result['R'].min() <= 0:
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 0
+                        )
+                    )
+                )
+
+        else:
+            # 由于是取了对数，日收率是以复利的方式计算
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left').apply(math.log)
+                        )
+                    )
+                )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
+
+    @property
+    @cache_calculator
+    def rate_of_return_percent(self):
+        """
+
+        :return:
+        """
+        result = {}
+        result['D'] = \
+            (lambda x: pd.DataFrame(
+                {'rate': x['rate'].apply(partial(_get_percent_from_log)),
+                 'trade_days': x['trade_days']}))(
+                self.rate_of_return['D']
+            )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
+
+    @property
+    @cache_calculator
+    def rate_of_return_percent_simple(self):
+        result = {}
+        result['R'] = self.rate_of_return_raw
+        # TODO 对爆仓情况的考虑
+        if result['R'].min() <= 0:
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 0
+                        )
+                    )
+                )
+        else:
+            # 由于是取了对数，日收率是以复利的方式计算
+            result['D'], self.__index_daily = \
+                (lambda x, y: (pd.DataFrame({x.name: x, 'trade_days': y}).dropna(), x.index))(
+                    *(lambda x, y: (x - x.shift(1).fillna(method='ffill').fillna(y), x.notnull().astype('int')))(
+                        *(lambda x: (x, x[0]))(
+                            result['R'].resample('D', how='last', label='left') * 100 - 100
+                        )
+                    )
+                )
+        result['W'] = result['D'].resample('W-MON', how='sum').dropna()
+        result['M'] = result['D'].resample('MS', how='sum').dropna()
+        return result
 
 
-class AccountPerformanceManager(PerformanceManager):
-    pass
+class PerformanceFactorManager:
+    def __init__(self, profit: Profit):
+        self._precision = 4
+        self._annual_factor = 250
+        self._column_names = {'M': (lambda x: OrderedDict(sorted(x.items(), key=lambda t: t[0])))(
+            {1: ('month1', '1个月'), 3: ('month3', '3个月'), 6: ('month6', '6个月'), 12: ('month12', '1年')})}
+        self._profit = profit
+
+    def _roll_exp(self, sample):
+        calculator = lambda x: x['rate'] / x['trade_days']
+        ts = sample
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        for key, value in self._column_names['M'].items():
+            result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        result.total = calculator(ts.sum())
+        return result
+
+    def _roll_std(self, sample):
+        calculator = lambda x: (x['rate_square'] - x['rate'] * x['rate'] / x['trade_days']) \
+                               / (x['trade_days'] - (x['trade_days'] > 1))
+        ts = (lambda x: pd.DataFrame(
+            dict(rate=x['rate'],
+                 rate_square=(x['rate'] * x['rate']),
+                 trade_days=x['trade_days']))
+              .resample('MS', how='sum'))(sample)
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        # TODO numpy.sqrt np自带有开根号运算
+        for key, value in self._column_names['M'].items():
+            # XXX 开根号运算会将精度缩小一半，必须在此之前就处理先前浮点运算带来的浮点误差
+            result[value[0]] = _deal_float_error(pd.rolling_sum(ts, key).apply(calculator, axis=1)) ** 0.5
+        result.total = (lambda x: int(abs(x) > FLOAT_ERR) * x)(calculator(ts.sum())) ** 0.5
+        return _deal_float_error(result)
+
+    def alpha(self):
+        pass
+
+    def beta(self):
+        pass
+
+    @property
+    @cache_calculator
+    def ar_compound(self):
+        calculator = lambda x: (x['rate'] / x['trade_days']) * self._annual_factor
+        ts = self._profit.rate_of_return_percent['M']
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        for key, value in self._column_names['M'].items():
+            result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        result.total = calculator(ts.sum())
+        return result
+
+    @property
+    @cache_calculator
+    def ar(self):
+        calculator = lambda x: (x['rate'] / x['trade_days']) * self._annual_factor
+        ts = self._profit.rate_of_return_percent_simple['M']
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        for key, value in self._column_names['M'].items():
+            result[value[0]] = pd.rolling_sum(ts, key).apply(calculator, axis=1)
+        result.total = calculator(ts.sum())
+        return result
+
+    @property
+    @cache_calculator
+    # @profile
+    def volatility(self):
+        # TODO pandas好像并不支持分组上的移动窗口函数
+        result = self._roll_std(self._profit.rate_of_return_percent_simple['D'])
+        result *= self._annual_factor ** 0.5
+        result.total *= self._annual_factor ** 0.5
+        return result
+
+    @property
+    @cache_calculator
+    def volatility_compound(self):
+        result = self._roll_std(self._profit.rate_of_return_percent['D'])
+        result *= self._annual_factor ** 0.5
+        result.total *= self._annual_factor ** 0.5
+        return result
+
+    @property
+    @cache_calculator
+    def sharpe_ratio(self):
+        expected = self.ar
+        std = _deal_float_error(self.volatility, fill=np.nan)  # 年化标准差
+        std.total = self.volatility.total
+        result = expected / std
+        result.total = expected.total / std.total
+        return result
+
+    @property
+    @cache_calculator
+    def sharpe_ratio_compound(self):
+        expected = self.ar_compound
+        std = _deal_float_error(self.volatility_compound, fill=np.nan)
+        std.total = self.volatility_compound.total
+        result = expected / std
+        result.total = expected.total / std.total
+        return result
+
+    def sortino_ratio(self):
+        pass
+
+    def information_ratio(self):
+        pass
+
+    @property
+    @cache_calculator
+    # @profile
+    def max_drawdown(self):
+        # TODO o(nk)算法，k较大时可以利用分治做成o(nlog(n))，月分析K最大为12
+        columns = ['high', 'low', 'max_drawdown']
+        calculator = partial(reduce, lambda u, v: [max(u[0], v[0]), min(u[1], v[1]), min(u[2], v[2], v[1] - u[0])])
+        ts = (lambda x: x.groupby(MonthBegin().rollback).apply(
+            lambda df: pd.Series(calculator(df.values), index=columns)))(
+            (lambda x, y, z: pd.DataFrame(
+                {'high': np.maximum(y, z), 'low': np.minimum(y, z), 'max_drawdown': x},
+                columns=columns))(
+                *(lambda x, y: (x, y, y.shift(1).fillna(0)))(
+                    *(lambda x: (x['rate'] * (x['rate'] < 0), x['rate'].cumsum()))(
+                        self._profit.rate_of_return['D']))))
+        result = DataFrameExtended([], index=ts.index.rename('time'))
+        for key, value in self._column_names['M'].items():
+            result[value[0]] = -(rolling_apply_2d(ts, key, calculator)['max_drawdown'].apply(_get_percent_from_log))
+        result.total = -_get_percent_from_log(calculator(ts.values)[2])
+        return _deal_float_error(result)
+
+    @property
+    @cache_calculator
+    def r_square(self):
+        result = DataFrameExtended()
+        matrix = (lambda x, y: np.cov(x, y))(
+            *(lambda x: (np.array(range(len(x))), x))(
+                self._profit.rate_of_return_raw.resample('D', how='last').fillna(method='ffill')
+            )
+        )
+        result.total = matrix[0][1] * matrix[1][0] / (matrix[0][0] * matrix[1][1])
+        return result
+
+
+class PerformanceTradingManager:
+    def __init__(self, deals, positions):
+        self._deals_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), deals.values())), index=deals.keys(),
+                                       columns=Deal.get_keys())  # deals in dataframe format
+        self._positions_raw = pd.DataFrame(list(map(lambda x: x.to_dict(), positions.values())),
+                                           index=positions.keys(),
+                                           columns=Position.get_keys())  # positions in dataframe format
+        self._deals_raw['number_id'] = self._deals_raw['id'].apply(lambda x: int(x.split('-')[-1]))
+        self._deals_raw.sort_values(['time', 'number_id'], kind='mergesort', inplace=True)
+        (lambda x: x.rename(pd.Series(range(1, x.shape[0] + 1), index=x.index).to_dict(), inplace=True))(
+            self._deals_raw)  # 成交重新用数字编号
+        self._positions_raw.sort_values('time_update', kind='mergesort', inplace=True)
+
+    @property
+    @cache_calculator
+    @m_profile
+    def trade_info(self):
+        positions = self._positions_raw[['symbol', 'type', 'price_current', 'volume']]
+        deals = self._deals_raw[
+            ['position', 'time', 'type', 'price', 'volume', 'profit', 'entry', 'strategy', 'signal', 'id']]
+        trade = pd.merge(deals, positions, how='left', left_on='position', right_index=True, suffixes=('_d', '_p'))
+        # XXX dataframe的groupby方法计算结果是dataframe的视图，所以当dataframe的结构没有变化，groupby的结果依然可用
+        if trade.empty:  # 依旧丑陋的补丁
+            trade = pd.DataFrame(columns=['symbol', 'type_d', 'price_current', 'volume_d', 'position', 'time',
+                                          'type_p', 'price', 'volume_p', 'profit', 'entry', 'strategy', 'signal',
+                                          'trade_number', 'trade_type'])
+            trade.index.name = 'deal_number'
+            return trade
+        trade_grouped = trade.groupby('symbol')
+        # XXX 此操作在trade为空时会报错
+        trade['trade_number'] = trade_grouped.apply(
+            lambda x: pd.DataFrame((x['volume_p'] == 0).astype(int).cumsum().shift(1).fillna(0) + 1, x.index))
+        # TODO 在多品种交易下进行测试
+        temp = trade_grouped['trade_number'].last().cumsum().shift(1).fillna(0)
+        trade['trade_number'] = trade['trade_number'] + trade['symbol'].apply(lambda x: temp[x])
+        temp = trade.groupby('trade_number')['type_p'].first()
+        trade['trade_type'] = trade['trade_number'].apply(lambda x: temp[x])
+        trade['profit'] = trade['profit'].fillna(0)
+        trade.index.name = 'deal_number'
+        del positions
+        del deals
+        del temp
+        return trade
+
+    @property
+    @cache_calculator
+    @m_profile
+    def trade_summary(self):
+        self._update_units(
+            {'(%s)' % self._currency_symbol: ['平均净利', '平均盈利', '平均亏损', '平均盈利/平均亏损', '最大盈利', '最大亏损'],
+             '(%)': ['胜率'],
+             '': ['总交易数', '未平仓交易数', '盈利交易数', '亏损交易数']})
+        columns = ['total', 'long_position', 'short_position']
+        result = pd.DataFrame(index=columns)
+        trade = {}
+        trade_grouped = {}
+        trade['total'] = self.trade_info
+        trade['long_position'] = trade['total'].query('trade_type>0')
+        trade['short_position'] = trade['total'].query('trade_type<0')
+        for key in columns:
+            trade_grouped[key] = trade[key].groupby(['symbol', 'trade_number'])
+        result['总交易数'] = [trade_grouped[key].ngroups for key in columns]
+        last_trade = trade['total'].tail(1)
+        if not last_trade.empty and (last_trade.volume_p != 0).bool():  # XXX last_trade为空的情况
+            result['总交易数']['total'] -= 1
+            if (last_trade.type_p > 0).bool():
+                result['未平仓交易数'] = [1, 1, 0]
+                result['总交易数']['long_position'] -= 1
+            else:
+                result['未平仓交易数'] = [1, 0, 1]
+                result['总交易数']['short_position'] -= 1
+        else:
+            result['未平仓交易数'] = [0, 0, 0]
+        profits = [(lambda x: x[:-1] if result['未平仓交易数'][key] else x)(trade_grouped[key]['profit'].sum())
+                   for key in columns]
+        winnings = list(map(lambda x: x[x > 0], profits))
+        losings = list(map(lambda x: x[x < 0], profits))
+        result['盈利交易数'] = list(map(len, winnings))
+        result['亏损交易数'] = list(map(len, losings))
+        result['胜率'] = result['盈利交易数'] / result['总交易数'] * 100
+        result['平均净利'] = list(map(lambda x: x.mean(), profits))
+        result['平均盈利'] = list(map(lambda x: x.mean(), winnings))
+        result['平均亏损'] = list(map(lambda x: x.mean(), losings))
+        result['平均盈利/平均亏损'] = result['平均盈利'] / -result['平均亏损']
+        result['最大盈利'] = list(map(lambda x: x.max(), profits))
+        result['最大亏损'] = list(map(lambda x: x.min(), profits))
+        result = result.T.rename(lambda x: self.with_units(x))
+        result.index.name = 'index'
+        trade.clear()
+        trade_grouped.clear()
+        return result
+
+    @property
+    @cache_calculator
+    def trade_details(self):
+        columns = ['trade_type', 'entry', 'time', 'volume_d', 'price', 'volume_p', 'price_current', 'profit', 'id']
+
+        if not self.trade_info.empty:
+            trade = self.trade_info.groupby(['symbol', 'trade_number', self.trade_info.index])[columns].last()
+        else:  # 丑陋补丁X3
+            trade = pd.DataFrame(columns=columns)
+            trade.index.name = '_'
+        trade['entry'] = trade['entry'].map(lambda x: '入场(加仓)' if x == 1 else '出场(减仓)')
+        trade['trade_type'] = trade['trade_type'].map(lambda x: '空头' if x < 0 else '多头' if x > 0 else '无持仓')
+        trade['trade_time'] = trade['time'].map(
+            partial(pd.datetime.fromtimestamp, tz=pytz.timezone('Asia/Shanghai'))).astype(str) \
+            .map(lambda x: x.split('+')[0])
+        trade['trade_profit'] = trade['profit']
+        trade['deal_id'] = trade['id']
+        del trade['time'], trade['profit'], trade['id']
+        return trade
+
+    @property
+    @cache_calculator
+    def trade_positions(self):
+        trade = self.trade_details
+        result = {}
+
+        def condition2num(bool_):
+            return (bool_ << 1) - 1
+
+        def is_win(price1, price2, trade_type):
+            return condition2num(price2 >= price1) * condition2num(trade_type == '多头')
+
+        def get_position_lines(out, queue, row):
+            if row['entry'] == '入场(加仓)':
+                queue.append([row['volume_d'], row['price'], row['trade_time']])
+            else:
+                volume = row['volume_d']
+                while volume > 0:
+                    try:
+                        entry = queue.popleft()
+                    except IndexError:
+                        break
+                    out.append({'x1': entry[2], 'y1': entry[1],
+                                'x2': row['trade_time'], 'y2': row['price'],
+                                'type': is_win(entry[1], row['price'], row['trade_type'])})
+                    volume -= entry[0]
+                if volume < 0:
+                    queue.appendleft([-volume, entry[1], entry[2]])
+
+        def get_position_lines_raw(out, queue, row):
+            if row[3] == '入场(加仓)':
+                queue.append(row[0:2])
+            else:
+                volume = row[0]
+                while volume > 0:
+                    entry = queue.popleft()
+                    out.append({'x1': entry[2], 'y1': entry[1],
+                                'x2': row[2], 'y2': row[1],
+                                'type': is_win(entry[1], row[1], row[4])})
+                    volume -= entry[0]
+                if volume < 0:
+                    queue.appendleft([-volume, entry[1], entry[2]])
+
+        for name, data in trade[['volume_d', 'price', 'trade_time', 'entry', 'trade_type']].groupby(level=0):
+            result[name] = {}
+            result[name]['lines'] = []
+            deal_queue = deque([])
+            data.apply(partial(get_position_lines, result[name]['lines'], deal_queue), axis=1)
+            # TODO 比较两者的速度差距，看看是否有必要把所有的apply都加上RAW=TRUE
+            # data.apply(partial(get_position_lines_raw, result[name]['lines'], deal_queue), axis=1， raw=True)
+            result[name]['points'] = list(map(lambda x: {'x': x[2], 'y': x[1]}, deal_queue))
+        return result
 
 
 if __name__ == '__main__':

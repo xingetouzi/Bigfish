@@ -208,6 +208,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
 
     def start(self):
         self._finished = False
+        self.logger.debug("数据生成器开始运行")
         # 启动生产者
         t1 = threading.Thread(target=self.__receiver.start)
         # t1.setDaemon(True)
@@ -221,6 +222,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
         if not self._finished:
             self._finished = True
             self.__receiver.stop()
+            self.logger.debug("数据生成器停止运行")
 
     def finish(self):
         if self.__finish is not None:

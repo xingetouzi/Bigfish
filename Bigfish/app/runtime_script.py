@@ -1,15 +1,10 @@
 import sys
 import codecs
-import ujson as json
 import logging
 import os
 import traceback
 from logging.handlers import RotatingFileHandler
-from Bigfish.app.runtime_singal import RuntimeSignal
-from Bigfish.models.model import User
-from Bigfish.store.directory import UserDirectory
-from Bigfish.models.config import BfConfig
-from Bigfish.web_utils.runtime_data_man import runtime_data
+
 
 def main():
     # code_file = sys.argv[1]
@@ -20,11 +15,11 @@ def main():
     # with codecs.open(config_file, "r", "utf-8") as f:
     #     config = json.loads(f.read())
     #     f.close()
-    userid=sys.argv[1]
-    rd=runtime_data(userid)
-    config=rd.get_config()
-    config['symbols']=[config['symbols']]
-    code=rd.get_code()
+    userid = sys.argv[1]
+    rd = runtime_data(userid)
+    config = rd.get_config()
+    config['symbols'] = [config['symbols']]
+    code = rd.get_code()
 
     def set_handle(logger, user=config.get("user", "non-existent user")):
         path = os.path.join(UserDirectory(User(user)).get_temp_dir(), "runtime.log")
@@ -45,9 +40,19 @@ def main():
 
 if __name__ == '__main__':
     try:
+        from Bigfish.store.directory import UserDirectory
+        import ujson as json
+        from Bigfish.app.runtime_singal import RuntimeSignal
+        from Bigfish.models.model import User
+        from Bigfish.models.config import BfConfig
+        from Bigfish.web_utils.runtime_data_man import runtime_data
         main()
     except:
-        path = os.path.join(UserDirectory.__get_root__(), "runtime.log")
+        if sys.argv:
+            user_id = sys.argv[1]
+            path = os.path.join(UserDirectory(User(user_id)).get_temp_dir(), "runtime.log")
+        else:
+            path = os.path.join(UserDirectory.__get_root__(), "runtime.log")
         logger = logging.getLogger("RuntimeScript")
         rt_handler = RotatingFileHandler(path, maxBytes=10 * 1024 * 1024, backupCount=5)
         rt_handler.setLevel(logging.DEBUG)

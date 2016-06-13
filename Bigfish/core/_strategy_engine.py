@@ -225,7 +225,10 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             # TODO 这里只考虑了单品种情况
             if self.config.trading_mode == TradingMode.on_tick:
                 self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame], self.on_next_bar)
-            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.on_next_bar)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.on_next_bar)
+            self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame],
+                                        lambda x: self._engine.realize_order())
         self._count = 0
 
     def _start(self):
@@ -243,9 +246,13 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         if self.config.trading_mode == TradingMode.on_tick:
             quotation.tick_open = bar.open
         if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
+            if last_time > 0:
+                self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
             for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
                 getattr(quotation, field).appendleft(getattr(bar, field))
-            self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
+            # TODO 这里应该用事件去控制，这样设计还是不太合理
+            self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+            # TODO 回测时这样最后一根bar不会参与计算
         else:
             quotation.high[0] = max(quotation.high[0], bar.high)
             quotation.low[0] = min(quotation.low[0], bar.low)
@@ -307,7 +314,6 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             else:
                 pnl = self._engine.profit_record()
                 self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
-        self._engine.realize_order()
 
     def get_APIs(self, symbols=None, time_frame=None) -> Globals:
         def capitalize(s: str) -> str:

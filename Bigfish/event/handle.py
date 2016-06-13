@@ -9,7 +9,7 @@ from Bigfish.event.event import EVENT_SYMBOL_BAR_UPDATE, EVENT_SYMBOL_BAR_COMPLE
 from Bigfish.models.common import FactoryWithID
 from Bigfish.models.enviroment import APIInterface, Globals, Environment
 from Bigfish.models.config import ConfigInterface
-from Bigfish.models.base import Runnable,  TradingMode
+from Bigfish.models.base import Runnable, TradingMode
 
 
 class EventsPacker:
@@ -136,23 +136,24 @@ class Signal(Runnable, APIInterface, ConfigInterface):
     def get_bar_num(self):
         return self._bar_num
 
-    bar_num = property(get_bar_num, None, None)
-
     def __handle(self):
         while True:
             event = yield
-            if event.type == self._event_completed:
-                self._bar_num += 1
             self._gene_instance.__next__()
 
+    def _add_bar_num(self, event):
+        self._bar_num += 1
+
     def _start(self):
-        self._bar_num = 0
+        self._bar_num = 1
         if self._generator:
             self._handler = self.__handle()
             self._gene_instance = self._generator(**self._parameters)
             if self.config.trading_mode == TradingMode.on_tick:
                 self._engine.register_event(self._event_update, self._handler.send)
-            self._engine.register_event(self._event_completed, self._handler.send)
+            else:
+                self._engine.register_event(self._event_completed, self._handler.send)
+            self._engine.register_event(self._event_completed, self._add_bar_num)
             self._update.start()
             self._completed.start()
             self._handler.send(None)  # start it

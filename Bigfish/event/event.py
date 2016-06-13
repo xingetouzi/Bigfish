@@ -77,7 +77,7 @@ EVENT_SYMBOL_BAR_UPDATE = {
              time_frame in _TIME_FRAME} for symbol in SYMBOLS}
 # 特定品种上一根K线完结事件，这个事件主要用来实现在下一个Bar的open时进行对上一根Bar的所有下单进行处理。
 EVENT_SYMBOL_BAR_COMPLETED = {
-    symbol: {time_frame: Event.create_event_type('BarCompleted.%s.%s' % (symbol, time_frame), priority=2).get_id() for
+    symbol: {time_frame: Event.create_event_type('BarCompleted.%s.%s' % (symbol, time_frame), priority=1).get_id() for
              time_frame in _TIME_FRAME} for symbol in SYMBOLS}
 EVENT_DEAL = 'Deal'  # 成交推送事件
 EVENT_DEAL_SYMBOL = {symbol: Event.create_event_type('Deal.%s' % symbol).get_id()

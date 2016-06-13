@@ -111,9 +111,9 @@ def reconnect(func):
                     self.login()
                     connect_count += 1
                 else:
-                    return {"ok": False, "message": e.msg}
+                    return {"ok": False, "message": "%s %s" % (type(e), e.msg)}
             except pycurl.error as e:
-                return {"ok": False, "message": ' '.join(e.args)}
+                return {"ok": False, "message": "%s %s" % (type(e), str(e.args))}
         return {"ok": False, "message": "Login Failed"}
 
     return wrapper

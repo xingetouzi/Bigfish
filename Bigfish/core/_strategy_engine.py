@@ -515,7 +515,6 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             order_id = self.__account_manager.send_order_to_broker(order)
             if order_id != -1:
                 res = self.__account_manager.order_status(order_id)
-                print(res)
                 if res['ok']:
                     order_status = res['order']
                     deal = self.__factory.new_deal(order.symbol, order.strategy, order.signal)

@@ -48,7 +48,7 @@ if __name__ == '__main__':
         from Bigfish.web_utils.runtime_data_man import runtime_data
         main()
     except:
-        if sys.argv:
+        if len(sys.argv) > 1:
             user_id = sys.argv[1]
             path = os.path.join(UserDirectory(User(user_id)).get_temp_dir(), "runtime.log")
         else:

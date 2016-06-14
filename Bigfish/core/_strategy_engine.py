@@ -96,6 +96,63 @@ class QuotationDataView:
         self.__info.clear()
 
 
+class PnLRecorder(LoggerInterface, ConfigInterface, Runnable):
+    def __init__(self, engine, parent=None):
+        LoggerInterface.__init__(self, parent=parent)
+        ConfigInterface.__init__(self, parent=parent)
+        Runnable.__init__(self)
+        self._count = 0
+        self._engine = proxy(engine)
+        self.logger_name = "PnLRecorder"
+
+    @property
+    def frequency(self):
+        if self.config.running_mode == RunningMode.runtime:
+            return 1
+        if self.config.time_frame in ['M1', 'M5']:
+            return 1
+        time = tf2s(self.config.time_frame)
+        result = 2 * 60 * 60 // time  # 统计频率为2H一次
+        if result == 0:
+            return 1
+        else:
+            return result
+
+    def _start(self):
+        symbol = self.config.symbols[0]
+        time_frame = self.config.time_frame
+        if self.config.running_mode == RunningMode.backtest:
+            if self.config.trading_mode == TradingMode.on_tick:
+                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame], self.record)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.record)
+        else:
+            pass
+        self.logger.debug("收益记录器开始运行")
+
+    def _stop(self):
+        self.logger.debug("收益记录器停止运行")
+        symbol = self.config.symbols[0]
+        time_frame = self.config.time_frame
+        if self.config.running_mode == RunningMode.backtest:
+            if self.config.trading_mode == TradingMode.on_tick:
+                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame], self.record)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.record)
+        else:
+            pass
+
+    def record(self, event):
+        if self.config.running_mode == RunningMode.backtest:
+            self._count += 1
+            if self._count % self.frequency == 0:
+                pnl = self._engine.profit_record(self._engine.current_time)
+                self._engine.profit_records.append(pnl)
+        else:
+            pnl = self._engine.profit_record()
+            self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
+
+
 class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface):
     TICK_INTERVAL = 10  # Tick数据推送间隔
 
@@ -222,11 +279,6 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             elif self.config.running_mode == RunningMode.traceback:
                 self._engine.register_event(EVENT_SYMBOL_TICK_RAW[symbol], self.on_tick)
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][time_frame], self.on_bar)
-            # TODO 这里只考虑了单品种情况
-            if self.config.trading_mode == TradingMode.on_tick:
-                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame], self.on_next_bar)
-            else:
-                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.on_next_bar)
             self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame],
                                         lambda x: self._engine.realize_order())
         self._count = 0
@@ -303,17 +355,6 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                         dict_['close'] = tick.lastPrice
                         dict_["volume"] += tick.volume
                         dict_['timestamp'] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
-
-    def on_next_bar(self, event: Event):
-        # 更新浮动盈亏
-        self._count += 1
-        if self._count % self.float_pnl_frequency == 0:
-            if self.config.running_mode == RunningMode.backtest:
-                pnl = self._engine.profit_record(self.current_time)
-                self._engine.profit_records.append(pnl)
-            else:
-                pnl = self._engine.profit_record()
-                self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
 
     def get_APIs(self, symbols=None, time_frame=None) -> Globals:
         def capitalize(s: str) -> str:
@@ -855,6 +896,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
                                                 parent=self)  # 交易管理器
         if self.config.running_mode == RunningMode.backtest:
             self.__account_manager.set_trading_manager(self.__trading_manager)
+        self.__pnl_recorder = PnLRecorder(self, parent=self)
         self.__strategys = {}  # 策略管理器
         self.__profit_records = []  # 保存账户净值的列表
 
@@ -886,6 +928,10 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
     @property
     def max_margin(self):
         return self.__trading_manager.max_margin
+
+    @property
+    def current_time(self):
+        return self.__quotation_manager.current_time
 
     def profit_record(self, *args, **kwargs):
         return self.__account_manager.profit_record(*args, **kwargs)
@@ -930,6 +976,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         self.__trading_manager.init()
         self.__event_engine.start()
         self.__account_manager.initialize()
+        self.__pnl_recorder.start()
         for strategy in self.__strategys.values():
             strategy.start()
 
@@ -937,6 +984,7 @@ class StrategyEngine(LoggerInterface, Runnable, ConfigInterface, APIInterface):
         """停止所有策略"""
         for strategy in self.__strategys.values():
             strategy.stop()
+        self.__pnl_recorder.stop()
         self.__event_engine.stop()
         self.__quotation_manager.stop()
         self._recycle()  # 释放资源

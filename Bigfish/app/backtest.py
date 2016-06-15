@@ -43,7 +43,8 @@ class Backtesting(LoggerInterface, ConfigInterface):
         self.__strategy_engine = StrategyEngine(parent=self)
         self.__strategy = Strategy(self.__strategy_engine, self.__code, parent=self)
         self.__strategy_engine.add_strategy(self.__strategy)
-        self.__data_generator = DataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
+        self.__data_generator = DataGenerator(self.__strategy_engine,
+                                              lambda x: self.__strategy_engine.put_event(x.to_event()),
                                               lambda: self.__strategy_engine.put_event(Event(EVENT_FINISH)),
                                               parent=self)
         if DEBUG:
@@ -171,6 +172,7 @@ if __name__ == '__main__':
     # file = 'IKH_testCase.py'
     # file = "boom.py"
     # file = "margin_error.py"
+    file = "testcode23.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -178,8 +180,9 @@ if __name__ == '__main__':
     name = 'test'  # 策略名
     backtest = Backtesting()
     backtest.set_code(code)
-    config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='M5', start_time='2014-01-01',
-                      end_time='2015-05-01', trading_mode=TradingMode.on_tick, commission=2)
+    config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='M5', start_time='2016-01-01',
+                      end_time='2016-05-01',
+                      trading_mode=TradingMode.on_tick, commission=2)
     backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)

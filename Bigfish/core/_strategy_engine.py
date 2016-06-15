@@ -1,5 +1,6 @@
 import time
 import pytz
+from threading import Thread
 from collections import defaultdict
 from functools import partial
 from queue import PriorityQueue
@@ -104,6 +105,14 @@ class PnLRecorder(LoggerInterface, ConfigInterface, Runnable):
         self._count = 0
         self._engine = proxy(engine)
         self.logger_name = "PnLRecorder"
+        if self.config.running_mode != RunningMode.backtest:
+            self._interval = 5 * 60
+            self._thread = None
+
+    def _timer(self):
+        while self.running:
+            time.sleep(self._interval)
+        self.record()
 
     @property
     def frequency(self):
@@ -127,11 +136,11 @@ class PnLRecorder(LoggerInterface, ConfigInterface, Runnable):
             else:
                 self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.record)
         else:
-            pass
-        self.logger.debug("收益记录器开始运行")
+            self._thread = Thread(target=self._timer)
+            self._thread.start()
+        self.logger.debug("[收益记录器]开始运行")
 
     def _stop(self):
-        self.logger.debug("收益记录器停止运行")
         symbol = self.config.symbols[0]
         time_frame = self.config.time_frame
         if self.config.running_mode == RunningMode.backtest:
@@ -140,9 +149,12 @@ class PnLRecorder(LoggerInterface, ConfigInterface, Runnable):
             else:
                 self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame], self.record)
         else:
-            pass
+            if self._thread is not None:
+                self._thread.join()
+                self._thread = None
+        self.logger.debug("[收益记录器]停止运行")
 
-    def record(self, event):
+    def record(self, event=None):
         if self.config.running_mode == RunningMode.backtest:
             self._count += 1
             if self._count % self.frequency == 0:

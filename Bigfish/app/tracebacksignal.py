@@ -39,7 +39,8 @@ class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
         self.__rt_data_generator = TickDataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
                                                      partial(self.__strategy_engine.put_event, Event(EVENT_FINISH)),
                                                      parent=self)
-        self.__tb_data_generator = DataGenerator(lambda x: self.__strategy_engine.put_event(x.to_event()),
+        self.__tb_data_generator = DataGenerator(self,
+                                                 lambda x: self.__strategy_engine.put_event(x.to_event()),
                                                  partial(self.__strategy_engine.put_event,
                                                          Event(EVENT_EMPTY, message="traceback over")),
                                                  parent=self)
@@ -69,6 +70,12 @@ class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
             self.__strategy_engine.register_event(event_type, func)
         else:
             self.logger.warning("无效的事件注册，原因：未初始化")
+
+    def unregister_event(self, event_type, func):
+        if self.__initialized:
+            self.__strategy_engine.unregister_event(event_type, func)
+        else:
+            self.logger.warning("无效的事件注销，原因：未初始化")
 
     @property
     def is_finished(self):
@@ -106,10 +113,10 @@ class TracebackSignal(LoggerInterface, ConfigInterface, Runnable):
                 self.stop()
 
     def _stop(self):
-        self.logger.info("<%s>策略实时运算停止" % self._config["name"])
         self.__tb_data_generator.stop()
         self.__rt_data_generator.stop()
         self.__strategy_engine.stop()
+        self.logger.info("<%s>策略实时运算停止" % self._config["name"])
 
     def get_output(self):
         return self.__strategy.get_output()
@@ -151,7 +158,7 @@ if __name__ == '__main__':
 
 
     start_time = time.time()
-    file = "testcode10.py"
+    file = "testcode22.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()

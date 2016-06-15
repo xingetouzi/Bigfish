@@ -1,15 +1,17 @@
 import threading
-import time
-from queue import Queue, Empty, Full
 import traceback
-
+from queue import Queue, Empty, Full
+from weakref import proxy
+import time
 import pymysql
-from Bigfish.models.quote import Bar
-from Bigfish.utils.common import check_time_frame, tf2s, get_datetime
-from Bigfish.utils.log import LoggerInterface
+
 from Bigfish.data.connection import MySql
 from Bigfish.data.receiver import TickDataReceiver
 from Bigfish.models.config import ConfigInterface
+from Bigfish.models.quote import Bar
+from Bigfish.utils.common import check_time_frame, tf2s, get_datetime
+from Bigfish.utils.log import LoggerInterface
+from Bigfish.event.engine import EVENT_EMPTY
 
 
 # 定义两个线程执行接口
@@ -42,7 +44,7 @@ class DataGenerator(LoggerInterface, ConfigInterface):
     dg.start()
     """
 
-    def __init__(self, process, finish=None, maxsize=500, parent=None):
+    def __init__(self, engine, process, finish=None, maxsize=500, parent=None):
         """
 
         Parameters
@@ -54,6 +56,7 @@ class DataGenerator(LoggerInterface, ConfigInterface):
         # assert isinstance(config, Config)
         LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
+        self._engine = proxy(engine, self.stop)
         self.__check_tf(self.config.time_frame)
         self.__maxsize = maxsize
         self.__dq = Queue(maxsize=maxsize * 2)  # 数据缓存器,避免数据在内存里过大,造成内存不足的错误
@@ -61,12 +64,16 @@ class DataGenerator(LoggerInterface, ConfigInterface):
         self.__start_time = int(get_datetime(self.config.start_time).timestamp())
         if self.config.end_time:
             self.__end_time = int(get_datetime(self.config.end_time).timestamp())
-        else:  # 如果没有指定结束时间,默认查询到最近的数据
-            self.__end_time = int(time.time())
+        else:
+            self.__end_time = None
         self.__handle = process  # 行情数据监听函数(可以想象成java的interface)
         self.__finish = finish  # 数据结束函数
         self._finished = False
+        self._registered = False
         self.logger_name = "DataGenerator"
+
+        self.failed_count = 0
+        self.register_time = None
 
     @property
     def finished(self):
@@ -89,9 +96,14 @@ class DataGenerator(LoggerInterface, ConfigInterface):
             self.logger.error("\n" + traceback.format_exc())
             self.stop()
 
+    def _terminate(self, *args, **kwargs):
+        """用于从事件引擎停止他"""
+        self.logger.info("停止")
+        self.stop()
+
     def start(self):
         self._finished = False
-        self.logger.debug("数据生成器开始运行")
+        self.logger.debug("[数据生成器]开始运行")
         # 启动生产者
         t1 = threading.Thread(target=produce, args=(self,))
         # t1.setDaemon(True)
@@ -100,11 +112,15 @@ class DataGenerator(LoggerInterface, ConfigInterface):
         # t2.setDaemon(True)
         t1.start()
         t2.start()
+        self._registered = False
 
     def stop(self):
         if not self._finished:
             self._finished = True
-            self.logger.debug("数据生成器停止运行")
+            if self.__end_time is None:
+                self._engine.unregister_event(EVENT_EMPTY, self._terminate)
+            self.logger.debug("[数据生成器]停止运行")
+            self.logger.debug("%s %s" % (self.failed_count, self.register_time))
 
     def finish(self):
         if self.__finish is not None:
@@ -118,13 +134,11 @@ class DataGenerator(LoggerInterface, ConfigInterface):
             conn = MySql().get_connection()  # 得到连接
             # 构造查询条件
             query_params = " where ctime >= '%s'" % (self.__start_time,)
-            query_params += " and ctime < '%s'" % (self.__end_time,)
-
+            if self.__end_time is not None:
+                query_params += " and ctime <= '%s'" % (self.__end_time,)
             coll = "%s_%s" % (self.__symbol, self.config.time_frame)
-
             cur = conn.cursor(pymysql.cursors.DictCursor)
-
-            cur.execute("select * from %s " % coll + query_params + " limit %d " % self.__maxsize)
+            cur.execute("select SQL_NO_CACHE * from %s " % coll + query_params + " limit %d " % self.__maxsize)
             # print(cur.fetchall())
             for row in cur.fetchall():
                 bar = Bar(self.__symbol)
@@ -142,8 +156,14 @@ class DataGenerator(LoggerInterface, ConfigInterface):
                 self.__start_time = bar.timestamp + tf2s(self.config.time_frame)
             cur.close()
             # 如果开始时间距结束时间的距离不超过当前时间尺度,证明数据查询完成
-            if (cur.rownumber == 0) or self.__end_time - self.__start_time <= tf2s(self.config.time_frame):
-                self.stop()
+            if cur.rownumber == 0:
+                self.failed_count += 1
+                if self.__end_time is not None:
+                    self.stop()
+                elif not self._registered:
+                    self._registered = True
+                    self._engine.register_event(EVENT_EMPTY, self._terminate)
+                    self.register_time = time.time()
         except:
             self.logger.error('\n' + traceback.format_exc())
             self.stop()
@@ -208,7 +228,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
 
     def start(self):
         self._finished = False
-        self.logger.debug("数据生成器开始运行")
+        self.logger.debug("[数据生成器]开始运行")
         # 启动生产者
         t1 = threading.Thread(target=self.__receiver.start)
         # t1.setDaemon(True)
@@ -222,7 +242,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
         if not self._finished:
             self._finished = True
             self.__receiver.stop()
-            self.logger.debug("数据生成器停止运行")
+            self.logger.debug("[数据生成器]停止运行")
 
     def finish(self):
         if self.__finish is not None:

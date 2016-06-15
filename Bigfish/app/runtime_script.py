@@ -30,7 +30,10 @@ def main():
         logger.addHandler(rt_handler)
 
     if code:
-        signal = RuntimeSignal()
+        if config.get("start_time", None) is not None:
+            signal = TracebackSignal()
+        else:
+            signal = RuntimeSignal()
         signal.code = code
         signal.set_config(BfConfig(**config))
         signal.init()
@@ -43,6 +46,7 @@ if __name__ == '__main__':
         from Bigfish.store.directory import UserDirectory
         import ujson as json
         from Bigfish.app.runtime_singal import RuntimeSignal
+        from Bigfish.app.tracebacksignal import TracebackSignal
         from Bigfish.models.model import User
         from Bigfish.models.config import BfConfig
         from Bigfish.web_utils.runtime_data_man import runtime_data

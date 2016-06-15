@@ -83,7 +83,7 @@ class EventEngine(LoggerInterface):
     # ----------------------------------------------------------------------
     def __run(self):
         """引擎运行"""
-        self.logger.debug("事件引擎开始运行")
+        self.logger.debug("[事件引擎]开始运行")
         while self.__active:
             try:
                 *_, event = self.__queue.get(block=True, timeout=0.5)  # 获取事件的阻塞时间设为0.5秒
@@ -101,7 +101,7 @@ class EventEngine(LoggerInterface):
                 file.flush()
                 file.close()
         self.__file_opened.clear()
-        self.logger.debug("事件引擎停止运行")
+        self.logger.debug("[事件引擎]停止运行")
 
     # ----------------------------------------------------------------------
     def __process(self, event):
@@ -185,11 +185,9 @@ class EventEngine(LoggerInterface):
         # 尝试获取该事件类型对应的处理函数列表，若无则忽略该次注销请求
         try:
             handlerList = self.__handlers[type]
-
             # 如果该函数存在于列表中，则移除
             if handler in handlerList:
                 handlerList.remove(handler)
-
             # 如果函数列表为空，则从引擎中移除该事件类型
             if not handlerList:
                 del self.__handlers[type]

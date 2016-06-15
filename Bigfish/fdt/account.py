@@ -102,13 +102,18 @@ def reconnect(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         connect_count = 0
+        need_login = False
         while connect_count <= reconnect_times:
             try:
+                if need_login:
+                    self.login()
+                    need_login = False
                 return func(self, *args, **kwargs)
             except HTTPError as e:
-                self.logger.warning(e.reason)
                 if e.code == 400:
-                    self.login()
+                    self.logger.warning("Login failed, in %s, message:%s" % (
+                        func.__name__, '|'.join([str(e.code), e.reason, e.msg])))
+                    need_login = True
                     connect_count += 1
                 else:
                     return {"ok": False, "message": "%s %s" % (type(e), e.msg)}
@@ -217,7 +222,8 @@ if __name__ == '__main__':
     om = FDTAccount("mb000004296", "Morrisonwudi520")
     print(om.login())
     # print(om.info)
-    print(om.info['accounts'])
+    print(om.account_status())
+    time.sleep(2)
     res0 = om.market_order("Buy", 100000, "EURUSD")
     buy_id = res0.get('orderId', '')
     print(order_status(om, buy_id))

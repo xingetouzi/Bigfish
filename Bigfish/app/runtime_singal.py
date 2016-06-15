@@ -91,10 +91,10 @@ class RuntimeSignal(LoggerInterface, ConfigInterface):
             self.stop()
 
     def stop(self):
-        self.logger.info("<%s>策略运算停止" % self._config["name"])
         self.__is_alive = False
         self.__data_generator.stop()
         self.__strategy_engine.stop()
+        self.logger.info("<%s>策略运算停止" % self._config["name"])
 
     def get_output(self):
         return self.__strategy.get_output()
@@ -141,12 +141,12 @@ if __name__ == '__main__':
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
-    # config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
-    #                   password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
-    #                   trading_mode=TradingMode.on_tick)
-    config = BfConfig(user='10032', name=file.split(".")[0], account="mb000000949",
-                      password="trq8075667", time_frame='M1', symbols=['EURUSD'],
-                      trading_mode=TradingMode.on_bar)
+    config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
+                      password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
+                      trading_mode=TradingMode.on_tick)
+    # config = BfConfig(user='10032', name=file.split(".")[0], account="mb000000949",
+    #                   password="trq8075667", time_frame='M1', symbols=['EURUSD'],
+    #                   trading_mode=TradingMode.on_bar)
     runtime_signal = RuntimeSignal()
     runtime_signal.code = code
     runtime_signal.set_config(config)

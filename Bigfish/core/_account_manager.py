@@ -169,37 +169,40 @@ class FDTAccountManager(AccountManager):
         accounts = []
         retry_time = 0
         while not accounts and retry_time < 3:
-            accounts = self._account.account_status()["accounts"]
+            accounts = self._account.account_status().get("accounts", [])
             retry_time += 1
         for account in accounts:
             if 'FX' in account['id']:
                 return account
-        raise RuntimeError("回去账户信息失败")
+        # TODO 账户信息获取失败时的机制
+        self.logger.warning("获取账户信息失败")
+        return {}
 
     @property
     def capital_base(self):
-        self._capital_base = self.fx_account['cashDeposited']
+        self._capital_base = self.fx_account.get('cashDeposited', self._capital_base)
         return self._capital_base
 
     @property
     def capital_cash(self):
-        self._capital_cash = self.fx_account['cash']
+        self._capital_cash = self.fx_account.get('cash', self._capital_cash)
         return self._capital_cash
 
     @property
     def capital_available(self):
-        self._capital_available = self.fx_account['cashAvailable']
+        self._capital_available = self.fx_account.get('cashAvailable', self._capital_available)
         return self._capital_available
 
     @property
     def capital_margin(self):
-        self._capital_margin = self.fx_account['marginHeld']
+        self._capital_margin = self.fx_account.get('marginHeld', self._capital_margin)
         return self._capital_margin
 
     @property
     def capital_net(self):
         fx_account = self.fx_account
-        self._capital_net = fx_account['cash'] + fx_account['urPnL']
+        if fx_account:
+            self._capital_net = fx_account['cash'] + fx_account['urPnL']
         return self._capital_net
 
     def initialize(self):

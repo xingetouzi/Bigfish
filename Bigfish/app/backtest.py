@@ -127,7 +127,8 @@ class Backtesting(LoggerInterface, ConfigInterface):
             raise ValueError('please run the backtest first')
         return StrategyPerformanceManagerOnline(self.__strategy_engine.profit_records,
                                                 self.__strategy_engine.deals,
-                                                self.__strategy_engine.positions)
+                                                self.__strategy_engine.positions,
+                                                capital_base=self.config.capital_base)
 
     def get_profit_records(self):
         return self.__strategy_engine.profit_records
@@ -172,7 +173,7 @@ if __name__ == '__main__':
     # file = 'IKH_testCase.py'
     # file = "boom.py"
     # file = "margin_error.py"
-    file = "testcode23.py"
+    # file = "testcode23.py"
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test', file)
     with codecs.open(path, 'r', 'utf-8') as f:
         code = f.read()
@@ -182,7 +183,8 @@ if __name__ == '__main__':
     backtest.set_code(code)
     config = BfConfig(user=user, name='test', symbols=['USDJPY'], time_frame='M5', start_time='2016-01-01',
                       end_time='2016-05-01',
-                      trading_mode=TradingMode.on_tick, commission=2)
+                      trading_mode=TradingMode.on_tick, commission=2,
+                      capital_base=50000)
     backtest.set_config(config)
     backtest.init()
     handle = set_handle(backtest.logger)

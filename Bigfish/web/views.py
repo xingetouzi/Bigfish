@@ -74,7 +74,7 @@ class BaseHandler(tornado.web.RequestHandler):
         commission = float(self.get_argument('commission', 0))
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
-        capital_base = self.get_argument('capital_base', 100000)
+        capital_base = float(self.get_argument('capital_base', 100000))
         if user_id:
             self.write('callback(')
             try:
@@ -110,7 +110,7 @@ class BaseHandler(tornado.web.RequestHandler):
         commission = float(self.get_argument('commission', 0))
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
-        capital_base = self.get_argument('capital_base', 100000)
+        capital_base = float(self.get_argument('capital_base', 100000))
         if user_id:
             try:
                 result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],

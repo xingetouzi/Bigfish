@@ -24,7 +24,7 @@ def backtest(conn, *args):
     try:
 
         config = BfConfig(**{v[0]: v[1] for v in zip(["user", "name", "symbols", "time_frame", "start_time",
-                                                      "end_time", "commission", "slippage"], args)})
+                                                      "end_time", "commission", "slippage", 'capital_base'], args)})
         config.trading_mode = TradingMode.on_tick
         user = User(config.user)
         code = get_strategy(user, "LastBacktest").content
@@ -74,12 +74,13 @@ class BaseHandler(tornado.web.RequestHandler):
         commission = float(self.get_argument('commission', 0))
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
+        capital_base = self.get_argument('capital_base', 100000)
         if user_id:
             self.write('callback(')
             try:
                 result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
-                                                time_frame, start_time,
-                                                end_time, commission, slippage)
+                                                time_frame, start_time, end_time,
+                                                commission, slippage, capital_base)
             except TimeoutError:
                 self.write({'stat': 'FALSE', 'error': '回测超时'})
                 self.finish()
@@ -109,11 +110,12 @@ class BaseHandler(tornado.web.RequestHandler):
         commission = float(self.get_argument('commission', 0))
         slippage = float(self.get_argument('slippage', 0))
         user_id = self.get_argument('user_id', None)
+        capital_base = self.get_argument('capital_base', 100000)
         if user_id:
             try:
                 result = yield tornado.gen.Task(run_backtest, user_id, name, [symbols],
-                                                time_frame, start_time,
-                                                end_time, commission, slippage)
+                                                time_frame, start_time, end_time,
+                                                commission, slippage, capital_base)
             except TimeoutError:
                 self.write({'stat': 'FALSE', 'error': '回测超时'})
                 self.finish()

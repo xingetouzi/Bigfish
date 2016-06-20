@@ -12,7 +12,7 @@ from weakref import proxy
 from contextlib import redirect_stdout
 from Bigfish.store.directory import UserDirectory
 from Bigfish.models.model import User
-
+from Bigfish.models.base import Runnable
 import logging
 
 
@@ -51,41 +51,23 @@ class LoggerInterface:
         return logging.getLogger(self.logger_name)
 
 
-class Printer:
-    def __init__(self, user, name):
-        self.__user = user
-        self.__name = name
-
-    # 用于重载的方法
-    def _get_redirector(self):
+class Printer(Runnable):
+    def _stop(self):
         raise NotImplementedError
 
-    def __print_generator(self):
-        with self.__stdout_redirector:
-            while True:
-                args = yield
-                print(args)
+    def _start(self):
+        raise NotImplementedError
 
-    def get_print(self):
-        send = self.__gene_instance.send
+    def __init__(self):
+        Runnable.__init__(self)
 
-        def wrapper(*args):
-            send(args)
-
-        return wrapper
-
-    def start(self):
-        self.__stdout_redirector = self._get_redirector()
-        self.__gene_instance = self.__print_generator()
-
-    def stop(self):
-        if self.__gene_instance is not None:
-            self.__gene_instance.close()
-            self.__gene_instance = None
+    def print(self):
+        raise NotImplementedError
 
 
-class FilePrinter:
+class FilePrinter(Printer):
     def __init__(self, user, name, engine):
+        super().__init__()
         self.__user = user
         self.__name = name
         self.__engine = engine
@@ -95,15 +77,31 @@ class FilePrinter:
     def get_path(self):
         return self.__file_path
 
-    def start(self):
+    def _start(self):
         self.__file = open(self.__file_path, 'w+')
         self.__engine.add_file(self.__file)
 
-    def print(self, *args):
-        print(*args, file=self.__file)
-
-    def stop(self):
+    def _stop(self):
         if self.__file and not self.__file.closed:
             self.__file.flush()
             self.__file.close()
         self.__file = None
+
+    def print(self, *args):
+        print(*args, file=self.__file)
+
+
+class LogPrinter(Printer, LoggerInterface):
+    def __init__(self, parent=None):
+        super().__init__()
+        LoggerInterface.__init__(self, parent=parent)
+        self.logger_name = "LogPrinter"
+
+    def _start(self):
+        pass
+
+    def _stop(self):
+        pass
+
+    def print(self, *args):
+        self.logger.info(' '.join(map(str, args)) + '\n')

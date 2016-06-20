@@ -9,7 +9,7 @@ from functools import partial
 from weakref import proxy
 
 from Bigfish.event.handle import SignalFactory
-from Bigfish.models.base import Runnable
+from Bigfish.models.base import Runnable, RunningMode
 from Bigfish.models.common import HasID
 from Bigfish.models.enviroment import APIInterface, Globals, Environment, EnvironmentSetter
 from Bigfish.models.model import User
@@ -20,7 +20,7 @@ from Bigfish.utils.ast import SeriesExporter, SystemFunctionsDetector, ImportIns
     InitTransformer, wrap_with_module, TradingCommandsTransformer, find_func_in_module
 from Bigfish.utils.common import check_time_frame
 from Bigfish.utils.export import export, SeriesFunction
-from Bigfish.utils.log import FilePrinter, LoggerInterface
+from Bigfish.utils.log import FilePrinter, LoggerInterface, LogPrinter
 
 
 class StrategyCode:
@@ -75,7 +75,10 @@ class Strategy(HasID, LoggerInterface, APIInterface, Runnable, ConfigInterface):
         self.signals = {}
         self.system_functions = {}
         self.series_storage = {}
-        self.printer = FilePrinter(self.config.user, self.config.name, self.engine)
+        if self.config.running_mode == RunningMode.backtest:
+            self.printer = FilePrinter(self.config.user, self.config.name, self.engine)
+        else:
+            self.printer = LogPrinter(parent=self)
         self.__context = {}
         self._setting()
         self.logger_name = "Strategy"

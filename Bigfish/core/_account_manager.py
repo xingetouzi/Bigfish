@@ -185,7 +185,7 @@ class FDTAccountManager(AccountManager):
 
     @property
     def capital_cash(self):
-        self._capital_cash = self.fx_account.get('cash', self._capital_cash)
+        self._capital_cash = self.fx_account.get('cashDeduct', self._capital_cash)
         return self._capital_cash
 
     @property

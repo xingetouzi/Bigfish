@@ -505,8 +505,20 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         for symbol in self.__quotation_manager.symbol_pool.keys():
             if symbol not in self.__current_positions:
                 position = self.__factory.new_position(symbol)
+                if self.config.running_mode != RunningMode.backtest:
+                    self._sync_position_status(symbol, position)
+                    position.price_open = position.price_current
+                    position.time_open = position.time_update
+                    position.time_open_msc = 0
                 self.__current_positions[symbol] = position
         self.max_margin = 0
+        # TODO 多品种的情况
+        if self.config.trading_mode == TradingMode.on_tick:
+            self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[self.config.symbols[0]][self.config.time_frame],
+                                        self._sync_positions)
+        else:
+            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[self.config.symbols[0]][self.config.time_frame],
+                                        self._sync_positions)
 
     def recycle(self):
         # TODO 数据结构还需修改
@@ -515,6 +527,38 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
         self.__orders_todo_index.clear()
         self.__current_positions.clear()
         self.__factory.clear()
+
+    def _sync_positions(self, event: Event):
+        # self.logger.debug("同步仓位")
+        for symbol, position in self.__current_positions.items():
+            # self.logger.debug("同步仓位:%s" % symbol)
+            self._sync_position_status(symbol, position)
+
+    def _sync_position_status(self, symbol, position: Position):
+        def sign(num):
+            if abs(num) <= 10 ** -7:
+                return 0
+            elif num > 0:
+                return 1
+            else:
+                return -1
+
+        res = self.__account_manager.position_status(symbol)
+        if res is not None:
+            position.type = sign(res['qty'])
+            position.volume = round(abs(res['qty']) / 100000, 2)
+            position.price_current = res['price']
+            tz = pytz.timezone('Asia/Shanghai')
+            position.time_update = int(tz.localize(parse(res['created'])).timestamp())
+            position.time_update_msc = 0
+        else:
+            if position.type != 0:
+                position.type = 0
+                position.volume = 0
+                position.price_current = 0
+                position.price_open = 0
+                position.time_update = int(time.time())
+                position.time_update_msc = 0
 
     @staticmethod
     def check_order(order):
@@ -689,17 +733,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             if deal.profit is not None:
                 self.__account_manager.capital_cash += deal.profit
         else:
-            res = self.__account_manager.position_status(deal.symbol)
-            if res is not None:
-                qty = res['qty']
-                price = res['price']
-            else:
-                qty = 0
-                price = 0
-            position_now.symbol = deal.symbol
-            position_now.type = sign(qty)
-            position_now.volume = round(abs(qty) / 100000, 2)  # 精确到迷你手
-            position_now.price_current = price
+            self._sync_position_status(deal.symbol, position_now)
             if position_prev.type * deal.type >= 0:
                 deal.entry = DEAL_ENTRY_IN
             else:
@@ -711,7 +745,7 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
             else:
                 position_now.time_open = deal.time
                 position_now.time_open_msc = deal.time_msc
-                position_now.price_open = price
+                position_now.price_open = position_now.price_current
         position_now.time_update = deal.time
         position_now.time_update_msc = deal.time_msc
         deal.position = position_now.get_id()

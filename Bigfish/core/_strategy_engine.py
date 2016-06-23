@@ -513,12 +513,13 @@ class TradingManager(ConfigInterface, APIInterface, LoggerInterface):
                 self.__current_positions[symbol] = position
         self.max_margin = 0
         # TODO 多品种的情况
-        if self.config.trading_mode == TradingMode.on_tick:
-            self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[self.config.symbols[0]][self.config.time_frame],
-                                        self._sync_positions)
-        else:
-            self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[self.config.symbols[0]][self.config.time_frame],
-                                        self._sync_positions)
+        if self.config.running_mode != RunningMode.backtest:
+            if self.config.trading_mode == TradingMode.on_tick:
+                self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[self.config.symbols[0]][self.config.time_frame],
+                                            self._sync_positions)
+            else:
+                self._engine.register_event(EVENT_SYMBOL_BAR_COMPLETED[self.config.symbols[0]][self.config.time_frame],
+                                            self._sync_positions)
 
     def recycle(self):
         # TODO 数据结构还需修改

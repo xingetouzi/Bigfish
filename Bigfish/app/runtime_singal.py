@@ -143,7 +143,7 @@ if __name__ == '__main__':
         code = f.read()
     config = BfConfig(user='10032', name=file.split(".")[0], account="mb000004296",
                       password="Morrisonwudi520", time_frame='M1', symbols=['EURUSD'],
-                      trading_mode=TradingMode.on_tick)
+                      trading_mode=TradingMode.on_bar)
     # config = BfConfig(user='10032', name=file.split(".")[0], account="mb000000949",
     #                   password="trq8075667", time_frame='M1', symbols=['EURUSD'],
     #                   trading_mode=TradingMode.on_bar)

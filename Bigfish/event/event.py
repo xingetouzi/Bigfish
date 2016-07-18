@@ -79,6 +79,9 @@ EVENT_SYMBOL_BAR_UPDATE = {
 EVENT_SYMBOL_BAR_COMPLETED = {
     symbol: {time_frame: Event.create_event_type('BarCompleted.%s.%s' % (symbol, time_frame), priority=1).get_id() for
              time_frame in _TIME_FRAME} for symbol in SYMBOLS}
+EVENT_SYMBOL_BAR_NEW = {
+    symbol: {time_frame: Event.create_event_type('BarNew.%s.%s' % (symbol, time_frame), priority=1).get_id() for
+             time_frame in _TIME_FRAME} for symbol in SYMBOLS}
 EVENT_DEAL = 'Deal'  # 成交推送事件
 EVENT_DEAL_SYMBOL = {symbol: Event.create_event_type('Deal.%s' % symbol).get_id()
                      for symbol in SYMBOLS}  # 特定交易物的成交事件

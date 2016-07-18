@@ -182,7 +182,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
     dg.start()
     """
 
-    def __init__(self, process, finish=None, maxsize=500, parent=None):
+    def __init__(self, process, finish=None, maxsize=1000, parent=None):
         """
 
         Parameters
@@ -190,7 +190,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
         config: BfConfig对象
         process: 每个数据bar事件来时的回调方法
         finish: 数据结束的回调方法
-        maxsize: 缓存大小,默认500
+        maxsize: 缓存大小,默认1000
         """
         LoggerInterface.__init__(self, parent=parent)
         ConfigInterface.__init__(self, parent=parent)
@@ -253,6 +253,7 @@ class TickDataGenerator(LoggerInterface, ConfigInterface):
             try:
                 self.__dq.put(tick, timeout=0.5)
             except Full:
+                self.logger.warning("\n 队列已满，长度为%s，tick数据丢失" % self.__maxsize)
                 pass
             except:
                 self.logger.error("\n" + traceback.format_exc())

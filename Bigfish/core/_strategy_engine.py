@@ -10,7 +10,7 @@ from Bigfish.core import BfAccountManager, FDTAccountManager, AccountManager
 from Bigfish.data.mongo_utils import MongoUser
 from Bigfish.event.engine import EventEngine
 from Bigfish.event.event import EVENT_SYMBOL_TICK_RAW, EVENT_SYMBOL_BAR_RAW, EVENT_SYMBOL_BAR_UPDATE, \
-    EVENT_SYMBOL_BAR_COMPLETED, Event, EVENT_LOG
+    EVENT_SYMBOL_BAR_COMPLETED, EVENT_SYMBOL_BAR_NEW, Event, EVENT_LOG
 from Bigfish.models.base import Runnable, RunningMode, TradingMode
 from Bigfish.models.common import Deque as deque
 from Bigfish.models.config import ConfigInterface
@@ -165,6 +165,10 @@ class PnLRecorder(LoggerInterface, ConfigInterface, Runnable):
             self._engine.mongo_user.collection['PnLs'].insert_one(pnl)
 
 
+class TradingSessionFilter(LoggerInterface):
+    pass
+
+
 class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface):
     TICK_INTERVAL = 10  # Tick数据推送间隔
 
@@ -293,6 +297,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                 self._engine.register_event(EVENT_SYMBOL_BAR_RAW[symbol][time_frame], self.on_bar)
             self._engine.register_event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame],
                                         lambda x: self._engine.realize_order())
+            self._engine.register_event(EVENT_SYMBOL_BAR_NEW[symbol][time_frame], self.on_new_bar)
         self._count = 0
 
     def _start(self):
@@ -312,10 +317,9 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         if bar.timestamp - last_time >= tf2s(time_frame):  # 当last_time = 0时，该条件显然成立
             if last_time > 0:
                 self._engine.put_event(Event(EVENT_SYMBOL_BAR_COMPLETED[symbol][time_frame]))
-            for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
-                getattr(quotation, field).appendleft(getattr(bar, field))
+            self._engine.put_event(Event(EVENT_SYMBOL_BAR_NEW[symbol][time_frame], data=bar))
             # TODO 这里应该用事件去控制，这样设计还是不太合理
-            self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
             # TODO 回测时这样最后一根bar不会参与计算
         else:
             quotation.high[0] = max(quotation.high[0], bar.high)
@@ -323,6 +327,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             quotation.volume[0] += bar.volume
             for field in ["datetime", "timestamp", "close"]:
                 getattr(quotation, field)[0] = getattr(bar, field)
+            # print(quotation.datetime[0], quotation.open[0], quotation.high[0], quotation.low[0], quotation.close[0])
             self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
 
     def on_bar(self, event: Event):
@@ -330,9 +335,20 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
             bar = event.content['data']
             self.update_bar(bar)
 
+    def on_new_bar(self, event: Event):
+        bar = event.content['data']
+        symbol = bar.symbol
+        time_frame = bar.time_frame
+        quotation = self._data_view.find(symbol, time_frame)
+        for field in ['open', 'high', 'low', 'close', 'datetime', 'timestamp', 'volume']:
+            getattr(quotation, field).appendleft(getattr(bar, field))
+        # print(quotation.datetime[0], quotation.open[0], quotation.high[0], quotation.low[0], quotation.close[0])
+        self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
+
     def on_tick(self, event: Event):
         if self._running:
             tick = event.content['data']
+            # print(tick.time, tick.openPrice, tick.highPrice, tick.lowPrice, tick.lastPrice)
             symbol = tick.symbol
             for time_frame in {item[1] for item in self._data_view.get_keys() if item[0] == symbol}:
                 bar_interval = tf2s(time_frame)
@@ -341,7 +357,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                 if time_frame not in self._tick_cache[symbol]:
                     self._tick_cache[symbol][time_frame] = {
                         'open': tick.openPrice, 'high': tick.highPrice,
-                        'low': tick.lastPrice, 'close': tick.lastPrice,
+                        'low': tick.lowPrice, 'close': tick.lastPrice,
                         'volume': tick.volume, 'timestamp': tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL,
                     }
                 else:

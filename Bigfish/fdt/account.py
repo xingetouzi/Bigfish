@@ -245,11 +245,11 @@ if __name__ == '__main__':
 
 
     om = FDTAccount("mb000004296", "Morrisonwudi520")
-    om = FDTAccount("hztest2", "123456", account_type=AccountType.real)
+    om = FDTAccount("qttest7", "1234567890", account_type=AccountType.real)
     st = time.time()
     print(om.login())
     print(time.time() - st)
-    # print(om.info)
+    print(om.info)
     st = time.time()
     print(om.account_status())
     print(time.time() - st)

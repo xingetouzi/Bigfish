@@ -6,7 +6,7 @@ Created on Wed Nov 25 20:46:00 2015
 """
 import time
 from weakref import proxy
-from Bigfish.fdt.account import FDTAccount
+from Bigfish.fdt.account import FDTAccount, AccountType
 from Bigfish.models.base import Currency
 from Bigfish.models.config import ConfigInterface
 from Bigfish.models.enviroment import APIInterface, Globals
@@ -157,12 +157,15 @@ class FDTAccountManager(AccountManager):
         self._username = self.config.account
         self._password = self.config.password
         if self._username is not None and self._password is not None:
-            self._account = FDTAccount(self._username, self._password, parent=self)
+            self._account = FDTAccount(self._username, self._password, account_type=self.config.account_type,
+                                       parent=self)
 
     def set_account(self, username, password):
         self._username = username
         self._password = password
-        self._account = FDTAccount(self._username, self._password)
+        if self._username is not None and self._password is not None:
+            self._account = FDTAccount(self._username, self._password, account_type=self.config.account_type,
+                                       parent=self)
 
     @property
     def fx_account(self):

@@ -1,3 +1,4 @@
+from enum import Enum
 import ujson as json
 import pycurl
 import urllib.request
@@ -58,9 +59,9 @@ def post_with_curl(req_url, data):
     # curl.setopt(pycurl.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_1_0)
     curl.perform()
     res_code = curl.getinfo(pycurl.RESPONSE_CODE)
-    for field in ["NAMELOOKUP_TIME", "CONNECT_TIME", "PRETRANSFER_TIME", "STARTTRANSFER_TIME", "TOTAL_TIME",
-                  "REDIRECT_TIME"]:
-        print(field, ": ", curl.getinfo(getattr(pycurl, field)))
+    # for field in ["NAMELOOKUP_TIME", "CONNECT_TIME", "PRETRANSFER_TIME", "STARTTRANSFER_TIME", "TOTAL_TIME",
+    #               "REDIRECT_TIME"]:
+    #     print(field, ": ", curl.getinfo(getattr(pycurl, field)))
     curl.close()
     msg = get_message(header.getvalue().decode())
     if res_code // 100 > 3:
@@ -144,15 +145,22 @@ def retry(func):
     return wrapper
 
 
-class FDTAccount(LoggerInterface):
-    url = "http://121.43.71.76:13321"
+class AccountType(Enum):
+    simulate = 0
+    real = 1
 
-    def __init__(self, fdt_id, pwd, parent=None):
+
+class FDTAccount(LoggerInterface):
+    def __init__(self, fdt_id, pwd, account_type=AccountType.simulate, parent=None):
         LoggerInterface.__init__(self, parent=parent)
         self.token = None
         self.info = None
         self.fdt_id = fdt_id
         self.pwd = pwd
+        if account_type == AccountType.simulate:
+            self.url = "http://121.43.71.76:13321"
+        elif account_type == AccountType.real:
+            self.url = "https://quantbowl.investmaster.cn:443"
 
     def login(self):
         try:
@@ -213,9 +221,6 @@ class FDTAccount(LoggerInterface):
         return post(co_url, data)
 
 
-class FDTRealAccount(FDTAccount):
-    url = "https://quantbowl.investmaster.cn:443"
-
 if __name__ == '__main__':
     import time
 
@@ -237,8 +242,10 @@ if __name__ == '__main__':
             return result
 
         return wrapper
+
+
     om = FDTAccount("mb000004296", "Morrisonwudi520")
-    om = FDTRealAccount("hztest2", "123456")
+    om = FDTAccount("hztest2", "123456", account_type=AccountType.real)
     st = time.time()
     print(om.login())
     print(time.time() - st)

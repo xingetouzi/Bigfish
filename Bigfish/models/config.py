@@ -1,6 +1,6 @@
 from weakref import proxy
 from Bigfish.models.base import RunningMode, TradingMode
-
+from Bigfish.fdt.account import AccountType
 
 class BfConfig:
     """
@@ -10,7 +10,8 @@ class BfConfig:
                  capital_base=100000, commission=0, slippage=0, account=None, password=None,
                  allow_trading=True,
                  running_mode=RunningMode.backtest.value,
-                 trading_mode=TradingMode.on_bar.value):
+                 trading_mode=TradingMode.on_bar.value,
+                 account_type=AccountType.simulate.value):
         self.user = user
         self.name = name
         self.capital_base = capital_base
@@ -25,6 +26,7 @@ class BfConfig:
         self.allow_trading = allow_trading
         self.running_mode = RunningMode(running_mode)
         self.trading_mode = TradingMode(trading_mode)
+        self.account_type = AccountType(account_type)
 
     def __getitem__(self, item):
         try:
@@ -39,6 +41,7 @@ class BfConfig:
             result[field] = getattr(self, field)
         result["running_mode"] = self.running_mode.value
         result["trading_mode"] = self.trading_mode.value
+        result["account_type"] = self.account_type.value
         return result
 
 

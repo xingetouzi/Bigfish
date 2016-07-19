@@ -244,4 +244,4 @@ class FDTAccountManager(AccountManager):
                         return position
                 return None
         else:
-            return None
+            raise RuntimeError("无法读取仓位信息，请检查网络连接")

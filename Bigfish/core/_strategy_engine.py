@@ -346,6 +346,17 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
         self._engine.put_event(Event(EVENT_SYMBOL_BAR_UPDATE[symbol][time_frame]))
 
     def on_tick(self, event: Event):
+        def get_bar(symbol, time_frame, dict_, bar_interval):
+            bar = Bar(symbol)
+            bar.time_frame = time_frame
+            bar.timestamp = dict_['timestamp'] // bar_interval * bar_interval
+            bar.open = dict_['open']
+            bar.high = dict_['high']
+            bar.low = dict_['low']
+            bar.close = dict_['close']
+            bar.volume = dict_['volume']
+            return bar
+
         if self._running:
             tick = event.content['data']
             # print(tick.time, tick.openPrice, tick.highPrice, tick.lowPrice, tick.lastPrice)
@@ -363,13 +374,7 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                 else:
                     dict_ = self._tick_cache[symbol][time_frame]
                     if tick.time - dict_['timestamp'] >= self.TICK_INTERVAL:  # bar_interval 能被TICK_INTERVAL整除
-                        bar = Bar(symbol)
-                        bar.time_frame = time_frame
-                        bar.timestamp = dict_['timestamp'] // bar_interval * bar_interval
-                        bar.open = dict_['open']
-                        bar.high = dict_['high']
-                        bar.low = dict_['low']
-                        bar.close = dict_['close']
+                        bar = get_bar(symbol, time_frame, dict_, bar_interval)
                         self.update_bar(bar)
                         dict_["open"] = tick.openPrice
                         dict_["high"] = tick.highPrice
@@ -377,6 +382,9 @@ class QuotationManager(LoggerInterface, Runnable, ConfigInterface, APIInterface)
                         dict_["close"] = tick.lastPrice
                         dict_["volume"] = tick.volume
                         dict_["timestamp"] = tick.time // self.TICK_INTERVAL * self.TICK_INTERVAL
+                        if tick.time - bar.timestamp >= bar_interval:
+                            # print("new bar ", time.time(), tick.time)
+                            self.update_bar(get_bar(symbol, time_frame, dict_, bar_interval))
                     else:
                         dict_['low'] = min(dict_['low'], tick.lowPrice)
                         dict_['high'] = max(dict_['high'], tick.highPrice)
